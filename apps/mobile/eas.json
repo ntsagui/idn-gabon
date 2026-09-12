@@ -13,7 +13,8 @@
       },
       "android": {
         "buildType": "apk"
-      }
+      },
+      "environment": "development"
     },
     "preview": {
       "distribution": "store",
@@ -24,7 +25,8 @@
       },
       "android": {
         "buildType": "app-bundle"
-      }
+      },
+      "environment": "preview"
     },
     "production": {
       "distribution": "store",
@@ -32,7 +34,8 @@
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
-      }
+      },
+      "environment": "production"
     }
   },
   "submit": {

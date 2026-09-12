@@ -78,3 +78,55 @@ bunx convex env set PASSKEY_RP_ORIGINS "https://identite.ga,android:apk-key-hash
   `/.well-known/assetlinks.json` (cf. `apps/web/app/.well-known/`).
 - Bundle iOS : `ga.idn.mobile` · Team ID : `5Y39TTNCM7`
 - Package Android : `ga.idn.mobile`
+
+## Mises à jour à distance (Expo Update)
+
+Dans l’application : **Profil → Mises à jour**. Le bouton recherche et télécharge
+une mise à jour compatible, puis propose de redémarrer. Un téléchargement ne
+redémarre jamais l’application sans action de l’utilisateur. Expo recherche
+également les mises à jour à l’ouverture ; une mise à jour téléchargée sera
+utilisée au démarrage suivant.
+
+- Les builds TestFlight utilisent le profil, le canal et l’environnement EAS
+  `preview`. Les builds de production utilisent `production`.
+- Un push sur `main` touchant l’application mobile, les dépendances ou les types
+  Convex générés lance `Publish Mobile Update (Expo)` pour iOS sur `preview`.
+- Pour publier manuellement (y compris Android), lancer ce workflow depuis
+  GitHub Actions et choisir le canal et la plateforme. La production n’est
+  jamais mise à jour automatiquement par un push sur `main`.
+- La publication utilise les variables de l’environnement EAS correspondant au
+  build, notamment les URL Convex. Ne pas publier avec les variables locales de
+  développement.
+- La politique `fingerprint` protège la compatibilité native. Une mise à jour
+  JavaScript, HTML, CSS ou des images peut passer par Expo ; un changement du
+  runtime natif (module, SDK, permissions, configuration native) nécessite un
+  nouveau build. Une publication réussie ne prouve pas à elle seule que les
+  appareils ont un runtime compatible.
+
+### Nouvelle version TestFlight
+
+Lancer `Build & Submit Mobile (EAS)` avec `profile=preview`, `platform=ios`,
+`submit=true`, `skip_build=false`. Le numéro de build augmente automatiquement.
+Le workflow vérifie dans l’IPA l’activation d’Expo Updates, l’URL du projet, le
+canal et le runtime. Il conserve ces informations dans l’artefact
+`mobile-build-preview-<commit>` et dans le résumé de l’exécution. L’envoi à Apple
+vient ensuite ; le traitement Apple et, pour les testeurs externes, une éventuelle
+revue bêta restent distincts de la compilation et de l’envoi.
+
+### Registre et contrôle
+
+Les exécutions GitHub conservent le commit, le canal et le résultat de publication
+(`expo-update-<canal>-<commit>`). Comparer le `runtimeVersion` de la mise à jour
+avec celui de l’artefact du build installé. L’historique Expo est consultable ici :
+https://expo.dev/accounts/okatechs-organization/projects/identite-ga/updates
+
+Après installation du nouveau build TestFlight, publier une mise à jour sur
+`preview` depuis le même environnement, puis vérifier sur un appareil réel :
+recherche, téléchargement, annulation du redémarrage, installation et relance.
+Tester aussi hors connexion : l’application doit conserver la version installée
+et proposer de réessayer.
+
+Pour revenir à la version embarquée, utiliser `eas update:roll-back-to-embedded`
+avec le canal et le runtime concernés ; pour republier une mise à jour précédente,
+utiliser `eas update:republish`. Les versions natives incompatibles ne doivent pas
+être contournées en forçant le runtime.

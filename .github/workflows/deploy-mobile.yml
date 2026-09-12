@@ -66,7 +66,7 @@ jobs:
       - name: Setup EAS CLI
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: bun add -g eas-cli
+        run: bun add -g eas-cli@21.1.0
 
       - name: Sync Convex env vars to EAS project
         working-directory: apps/mobile
@@ -127,6 +127,24 @@ jobs:
             --profile "${{ inputs.profile || 'preview' }}" \
             --platform "${{ inputs.platform || 'all' }}" \
             --non-interactive
+
+      - name: Verify OTA configuration in iOS binary
+        if: ${{ inputs.skip_build != true && inputs.platform == 'ios' }}
+        env:
+          BUILD_PROFILE: ${{ inputs.profile || 'preview' }}
+        run: |
+          python3 apps/mobile/scripts/verify-ipa-updates.py \
+            "$RUNNER_TEMP/identite-ga.ipa" "$BUILD_PROFILE" "$RUNNER_TEMP/mobile-build.json"
+          echo '### Configuration Expo du binaire iOS' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/mobile-build.json" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.skip_build != true && inputs.platform == 'ios' }}
+        with:
+          name: mobile-build-${{ inputs.profile || 'preview' }}-${{ github.sha }}
+          path: ${{ runner.temp }}/mobile-build.json
 
       - name: EAS Submit (iOS local)
         if: ${{ inputs.submit != false && inputs.platform == 'ios' && inputs.skip_build != true }}

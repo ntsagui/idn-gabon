@@ -454,6 +454,12 @@ export default function Profile() {
             onPress={() => router.push("/settings/about")}
           />
           <Row
+            icon={IconG("download")}
+            l="Mises à jour"
+            sub="Rechercher et installer les dernières corrections"
+            onPress={() => router.push("/settings/updates" as never)}
+          />
+          <Row
             icon={
               <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
                 <Path
