@@ -134,3 +134,33 @@ Pour revenir à la version embarquée, utiliser `eas update:roll-back-to-embedde
 avec le canal et le runtime concernés ; pour republier une mise à jour précédente,
 utiliser `eas update:republish`. Les versions natives incompatibles ne doivent pas
 être contournées en forçant le runtime.
+
+### Exécution sans GitHub Actions
+
+Le projet Expo est relié au dépôt `okatech-org/identite.ga`, avec `apps/mobile`
+comme répertoire de base. Les déclenchements Expo sur `main` fonctionnent
+indépendamment des minutes et de la facturation GitHub Actions.
+
+Pour une compilation locale, utiliser un checkout propre et les variables EAS
+`preview`, avec Xcode stable et les outils de signature installés :
+
+```bash
+# Depuis apps/mobile ; OUTPUT_IPA désigne le fichier de sortie choisi.
+eas build --profile preview --platform ios --local --output "$OUTPUT_IPA"
+```
+
+Sur un Mac qui possède plusieurs certificats « Apple Distribution » de même nom,
+`GYM_XCARGS=CODE_SIGN_IDENTITY=<SHA1 du certificat du profil>` permet de choisir
+le certificat pour la compilation. L’export Xcode doit lui aussi utiliser ce
+SHA1 dans `ExportOptions.plist` → `signingCertificate`. Ne pas supprimer ni
+révoquer les autres certificats pour résoudre ce conflit.
+
+Vérifier le fichier produit avec `scripts/verify-ipa-updates.py` (arguments :
+IPA, canal attendu, chemin du registre JSON ; variable `GITHUB_SHA` égale au
+commit compilé). Le script résout aussi la ressource `EXUpdates.bundle/fingerprint`
+utilisée par Expo SDK 55. Puis enregistrer le build et envoyer son identifiant :
+
+```bash
+eas upload --platform ios --build-path "$OUTPUT_IPA" --fingerprint "$RUNTIME_VERSION"
+eas submit --platform ios --profile preview --id "$BUILD_ID" --wait
+```

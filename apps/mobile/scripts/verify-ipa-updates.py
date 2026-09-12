@@ -14,18 +14,23 @@ with zipfile.ZipFile(archive_path) as archive:
     app_dir = app_info.removesuffix("Info.plist")
     info = plistlib.loads(archive.read(app_info))
     updates = plistlib.loads(archive.read(app_dir + "Expo.plist"))
+    runtime = updates.get("EXUpdatesRuntimeVersion")
+    # SDK 55 resolves this sentinel from a resource bundled by expo-updates.
+    if runtime == "file:fingerprint":
+        runtime = archive.read(app_dir + "EXUpdates.bundle/fingerprint").decode().strip()
 
 assert updates.get("EXUpdatesEnabled") is True, "Expo Updates is disabled in the binary"
+assert updates.get("EXUpdatesCheckOnLaunch", "ALWAYS") == "ALWAYS", "Automatic update checks are disabled"
 assert updates.get("EXUpdatesURL") == "https://u.expo.dev/24b9c3f8-aefc-46ef-bf46-6615b83d0254", "Wrong update project"
 assert updates.get("EXUpdatesRequestHeaders", {}).get("expo-channel-name") == channel, "Wrong update channel"
-assert updates.get("EXUpdatesRuntimeVersion"), "Missing native runtime"
+assert runtime and not runtime.startswith("file:"), "Missing native runtime"
 record = {
     "commit": os.environ["GITHUB_SHA"],
     "channel": channel,
     "platform": "ios",
     "version": info["CFBundleShortVersionString"],
     "buildNumber": info["CFBundleVersion"],
-    "runtimeVersion": updates["EXUpdatesRuntimeVersion"],
+    "runtimeVersion": runtime,
     "updatesEnabled": True,
     "checkOnLaunch": updates.get("EXUpdatesCheckOnLaunch", "ALWAYS"),
 }
