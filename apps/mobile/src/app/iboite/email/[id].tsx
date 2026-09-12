@@ -289,7 +289,7 @@ export default function EmailDetail() {
           }}
         >
           {email.bodyHtml ? (
-            <EmailHtmlView html={email.bodyHtml} t={t} />
+            <EmailHtmlView html={email.bodyHtml} />
           ) : (
             <EmailTextBody text={email.body} t={t} />
           )}
