@@ -90,9 +90,12 @@ utilisée au démarrage suivant.
 - Les builds TestFlight utilisent le profil, le canal et l’environnement EAS
   `preview`. Les builds de production utilisent `production`.
 - Un push sur `main` touchant l’application mobile, les dépendances ou les types
-  Convex générés lance `Publish Mobile Update (Expo)` pour iOS sur `preview`.
-- Pour publier manuellement (y compris Android), lancer ce workflow depuis
-  GitHub Actions et choisir le canal et la plateforme. La production n’est
+  Convex générés lance le workflow Expo `.eas/workflows/update-preview.yml` pour iOS sur
+  `preview`. Il est exécuté par EAS Workflows, sans runner GitHub Actions.
+- Pour publier manuellement sur TestFlight, exécuter depuis `apps/mobile` :
+  `eas workflow:run .eas/workflows/update-preview.yml --ref main`.
+  Le workflow GitHub `Publish Mobile Update (Expo)` reste disponible en secours
+  (y compris Android) avec choix du canal et de la plateforme. La production n’est
   jamais mise à jour automatiquement par un push sur `main`.
 - La publication utilise les variables de l’environnement EAS correspondant au
   build, notamment les URL Convex. Ne pas publier avec les variables locales de
@@ -115,7 +118,8 @@ revue bêta restent distincts de la compilation et de l’envoi.
 
 ### Registre et contrôle
 
-Les exécutions GitHub conservent le commit, le canal et le résultat de publication
+Les exécutions EAS Workflows conservent le commit et le résultat de publication.
+Le workflow GitHub de secours conserve également le commit, le canal et le résultat de publication
 (`expo-update-<canal>-<commit>`). Comparer le `runtimeVersion` de la mise à jour
 avec celui de l’artefact du build installé. L’historique Expo est consultable ici :
 https://expo.dev/accounts/okatechs-organization/projects/identite-ga/updates

@@ -1,13 +1,6 @@
 name: Publish Mobile Update (Expo)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "apps/mobile/**"
-      - "packages/backend/convex/_generated/**"
-      - "bun.lock"
-      - "package.json"
   workflow_dispatch:
     inputs:
       channel:

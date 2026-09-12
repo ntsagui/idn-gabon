@@ -1,0 +1,31 @@
+name: Update TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/mobile/**
+      - packages/backend/convex/_generated/**
+      - bun.lock
+      - package.json
+
+concurrency:
+  group: update-preview
+  cancel_in_progress: false
+
+defaults:
+  tools:
+    bun: 1.3.11
+
+jobs:
+  update:
+    name: Publish compatible iOS update
+    type: update
+    environment: preview
+    params:
+      channel: preview
+      platform: ios
+    hooks:
+      before_update:
+        - name: Check mobile code
+          run: bun run typecheck && bun run test
