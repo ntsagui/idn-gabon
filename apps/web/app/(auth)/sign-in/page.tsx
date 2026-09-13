@@ -17,6 +17,12 @@ import { PinPad } from "@repo/ui/components/pin-pad"
 import { cn } from "@repo/ui/lib/utils"
 
 import { authClient } from "@/lib/auth-client"
+import {
+  authorizeFederatedSignIn,
+  getProviderRedirect,
+  hasAuthorizationRequest,
+  resumeFederatedSignIn,
+} from "@/lib/federated-sign-in"
 import { syncCrossDomainCookiesForProxy } from "@/lib/auth-cookie"
 import { buildPostLoginRedirect, isFederatedSignIn } from "@/lib/oauth-flow"
 
@@ -93,6 +99,49 @@ function SignInPageInner() {
     ? buildPostLoginRedirect(params)
     : safeRedirectTo(params.get("redirect_to"), "/dashboard")
 
+  const authorizationParams = params.toString()
+  const isAuthorizationRequest = hasAuthorizationRequest(params)
+  const [checkingSession, setCheckingSession] = React.useState(
+    isAuthorizationRequest,
+  )
+  const [sessionError, setSessionError] = React.useState(false)
+  const sessionCheck = React.useRef<{
+    query: string
+    promise: Promise<string | null>
+  } | null>(null)
+
+  React.useEffect(() => {
+    if (!isAuthorizationRequest) {
+      setCheckingSession(false)
+      return
+    }
+    let cancelled = false
+    setCheckingSession(true)
+    setSessionError(false)
+    // Réutiliser la promesse évite deux autorisations en React StrictMode.
+    if (sessionCheck.current?.query !== authorizationParams) {
+      sessionCheck.current = {
+        query: authorizationParams,
+        promise: resumeFederatedSignIn(
+          new URLSearchParams(authorizationParams),
+          authClient,
+        ),
+      }
+    }
+    void sessionCheck.current.promise
+      .then((url) => {
+        if (cancelled) return
+        if (url) window.location.replace(url)
+        else setCheckingSession(false)
+      })
+      .catch(() => {
+        if (!cancelled) setSessionError(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authorizationParams, isAuthorizationRequest])
+
   const [phase, setPhase] = React.useState<Phase>("email")
   const [email, setEmail] = React.useState("")
   const [pin, setPin] = React.useState("")
@@ -153,7 +202,25 @@ function SignInPageInner() {
    * que renvoie `/oauth2/authorize` (consentement, ou retour direct au
    * partenaire si le consentement est déjà enregistré).
    */
-  const goToDestination = async () => {
+  const goToDestination = async (
+    result: Parameters<typeof getProviderRedirect>[0],
+  ) => {
+    const providerUrl = getProviderRedirect(result)
+    if (providerUrl) {
+      window.location.assign(providerUrl)
+      return
+    }
+    if (isAuthorizationRequest) {
+      const url = await authorizeFederatedSignIn(
+        new URLSearchParams(authorizationParams),
+        authClient,
+      )
+      window.location.assign(url)
+      return
+    }
+    if (params.get("client_id") && params.get("code")) {
+      throw new Error("Missing OIDC reauthentication redirect")
+    }
     if (!isOAuthFlow) {
       router.push(redirectTo)
       router.refresh()
@@ -228,7 +295,7 @@ function SignInPageInner() {
       // Force le client à recharger sa session via le cookie cross-domain
       // qu'on vient de stocker (le set-better-auth-cookie a déjà été pris
       // par le fetch plugin).
-      await goToDestination()
+      await goToDestination(res)
     } catch {
       setPinSetupRequired(false)
       setPinError(signIn.errorGeneric)
@@ -265,7 +332,7 @@ function SignInPageInner() {
         setSubmitting(false)
         return
       }
-      await goToDestination()
+      await goToDestination(result)
     } catch {
       toast.error(signIn.errorGeneric)
       setSubmitting(false)
@@ -279,21 +346,39 @@ function SignInPageInner() {
       const tf = (
         authClient as unknown as {
           twoFactor?: {
-            verifyTotp: (a: { code: string }) => Promise<{ error?: unknown }>
+            verifyTotp: (a: { code: string }) => Promise<{
+              data?: unknown
+              error?: unknown
+            }>
           }
         }
       ).twoFactor
       const result = await tf?.verifyTotp({ code: twoFactorCode })
-      if (result?.error) {
+      if (!result || result.error) {
         toast.error(signIn.errorInvalid)
         setSubmitting(false)
         return
       }
-      await goToDestination()
+      await goToDestination(result)
     } catch {
       toast.error(signIn.errorGeneric)
       setSubmitting(false)
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="mx-auto flex w-full max-w-[460px] flex-1 flex-col justify-center px-6 py-10 text-center">
+        <p
+          role={sessionError ? "alert" : "status"}
+          className="text-sm text-muted-foreground"
+        >
+          {sessionError
+            ? "La connexion à votre application n’a pas pu être reprise. Réessayez depuis cette application."
+            : "Reprise de votre session Identité Numérique…"}
+        </p>
+      </div>
+    )
   }
 
   // ─────── 2FA (rendu prioritaire après sign-in mot de passe) ───────

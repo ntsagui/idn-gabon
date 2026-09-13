@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 
-import { getBrowserRedirectUrl } from "@/lib/auth-proxy"
+import { getBrowserRedirectUrl, getFetchRedirectUrl } from "@/lib/auth-proxy"
 
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ?? process.env.NEXT_PUBLIC_CONVEX_SITE_URL
@@ -137,6 +137,21 @@ async function proxyToConvex(req: NextRequest): Promise<NextResponse> {
       headers.set("location", browserRedirectUrl)
       headers.delete("content-type")
       return new NextResponse(null, { status: 302, headers })
+    }
+
+    const fetchRedirectUrl = getFetchRedirectUrl({
+      requestMode: req.headers.get("sec-fetch-mode"),
+      responseStatus: upstream.status,
+      location: upstream.headers.get("location"),
+      upstreamUrl: targetUrl,
+    })
+    if (fetchRedirectUrl) {
+      headers.delete("location")
+      headers.set("content-type", "application/json")
+      return NextResponse.json(
+        { redirect: true, url: fetchRedirectUrl },
+        { headers },
+      )
     }
 
     return new NextResponse(responseBody, {

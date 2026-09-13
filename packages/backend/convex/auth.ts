@@ -299,14 +299,6 @@ export const createAuth = (
       }),
     },
     plugins: [
-      // Réécrit les redirects OAuth/OIDC vers l'origin de l'app appelante
-      // (web, admin, developer, controller). Permet aussi au
-      // crossDomainClient côté navigateur d'enregistrer la session via
-      // localStorage (cookies cross-domain non garantis).
-      crossDomain({
-        siteUrl: resolveSiteUrl(requestOrigin),
-      }),
-
       // Reprise d'une session ouverte depuis une autre origine. Sert à
       // `/auth-continue` : une app partenaire qui fait inscrire un citoyen
       // depuis SON domaine obtient un jeton bearer, pas un cookie identite.ga —
@@ -467,6 +459,13 @@ export const createAuth = (
           ) ? await ctx.runQuery(internal.profile.getForUserinfo, { userId: user.id }) : null
           return { env, ...userinfoClaimsForScopes(scopes, profile) }
         },
+      }),
+
+      // Après oidcProvider : son hook doit lire Set-Cookie pour reprendre une
+      // réauthentification avant que crossDomain le transforme en
+      // Set-Better-Auth-Cookie pour le stockage localStorage du navigateur.
+      crossDomain({
+        siteUrl: resolveSiteUrl(requestOrigin),
       }),
 
       // Émission ID tokens RS256 + JWKS publique (§6.1)
