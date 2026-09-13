@@ -11,6 +11,10 @@ import { NextRequest } from "next/server"
 
 import { pinSignIn } from "../packages/backend/convex/lib/pinSignInPlugin"
 import {
+  classifyConsentError,
+  submitConsentDecision,
+} from "../apps/web/lib/consent-flow"
+import {
   authorizeFederatedSignIn,
   getProviderRedirect,
   resumeFederatedSignIn,
@@ -67,6 +71,18 @@ async function setup() {
             type: "web",
             disabled: false,
             skipConsent: true,
+            redirectUrls: [callback],
+            metadata: {},
+          },
+          {
+            // Le client qui EXIGE l'écran de consentement : c'est lui qui
+            // exerce POST /oauth2/consent, le chemin de l'incident du 14/09.
+            clientId: "consent-test",
+            clientSecret: "test-client-secret",
+            name: "Application avec consentement",
+            type: "web",
+            disabled: false,
+            skipConsent: false,
             redirectUrls: [callback],
             metadata: {},
           },
@@ -138,7 +154,7 @@ async function setup() {
       )
     }
   }
-  return { client, params, signIn, responses, expireSessionAge }
+  return { client, params, signIn, responses, expireSessionAge, database }
 }
 
 describe("contrat HTTP du fournisseur OIDC et du proxy web", () => {
@@ -212,5 +228,118 @@ describe("contrat HTTP du fournisseur OIDC et du proxy web", () => {
     )
     expect(response.status).toBe(302)
     expect(new URL(response.headers.get("location")!).pathname).toBe("/sign-in")
+  })
+})
+
+describe("consentement : la décision voyage avec la session du portail", () => {
+  const consentParams = (params: URLSearchParams) => {
+    const query = new URLSearchParams(params)
+    query.set("client_id", "consent-test")
+    return query
+  }
+  // /oauth2/authorize renvoie sur la page de consentement du portail avec le
+  // code en query : c'est ce code, et lui seul, que l'écran renvoie au POST.
+  const consentCodeFrom = (url: string | null) => {
+    const consent = new URL(url!)
+    expect(`${consent.origin}${consent.pathname}`).toBe(`${portal}/oauth/authorize`)
+    const code = consent.searchParams.get("consent_code")
+    expect(code).toBeTruthy()
+    return code!
+  }
+
+  test("accepte : le vrai endpoint reconnaît la session du client et rend le code à l'application", async () => {
+    const { client, params, signIn, responses, database } = await setup()
+    await signIn()
+    const code = consentCodeFrom(
+      await resumeFederatedSignIn(consentParams(params), client),
+    )
+    const outcome = await submitConsentDecision(
+      { accept: true, consentCode: code },
+      client,
+    )
+    expect(outcome.kind).toBe("redirect")
+    const redirect = new URL((outcome as { url: string }).url)
+    expect(redirect.origin).toBe(new URL(callback).origin)
+    expect(redirect.searchParams.get("code")).toBeTruthy()
+    expect(redirect.searchParams.get("state")).toBe("fonction-publique")
+    expect(responses.at(-1)).toMatchObject({
+      path: "/api/auth/oauth2/consent",
+      status: 200,
+    })
+    expect(database.oauthConsent).toHaveLength(1)
+    // Consentement mémorisé : la reprise suivante revient droit à l'application.
+    const again = new URL(
+      (await resumeFederatedSignIn(consentParams(params), client))!,
+    )
+    expect(again.origin).toBe(new URL(callback).origin)
+    expect(again.searchParams.get("code")).toBeTruthy()
+  })
+
+  test("refuse : le fournisseur renvoie access_denied et ne mémorise rien", async () => {
+    const { client, params, signIn, database } = await setup()
+    await signIn()
+    const code = consentCodeFrom(
+      await resumeFederatedSignIn(consentParams(params), client),
+    )
+    const outcome = await submitConsentDecision(
+      { accept: false, consentCode: code },
+      client,
+    )
+    expect(outcome.kind).toBe("redirect")
+    const redirect = new URL((outcome as { url: string }).url)
+    expect(redirect.origin).toBe(new URL(callback).origin)
+    expect(redirect.searchParams.get("error")).toBe("access_denied")
+    expect(database.oauthConsent).toHaveLength(0)
+  })
+
+  test("un fetch brut sans session est le 401 UNAUTHORIZED de l'incident ; la même décision portée par le client aboutit", async () => {
+    const { client, params, signIn } = await setup()
+    await signIn()
+    const code = consentCodeFrom(
+      await resumeFederatedSignIn(consentParams(params), client),
+    )
+    // Ce que faisait l'écran avant le correctif : document.cookie ne porte
+    // pas la session crossDomain, le proxy ne transmet donc rien au
+    // fournisseur, qui refuse avant même de lire le code.
+    const raw = await POST(
+      new NextRequest(`${portal}/api/auth/oauth2/consent`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: portal,
+          "sec-fetch-mode": "cors",
+        },
+        body: JSON.stringify({ accept: true, consent_code: code }),
+      }),
+    )
+    expect(raw.status).toBe(401)
+    const body = (await raw.json()) as Record<string, unknown>
+    expect(body).toMatchObject({ code: "UNAUTHORIZED" })
+    expect(classifyConsentError({ status: 401, ...body })).toBe("session_missing")
+    const outcome = await submitConsentDecision(
+      { accept: true, consentCode: code },
+      client,
+    )
+    expect(outcome.kind).toBe("redirect")
+  })
+
+  test("un code inconnu ou expiré est une demande à relancer depuis l'application", async () => {
+    const { client, params, signIn, database } = await setup()
+    await signIn()
+    expect(
+      await submitConsentDecision(
+        { accept: true, consentCode: "unknown-code" },
+        client,
+      ),
+    ).toEqual({ kind: "error", reason: "request_expired" })
+    const code = consentCodeFrom(
+      await resumeFederatedSignIn(consentParams(params), client),
+    )
+    for (const record of database.verification ?? []) {
+      ;(record as { expiresAt: Date }).expiresAt = new Date(Date.now() - 1_000)
+    }
+    expect(
+      await submitConsentDecision({ accept: true, consentCode: code }, client),
+    ).toEqual({ kind: "error", reason: "request_expired" })
   })
 })

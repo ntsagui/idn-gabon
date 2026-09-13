@@ -6,6 +6,16 @@ import { Button } from "@repo/ui/components/button"
 import { IdnFlagBars } from "@repo/ui/components/idn-flag-bars"
 import { IdnMark } from "@repo/ui/components/idn-mark"
 
+import { authClient } from "@/lib/auth-client"
+import {
+  appReturnUrl,
+  consentFailureMessage,
+  denyFallbackUrl,
+  signInAgainUrl,
+  submitConsentDecision,
+  type ConsentFailure,
+} from "@/lib/consent-flow"
+
 interface ConsentFormProps {
   app: {
     clientId: string
@@ -13,6 +23,8 @@ interface ConsentFormProps {
     icon: string | null
     requiredLoA: 1 | 2 | 3
     env: "sandbox" | "production"
+    /** URI de retour enregistrées : seule origine vers laquelle on renvoie. */
+    redirectUris?: string[]
   }
   user: {
     fullName: string
@@ -116,57 +128,43 @@ export function ConsentForm({
   oauthParams,
 }: ConsentFormProps) {
   const [submitting, setSubmitting] = useState<"deny" | "allow" | null>(null)
+  const [failure, setFailure] = useState<ConsentFailure | null>(null)
   const claims = claimsForScopes(requestedScopes, user, app.requiredLoA)
   void acrValues
 
   const submitDecision = async (decision: "allow" | "deny") => {
     setSubmitting(decision)
-    // Better Auth oidcProvider endpoint `/oauth2/consent` accepte
-    // `{ accept: boolean, consent_code? }`. Le `consent_code` est résolu
-    // depuis le cookie signé `oidc_consent_prompt` posé par /authorize,
-    // donc on ne le passe pas (mais on accepte aussi via oauthParams.code
-    // si jamais le plugin l'a injecté en query).
-    try {
-      const res = await fetch("/api/auth/oauth2/consent", {
-        method: "POST",
-        // Le cookie de session doit accompagner le POST : Better Auth résout
-        // `consent_code` depuis le cookie signé `oidc_consent_prompt`. Aligné
-        // sur le rejeu de /authorize dans sign-in (`credentials: "include"`).
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accept: decision === "allow",
-          ...(oauthParams.consent_code
-            ? { consent_code: oauthParams.consent_code }
-            : {}),
-        }),
-        redirect: "follow",
-      })
-      if (res.redirected) {
-        window.location.assign(res.url)
-        return
-      }
-      // Better Auth renvoie en JSON la prochaine étape — souvent
-      // { redirectURI: "..." } qu'on doit suivre manuellement.
-      const json = (await res.json().catch(() => null)) as {
-        redirectURI?: string
-        redirect_uri?: string
-      } | null
-      const redirectTo = json?.redirectURI ?? json?.redirect_uri
-      if (redirectTo) {
-        window.location.assign(redirectTo)
-        return
-      }
-      if (decision === "deny" && oauthParams.redirect_uri) {
-        const url = new URL(oauthParams.redirect_uri)
-        url.searchParams.set("error", "access_denied")
-        if (oauthParams.state) url.searchParams.set("state", oauthParams.state)
-        window.location.assign(url.toString())
-      }
-    } catch {
-      setSubmitting(null)
+    setFailure(null)
+    // Le POST passe par le client Better Auth : c'est lui qui porte la session
+    // du portail (en-tête `Better-Auth-Cookie`, plugin crossDomain), comme la
+    // reprise de /oauth2/authorize. Un fetch brut partait sans session et le
+    // fournisseur répondait 401 sans que l'écran le dise (14/09/2026). Le
+    // `consent_code` vient de la query posée par /oauth2/authorize.
+    const outcome = await submitConsentDecision(
+      {
+        accept: decision === "allow",
+        consentCode: oauthParams.consent_code ?? null,
+      },
+      authClient,
+    )
+    if (outcome.kind === "redirect") {
+      window.location.assign(outcome.url)
+      return
     }
+    if (decision === "deny") {
+      // Le fournisseur n'a plus la demande : on rend quand même la main à
+      // l'application quand son URI de retour est connue (entrée directe).
+      const back = denyFallbackUrl(oauthParams)
+      if (back) {
+        window.location.assign(back)
+        return
+      }
+    }
+    setFailure(outcome.reason)
+    setSubmitting(null)
   }
+
+  const returnUrl = appReturnUrl(app.redirectUris ?? [])
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-idn-bg p-10">
@@ -247,6 +245,30 @@ export function ConsentForm({
             </li>
           ))}
         </ul>
+
+        {failure ? (
+          <div
+            role="alert"
+            className="mt-5 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+          >
+            <p>{consentFailureMessage(failure)}</p>
+            {failure === "session_missing" ? (
+              <a
+                href={signInAgainUrl(oauthParams)}
+                className="mt-2 inline-block font-medium underline underline-offset-2"
+              >
+                Se reconnecter
+              </a>
+            ) : failure === "request_expired" && returnUrl ? (
+              <a
+                href={returnUrl}
+                className="mt-2 inline-block font-medium underline underline-offset-2"
+              >
+                Retour à l&apos;application
+              </a>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-5 flex gap-2.5">
           <Button

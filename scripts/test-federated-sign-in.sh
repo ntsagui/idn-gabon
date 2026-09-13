@@ -19,6 +19,7 @@ source, target = map(Path, sys.argv[1:])
 paths = [
     "tests/federated-sign-in.integration.test.ts",
     "apps/web/lib/federated-sign-in.ts",
+    "apps/web/lib/consent-flow.ts",
     "apps/web/lib/auth-proxy.ts",
     "apps/web/app/api/auth/[...all]/route.ts",
     "packages/backend/convex/auth.ts",
