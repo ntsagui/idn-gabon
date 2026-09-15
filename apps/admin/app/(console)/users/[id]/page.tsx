@@ -46,6 +46,7 @@ type AccountDetail = {
   }
   pinConfigured: boolean
   hasProfilePhoto: boolean
+  recoveryMethods: { pin: boolean; password: boolean }
   smsRecovery: {
     eligible: boolean
     normalizedPhone: string | null
@@ -388,55 +389,81 @@ export default function UserDetailPage() {
               </dl>
             </DetailCard>
 
-            <DetailCard title="Récupération du PIN par SMS">
-              <dl>
-                <DetailRow
-                  label="État"
-                  value={
-                    <StatePill ok={account.smsRecovery.eligible}>
-                      {account.smsRecovery.eligible
-                        ? "Envoi automatique autorisé"
-                        : "Vérification supplémentaire requise"}
-                    </StatePill>
-                  }
-                />
-                <DetailRow
-                  label="Numéro normalisé"
-                  value={account.smsRecovery.normalizedPhone}
-                  mono
-                />
-              </dl>
-              {!account.smsRecovery.eligible ? (
-                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-                  <p className="font-medium">Motif du blocage</p>
-                  <ul className="mt-1.5 list-disc space-y-1 pl-4">
-                    {account.smsRecovery.blockers.map((blocker) => (
-                      <li key={blocker}>{RECOVERY_BLOCKER_LABEL[blocker]}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </DetailCard>
+            {/* Seules les voies de récupération du moyen de connexion réel du
+                compte sont proposées : un code de mot de passe ne débloque pas
+                le PIN d'un citoyen, et inversement. */}
+            {account.recoveryMethods.pin ? (
+              <DetailCard title="Récupération du PIN par SMS">
+                <dl>
+                  <DetailRow
+                    label="État"
+                    value={
+                      <StatePill ok={account.smsRecovery.eligible}>
+                        {account.smsRecovery.eligible
+                          ? "Envoi automatique autorisé"
+                          : "Vérification supplémentaire requise"}
+                      </StatePill>
+                    }
+                  />
+                  <DetailRow
+                    label="Numéro normalisé"
+                    value={account.smsRecovery.normalizedPhone}
+                    mono
+                  />
+                </dl>
+                {!account.smsRecovery.eligible ? (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                    <p className="font-medium">Motif du blocage</p>
+                    <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                      {account.smsRecovery.blockers.map((blocker) => (
+                        <li key={blocker}>{RECOVERY_BLOCKER_LABEL[blocker]}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </DetailCard>
+            ) : null}
 
-            <PinRecoveryCard
-              userId={account.userId}
-              idnId={account.idnId}
-              email={account.email}
-              authExists={account.authExists}
-              deletedAt={account.deletedAt}
-              hasAdminRole={account.roles.some((role) => role.role === "admin")}
-            />
+            {account.recoveryMethods.pin ? (
+              <PinRecoveryCard
+                userId={account.userId}
+                idnId={account.idnId}
+                email={account.email}
+                authExists={account.authExists}
+                deletedAt={account.deletedAt}
+                hasAdminRole={account.roles.some(
+                  (role) => role.role === "admin",
+                )}
+              />
+            ) : null}
 
-            <PasswordRecoveryCard
-              userId={account.userId}
-              idnId={account.idnId}
-              email={account.email}
-              authExists={account.authExists}
-              deletedAt={account.deletedAt}
-              hasAdminRole={account.roles.some((role) => role.role === "admin")}
-            />
+            {account.recoveryMethods.password ? (
+              <PasswordRecoveryCard
+                userId={account.userId}
+                idnId={account.idnId}
+                email={account.email}
+                authExists={account.authExists}
+                deletedAt={account.deletedAt}
+                hasAdminRole={account.roles.some(
+                  (role) => role.role === "admin",
+                )}
+              />
+            ) : null}
 
-            <DetailCard title="Cycle de vie du compte">
+            {/* Grille à deux colonnes : quand les cartes précédentes sont en
+                nombre pair, « Cycle de vie » ouvrirait seule sa ligne. */}
+            <DetailCard
+              title="Cycle de vie du compte"
+              className={
+                (2 +
+                  (account.recoveryMethods.pin ? 2 : 0) +
+                  (account.recoveryMethods.password ? 1 : 0)) %
+                  2 ===
+                0
+                  ? "xl:col-span-2"
+                  : ""
+              }
+            >
               <dl>
                 <DetailRow
                   label="Inscription"

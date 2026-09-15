@@ -94,6 +94,14 @@ describe("réinitialisation avec le code provisoire administrateur", () => {
           },
         },
       })
+      // Compte d'agent contrôleur : il se connecte à l'app des contrôleurs par
+      // email + mot de passe, c'est donc le code de mot de passe qui le sert.
+      // Un citoyen sans rôle se voit refuser ce code (recoveryMethods.test.ts).
+      await ctx.db.insert("userRole", {
+        userId: user._id,
+        role: "identity_controller",
+        assignedAt: now,
+      })
       await ctx.db.insert("userProfile", {
         userId: user._id,
         profileType: "citizen",

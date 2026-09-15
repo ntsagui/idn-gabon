@@ -14,6 +14,7 @@ import {
   ADMIN_PIN_CODE_TTL_MS,
   hashAdminPinCode,
 } from "../lib/pinRecoveryCode"
+import { signInMethods } from "../lib/signInMethods"
 
 /**
  * Actions sensibles de l'admin sur un compte IDN.
@@ -83,15 +84,24 @@ function generateSixDigitCode() {
   return String(random[0]! % range).padStart(6, "0")
 }
 
+const WRONG_METHOD_MESSAGE = {
+  pin: "Ce compte se connecte par mot de passe : utilisez le code provisoire de mot de passe.",
+  password:
+    "Ce compte se connecte par PIN : utilisez le code provisoire de PIN.",
+} as const
+
 /**
  * Garde-fous communs aux deux codes provisoires (mot de passe, PIN) : RBAC,
  * jamais son propre compte, compte existant et non anonymisé, jamais un
- * administrateur, recopie de l'identifiant affiché. Résout la cible côté
- * serveur sans faire confiance aux informations affichées par le navigateur.
+ * administrateur, code correspondant au moyen de connexion du compte (cf.
+ * `lib/signInMethods.ts`), recopie de l'identifiant affiché. Résout la cible
+ * côté serveur sans faire confiance aux informations affichées par le
+ * navigateur.
  */
 async function resolveRecoveryTarget(
   ctx: QueryCtx | MutationCtx,
   args: { userId: string; confirmIdentifier: string },
+  method: "pin" | "password",
 ) {
   const admin = await requireAdmin(ctx)
 
@@ -129,6 +139,14 @@ async function resolveRecoveryTarget(
       code: "FORBIDDEN_ADMIN_TARGET",
       message:
         "La récupération d'un compte administrateur suit une procédure renforcée.",
+    })
+  }
+
+  const activeRoles = roles.filter((row) => !row.revokedAt).map((row) => row.role)
+  if (!signInMethods(profile.profileType, activeRoles)[method]) {
+    throw new ConvexError({
+      code: "RECOVERY_METHOD_NOT_USED",
+      message: WRONG_METHOD_MESSAGE[method],
     })
   }
 
@@ -174,7 +192,11 @@ export const preparePasswordResetCode = internalQuery({
     email: v.string(),
   }),
   handler: async (ctx, args) => {
-    const { adminId, email } = await resolveRecoveryTarget(ctx, args)
+    const { adminId, email } = await resolveRecoveryTarget(
+      ctx,
+      args,
+      "password",
+    )
     return { adminId, email }
   },
 })
@@ -270,7 +292,7 @@ export const generatePinResetCode = mutation({
     expiresAt: v.number(),
   }),
   handler: async (ctx, args) => {
-    const target = await resolveRecoveryTarget(ctx, args)
+    const target = await resolveRecoveryTarget(ctx, args, "pin")
     const now = Date.now()
 
     const previous = await ctx.db

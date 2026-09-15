@@ -9,6 +9,7 @@ import {
   assessAutomaticSmsRecovery,
   PIN_RECOVERY_BLOCKERS,
 } from "../lib/pinRecoveryEligibility"
+import { signInMethods } from "../lib/signInMethods"
 import {
   KYC_DOCUMENT_TYPES,
   KYC_STATUSES,
@@ -222,6 +223,8 @@ const PROFILE_DETAIL = v.object({
   ),
   pinConfigured: v.boolean(),
   hasProfilePhoto: v.boolean(),
+  // Codes provisoires pertinents pour ce compte (cf. lib/signInMethods.ts).
+  recoveryMethods: v.object({ pin: v.boolean(), password: v.boolean() }),
   smsRecovery: v.object({
     eligible: v.boolean(),
     normalizedPhone: v.union(v.string(), v.null()),
@@ -323,6 +326,10 @@ export const getProfile = query({
       authUser?.emailVerified === true,
     )
 
+    const activeRoles = roleRows
+      .filter((row) => row.revokedAt === undefined)
+      .map((row) => row.role)
+
     const recentActivity = [
       ...new Map(
         [...activityAsActor, ...activityOnUser].map((row) => [row._id, row]),
@@ -350,6 +357,7 @@ export const getProfile = query({
       pivot: profile.pivot,
       pinConfigured: Boolean(profile.pinHash),
       hasProfilePhoto: Boolean(profile.photoStorageRef),
+      recoveryMethods: signInMethods(profile.profileType, activeRoles),
       smsRecovery: {
         eligible: smsRecovery.eligible,
         normalizedPhone: smsRecovery.phone,
