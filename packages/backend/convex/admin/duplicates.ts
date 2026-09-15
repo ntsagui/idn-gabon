@@ -1,7 +1,7 @@
 import { v } from "convex/values"
 
 import { components } from "../_generated/api"
-import { query } from "../_generated/server"
+import { query, type QueryCtx } from "../_generated/server"
 import { requireAdmin } from "../lib/auth"
 
 /**
@@ -36,7 +36,23 @@ import { requireAdmin } from "../lib/auth"
  * rapport est de toute façon vide.
  */
 const SCAN_LIMIT = 8000
-const PAGE_SIZE = 500
+
+/**
+ * POURQUOI UN FLUX (`for await`) ET PAS `.paginate()` : Convex n'autorise
+ * qu'un seul appel paginé par exécution de fonction (erreur backend
+ * `MultiplePaginatedDatabaseQueries`). Une boucle de pages échoue donc dès la
+ * deuxième — c.-à-d. dès que plus de 500 profils portent une clé — et c'est
+ * ce qui a rendu la console admin inutilisable en production (« Server
+ * Error » sur `duplicateGroupCount`). L'itération asynchrone lit l'index par
+ * lots internes, sans cette contrainte, et permet le même arrêt anticipé.
+ */
+function scanByPivotKey(ctx: QueryCtx) {
+  // `undefined` trie avant toute chaîne dans un index Convex : la borne
+  // basse écarte les profils sans clé sans les lire.
+  return ctx.db
+    .query("userProfile")
+    .withIndex("by_pivotKey", (q) => q.gte("pivotKey", ""))
+}
 
 const DUPLICATE_ACCOUNT = v.object({
   userId: v.string(),
@@ -91,13 +107,12 @@ export const listDuplicateGroups = query({
       docs: Row[]
     }[] = []
 
-    // Tampon du groupe en cours de constitution. Il traverse les frontières de
-    // page : un groupe coupé en deux par la pagination doit ressortir entier.
+    // Tampon du groupe en cours de constitution : un groupe n'est émis qu'au
+    // changement de clé (ou en fin de parcours), donc toujours entier.
     let currentKey: string | null = null
     let currentDocs: Row[] = []
     let scanned = 0
-    let cursor: string | null = null
-    let exhausted = false
+    let exhausted = true
 
     const flush = () => {
       if (currentKey && currentDocs.length >= 2) {
@@ -114,37 +129,31 @@ export const listDuplicateGroups = query({
       currentDocs = []
     }
 
-    while (groups.length < maxGroups && scanned < SCAN_LIMIT) {
-      // `undefined` trie avant toute chaîne dans un index Convex : la borne
-      // basse écarte les profils sans clé sans les lire.
-      const page = await ctx.db
-        .query("userProfile")
-        .withIndex("by_pivotKey", (q) => q.gte("pivotKey", ""))
-        .paginate({ numItems: PAGE_SIZE, cursor })
-
-      for (const p of page.page) {
-        scanned++
-        if (p.deletedAt || !p.pivot || !p.pivotKey) continue
-        if (p.pivotKey !== currentKey) {
-          flush()
-          currentKey = p.pivotKey
-        }
-        currentDocs.push(p as Row)
-      }
-
-      cursor = page.continueCursor
-      if (page.isDone) {
-        exhausted = true
+    for await (const p of scanByPivotKey(ctx)) {
+      if (scanned >= SCAN_LIMIT) {
+        exhausted = false
         break
       }
+      scanned++
+      if (p.deletedAt || !p.pivot || !p.pivotKey) continue
+      if (p.pivotKey !== currentKey) {
+        flush()
+        if (groups.length >= maxGroups) {
+          // Quota atteint sur une frontière de groupe : on s'arrête sans
+          // entamer le suivant, qui ressortirait amputé de ses membres
+          // non lus.
+          exhausted = false
+          break
+        }
+        currentKey = p.pivotKey
+      }
+      currentDocs.push(p as Row)
     }
     // Le dernier groupe n'est suivi d'aucun changement de clé qui l'émettrait.
     flush()
 
-    const limited = groups.slice(0, maxGroups)
-
     const out = []
-    for (const bucket of limited) {
+    for (const bucket of groups) {
       // Le plus ancien d'abord : c'est en général celui qu'on conserve, mais
       // c'est l'admin qui tranche — la vue n'en présume rien.
       const ordered = [...bucket.docs].sort((a, b) => a.createdAt - b.createdAt)
@@ -202,30 +211,20 @@ export const duplicateGroupCount = query({
     let currentKey: string | null = null
     let currentSize = 0
     let scanned = 0
-    let cursor: string | null = null
 
-    while (scanned < SCAN_LIMIT) {
-      const page = await ctx.db
-        .query("userProfile")
-        .withIndex("by_pivotKey", (q) => q.gte("pivotKey", ""))
-        .paginate({ numItems: PAGE_SIZE, cursor })
-
-      for (const p of page.page) {
-        scanned++
-        if (p.deletedAt || !p.pivotKey) continue
-        if (p.pivotKey !== currentKey) {
-          currentKey = p.pivotKey
-          currentSize = 1
-        } else {
-          currentSize++
-          // Compté au passage du deuxième membre : un groupe de cinq comptes
-          // reste un doublon, pas quatre.
-          if (currentSize === 2) count++
-        }
+    for await (const p of scanByPivotKey(ctx)) {
+      if (scanned >= SCAN_LIMIT) break
+      scanned++
+      if (p.deletedAt || !p.pivotKey) continue
+      if (p.pivotKey !== currentKey) {
+        currentKey = p.pivotKey
+        currentSize = 1
+      } else {
+        currentSize++
+        // Compté au passage du deuxième membre : un groupe de cinq comptes
+        // reste un doublon, pas quatre.
+        if (currentSize === 2) count++
       }
-
-      cursor = page.continueCursor
-      if (page.isDone) break
     }
     return count
   },

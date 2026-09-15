@@ -171,6 +171,84 @@ describe("détection des comptes en double", () => {
     expect(count).toBe(2)
   })
 
+  test("reste exact au-delà de 500 profils indexés", async () => {
+    // POURQUOI : la première version parcourait l'index par pages de 500 avec
+    // `.paginate()` dans une boucle. Convex n'autorise qu'UN appel paginé par
+    // exécution de fonction : la deuxième page levait une erreur serveur, et
+    // la console admin est devenue inutilisable dès que la base a dépassé 500
+    // profils avec identité pivot. `convex-test` n'émule pas cette limite ;
+    // le test fixe donc le comportement attendu à cette échelle : le parcours
+    // en flux rend le même résultat qu'avec cinq profils, et le groupe placé
+    // en toute fin d'index — au-delà de l'ancienne frontière de page — n'est
+    // pas perdu.
+    const t = makeTestClient()
+    const now = Date.now()
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 501; i++) {
+        const pivot = {
+          firstName: "Unique",
+          lastName: `Citoyen${String(i).padStart(4, "0")}`,
+          dateOfBirth: "1990-01-02",
+          gender: "M" as const,
+          birthPlace: "Libreville",
+          nationality: "GA",
+        }
+        await ctx.db.insert("userProfile", {
+          userId: `s${i}`,
+          profileType: "citizen",
+          loa: 2,
+          pivot,
+          ...derivePivotKeys(pivot),
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
+    })
+    // Clé « zz… » : triée après les 501 profils uniques, donc lue en dernier.
+    await seedProfile(t, { userId: "z1", lastName: "Zz-Doublon" })
+    await seedProfile(t, { userId: "z2", lastName: "Zz-Doublon" })
+
+    const admin = t.withIdentity({ subject: ADMIN })
+    const { groups, scanned, truncated } = await admin.query(
+      api.admin.duplicates.listDuplicateGroups,
+      {},
+    )
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.accounts.map((a) => a.userId).sort()).toEqual([
+      "z1",
+      "z2",
+    ])
+    expect(scanned).toBe(503)
+    expect(truncated).toBe(false)
+    expect(
+      await admin.query(api.admin.duplicates.duplicateGroupCount, {}),
+    ).toBe(1)
+  })
+
+  test("`limit` rend des groupes entiers et n'entame pas le suivant", async () => {
+    // POURQUOI : l'arrêt anticipé se fait sur une frontière de clé. Couper au
+    // milieu d'un groupe montrerait un « doublon » amputé d'un membre — et
+    // l'admin trancherait sur une vue fausse.
+    const t = makeTestClient()
+    await seedProfile(t, { userId: "a1", lastName: "Abaga" })
+    await seedProfile(t, { userId: "a2", lastName: "Abaga" })
+    await seedProfile(t, { userId: "a3", lastName: "Abaga" })
+    await seedProfile(t, { userId: "b1", lastName: "Bouanga" })
+    await seedProfile(t, { userId: "b2", lastName: "Bouanga" })
+
+    const { groups, truncated } = await t
+      .withIdentity({ subject: ADMIN })
+      .query(api.admin.duplicates.listDuplicateGroups, { limit: 1 })
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.lastName).toBe("Abaga")
+    expect(groups[0]!.accounts).toHaveLength(3)
+    // Le quota demandé est rempli : le rapport n'est pas « tronqué » au sens
+    // du plafond de lecture, même si la table n'a pas été lue jusqu'au bout.
+    expect(truncated).toBe(false)
+  })
+
   test("la vue est réservée aux administrateurs", async () => {
     const t = makeTestClient()
     await seedProfile(t, { userId: "w1" })
