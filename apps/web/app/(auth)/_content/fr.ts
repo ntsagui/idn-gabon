@@ -274,6 +274,14 @@ export const forgotPin = {
   backToSignIn: "Retour à la connexion",
   restart: "Recommencer",
   genericError: "Impossible de poursuivre pour le moment. Réessayez.",
+  existingCode: "J’ai déjà un code provisoire",
+  existingCodeHint: "Utilisez le code remis par un agent habilité.",
+  adminCodeTitle: "Code remis par un agent",
+  adminCodeSub:
+    "Saisissez le code à 6 chiffres que l’agent habilité vous a remis. Il est valable 15 minutes, pour trois essais au plus.",
+  adminCodeLabel: "Code provisoire",
+  adminCodeError:
+    "Code incorrect, expiré ou déjà utilisé. Demandez un nouveau code à l’agent.",
 } as const
 
 export const forgotPassword = {

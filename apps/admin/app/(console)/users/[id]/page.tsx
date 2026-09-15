@@ -10,6 +10,7 @@ import { LoABadge } from "@repo/ui/components/loa-badge"
 import { IdnIcons } from "../../../_components/icons"
 import { OpHeader } from "../../../_components/op-header"
 import { PasswordRecoveryCard } from "../../../_components/password-recovery-card"
+import { PinRecoveryCard } from "../../../_components/pin-recovery-card"
 import { UserRowActions } from "../../../_components/user-row-actions"
 
 type RecoveryBlocker =
@@ -416,6 +417,15 @@ export default function UserDetailPage() {
                 </div>
               ) : null}
             </DetailCard>
+
+            <PinRecoveryCard
+              userId={account.userId}
+              idnId={account.idnId}
+              email={account.email}
+              authExists={account.authExists}
+              deletedAt={account.deletedAt}
+              hasAdminRole={account.roles.some((role) => role.role === "admin")}
+            />
 
             <PasswordRecoveryCard
               userId={account.userId}

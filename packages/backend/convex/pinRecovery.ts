@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values"
 
 import { components, internal } from "./_generated/api"
-import { action } from "./_generated/server"
+import { action, type MutationCtx } from "./_generated/server"
 import { internalMutation, mutation } from "./functions"
 import {
   BirdVerifyError,
@@ -14,6 +14,10 @@ import {
   hashOpaqueSecret,
   PIN_REGEX,
 } from "./lib/pin"
+import {
+  ADMIN_PIN_CODE_MAX_ATTEMPTS,
+  hashAdminPinCode,
+} from "./lib/pinRecoveryCode"
 import { assessAutomaticSmsRecovery } from "./lib/pinRecoveryEligibility"
 import { rateLimiter } from "./rateLimiter"
 
@@ -130,6 +134,81 @@ export const verifyCode = action({
       })
       return { verified: false, resetToken: null }
     }
+  },
+})
+
+/**
+ * Voie de secours : le code provisoire remis par un agent habilité depuis la
+ * console (`admin/accounts.generatePinResetCode`) remplace le SMS quand
+ * l'envoi automatique est bloqué (numéro absent ou partagé, registre trop
+ * grand…) ou n'arrive pas. Il aboutit au même jeton de réinitialisation que
+ * la voie SMS, consommé par `resetPin`.
+ *
+ * La réponse a la même forme pour un identifiant inconnu, un code jamais
+ * émis, périmé, épuisé ou faux : rien n'indique au client lequel de ces cas
+ * s'applique. Chaque essai, bon ou mauvais, est décompté sur le code.
+ */
+export const verifyAdminCode = mutation({
+  args: { identifier: v.string(), code: v.string() },
+  returns: v.object({
+    verified: v.boolean(),
+    requestId: v.union(v.string(), v.null()),
+    resetToken: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const refused = { verified: false, requestId: null, resetToken: null }
+    const email = normalizeIdnEmail(args.identifier)
+    if (!CODE_REGEX.test(args.code)) return refused
+
+    // Même quota que la vérification SMS, par identifiant : enchaîner les
+    // émissions ne multiplie pas les essais.
+    await rateLimiter.limit(ctx, "pinRecoveryVerify", {
+      key: await hashOpaqueSecret(`admin-code:${email}`),
+      throws: true,
+    })
+
+    const user = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+      model: "user",
+      where: [{ field: "email", value: email, operator: "eq" }],
+    })) as { _id: string } | null
+    const challenge = user ? await latestIssuedChallenge(ctx, user._id) : null
+    if (
+      !user ||
+      !challenge ||
+      !challenge.codeHash ||
+      challenge.expiresAt <= Date.now() ||
+      challenge.attempts >= ADMIN_PIN_CODE_MAX_ATTEMPTS
+    ) {
+      // Travail équivalent à une vraie comparaison.
+      await hashOpaqueSecret(`${email}:${args.code}`)
+      return refused
+    }
+
+    await ctx.db.patch(challenge._id, {
+      attempts: challenge.attempts + 1,
+      updatedAt: Date.now(),
+    })
+    const supplied = await hashAdminPinCode(user._id, args.code)
+    if (!constantTimeEqual(supplied, challenge.codeHash)) return refused
+
+    const resetToken = randomOpaqueToken()
+    const resetTokenExpiresAt = Date.now() + RESET_TOKEN_TTL_MS
+    await ctx.db.patch(challenge._id, {
+      status: "verified",
+      codeHash: undefined,
+      resetTokenHash: await hashOpaqueSecret(resetToken),
+      resetTokenExpiresAt,
+      expiresAt: resetTokenExpiresAt,
+      updatedAt: Date.now(),
+    })
+    await ctx.runMutation(internal.audit.recordAudit, {
+      actorId: user._id,
+      action: "otp_verified",
+      targetType: "user",
+      targetId: user._id,
+      metadata: { channel: "admin_code", purpose: "pin_recovery" },
+    })
+    return { verified: true, requestId: challenge.requestId, resetToken }
   },
 })
 
@@ -365,13 +444,27 @@ export const resetPin = mutation({
     }
 
     await ctx.db.patch(profile._id, { pinHash, updatedAt: Date.now() })
-    await ctx.db.delete(challenge._id)
+    // Un PIN modifié ferme toutes les demandes en cours du compte, celle-ci
+    // comprise : un code provisoire encore valable après coup serait une
+    // seconde porte d'entrée.
+    const pending = await ctx.db
+      .query("pinRecoveryChallenge")
+      .withIndex("by_userId", (q) => q.eq("userId", challenge.userId!))
+      .take(50)
+    for (const row of pending) {
+      await ctx.db.delete(row._id)
+    }
     await ctx.runMutation(internal.audit.recordAudit, {
       actorId: challenge.userId,
       action: "pin_changed",
       targetType: "user",
       targetId: challenge.userId,
-      metadata: { method: "sms_recovery" },
+      metadata: {
+        method:
+          challenge.channel === "admin_code"
+            ? "admin_code_recovery"
+            : "sms_recovery",
+      },
     })
     if (sessions.page.length > 0) {
       await ctx.runMutation(internal.audit.recordAudit, {
@@ -401,6 +494,20 @@ export const pruneExpired = internalMutation({
     return { deleted: expired.length }
   },
 })
+
+/** Le code provisoire courant du compte : une émission remplace la précédente. */
+async function latestIssuedChallenge(
+  ctx: Pick<MutationCtx, "db">,
+  userId: string,
+) {
+  const rows = await ctx.db
+    .query("pinRecoveryChallenge")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .take(50)
+  return rows
+    .filter((row) => row.status === "issued")
+    .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null
+}
 
 function normalizeIdnEmail(identifier: string): string {
   const raw = identifier.trim().toLowerCase()

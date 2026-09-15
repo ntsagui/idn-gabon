@@ -17,7 +17,7 @@ import { OtpInput } from "../_components/otp-input"
 const HANDLE_REGEX = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
 const IDN_DOMAIN = "@idn.ga"
 
-type Phase = "request" | "code" | "new-pin" | "done"
+type Phase = "request" | "code" | "admin-code" | "new-pin" | "done"
 
 export default function ForgotPinPage() {
   return (
@@ -32,6 +32,7 @@ function ForgotPinPageInner() {
   const params = useSearchParams()
   const requestReset = useAction(api.pinRecovery.requestReset)
   const verifyCode = useAction(api.pinRecovery.verifyCode)
+  const verifyAdminCode = useMutation(api.pinRecovery.verifyAdminCode)
   const resetPin = useMutation(api.pinRecovery.resetPin)
 
   const [phase, setPhase] = React.useState<Phase>("request")
@@ -84,6 +85,43 @@ function ForgotPinPageInner() {
       setPhase("new-pin")
     } catch {
       setError(forgotPin.codeError)
+      setCode("")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Voie de secours : un agent habilité a remis un code au titulaire depuis
+  // la console. Aucun envoi n'est déclenché — le code existe déjà.
+  const startAdminCode = () => {
+    if (!normalizedEmail || submitting) {
+      setError("Saisissez un identifiant IDN valide.")
+      return
+    }
+    setCode("")
+    setError(null)
+    setPhase("admin-code")
+  }
+
+  const submitAdminCode = async () => {
+    if (!normalizedEmail || code.length !== 6 || submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await verifyAdminCode({
+        identifier: normalizedEmail,
+        code,
+      })
+      if (!result.verified || !result.requestId || !result.resetToken) {
+        setError(forgotPin.adminCodeError)
+        setCode("")
+        return
+      }
+      setRequestId(result.requestId)
+      setResetToken(result.resetToken)
+      setPhase("new-pin")
+    } catch {
+      setError(forgotPin.adminCodeError)
       setCode("")
     } finally {
       setSubmitting(false)
@@ -164,7 +202,72 @@ function ForgotPinPageInner() {
               >
                 {submitting ? forgotPin.sending : forgotPin.requestPrimary}
               </Button>
+
+              <div className="flex items-center gap-3" aria-hidden>
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  ou
+                </span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              <div className="space-y-1.5">
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="outline"
+                  disabled={submitting || !normalizedEmail}
+                  onClick={startAdminCode}
+                  className="w-full"
+                >
+                  {forgotPin.existingCode}
+                </Button>
+                <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                  {forgotPin.existingCodeHint}
+                </p>
+              </div>
             </form>
+          </>
+        ) : null}
+
+        {phase === "admin-code" ? (
+          <>
+            <h1 className="text-xl font-semibold text-foreground">
+              {forgotPin.adminCodeTitle}
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {forgotPin.adminCodeSub}
+            </p>
+            <div className="mt-6 space-y-5">
+              <OtpInput
+                value={code}
+                onChange={(value) => {
+                  setCode(value)
+                  setError(null)
+                }}
+                length={6}
+                autoFocus
+                disabled={submitting}
+                hasError={Boolean(error)}
+                ariaLabel={forgotPin.adminCodeLabel}
+              />
+              <Button
+                type="button"
+                size="lg"
+                disabled={submitting || code.length !== 6}
+                onClick={() => void submitAdminCode()}
+                className="w-full"
+              >
+                {submitting ? forgotPin.verifying : forgotPin.verifyPrimary}
+              </Button>
+              <button
+                type="button"
+                onClick={restart}
+                className="w-full text-center text-xs text-muted-foreground hover:underline"
+              >
+                {forgotPin.restart}
+              </button>
+            </div>
           </>
         ) : null}
 

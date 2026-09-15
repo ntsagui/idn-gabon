@@ -1348,9 +1348,18 @@ export default defineSchema({
     .index("by_expiresAt", ["expiresAt"]),
 
   /**
-   * État serveur, court et opaque, d'une récupération de PIN par SMS.
-   * Bird conserve le code : cette table ne stocke que le destinataire résolu
-   * côté serveur puis l'empreinte d'un jeton de réinitialisation à usage unique.
+   * État serveur, court et opaque, d'une récupération de PIN.
+   *
+   * Voie SMS (`pending` → `sent` → `verified`) : Bird conserve le code, cette
+   * table ne stocke que le destinataire résolu côté serveur.
+   *
+   * Voie code provisoire (`issued` → `verified`) : un agent habilité émet le
+   * code depuis la console quand l'envoi automatique est bloqué ; seule son
+   * empreinte (`codeHash`, salée par l'utilisateur) est conservée, effacée dès
+   * la vérification.
+   *
+   * Dans les deux cas, la vérification laisse l'empreinte d'un jeton de
+   * réinitialisation à usage unique, consommé par `pinRecovery.resetPin`.
    */
   pinRecoveryChallenge: defineTable({
     requestId: v.string(),
@@ -1359,8 +1368,13 @@ export default defineSchema({
     status: v.union(
       v.literal("pending"),
       v.literal("sent"),
+      v.literal("issued"),
       v.literal("verified"),
     ),
+    // Absent sur les lignes antérieures à la voie code provisoire (= SMS).
+    channel: v.optional(v.union(v.literal("sms"), v.literal("admin_code"))),
+    codeHash: v.optional(v.string()),
+    issuedBy: v.optional(v.string()),
     attempts: v.number(),
     resetTokenHash: v.optional(v.string()),
     resetTokenExpiresAt: v.optional(v.number()),

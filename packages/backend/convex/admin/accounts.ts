@@ -2,9 +2,18 @@ import { ConvexError, v } from "convex/values"
 
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import { action, internalQuery, type MutationCtx } from "../_generated/server"
+import {
+  action,
+  internalQuery,
+  type MutationCtx,
+  type QueryCtx,
+} from "../_generated/server"
 import { mutation } from "../functions"
 import { requireAdmin } from "../lib/auth"
+import {
+  ADMIN_PIN_CODE_TTL_MS,
+  hashAdminPinCode,
+} from "../lib/pinRecoveryCode"
 
 /**
  * Actions sensibles de l'admin sur un compte IDN.
@@ -75,6 +84,80 @@ function generateSixDigitCode() {
 }
 
 /**
+ * Garde-fous communs aux deux codes provisoires (mot de passe, PIN) : RBAC,
+ * jamais son propre compte, compte existant et non anonymisé, jamais un
+ * administrateur, recopie de l'identifiant affiché. Résout la cible côté
+ * serveur sans faire confiance aux informations affichées par le navigateur.
+ */
+async function resolveRecoveryTarget(
+  ctx: QueryCtx | MutationCtx,
+  args: { userId: string; confirmIdentifier: string },
+) {
+  const admin = await requireAdmin(ctx)
+
+  if (args.userId === admin.userId) {
+    throw new ConvexError({
+      code: "FORBIDDEN_SELF_RECOVERY",
+      message:
+        "Vous ne pouvez pas générer un code de récupération pour votre propre compte administrateur.",
+    })
+  }
+
+  const profile = await ctx.db
+    .query("userProfile")
+    .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+    .unique()
+  if (!profile) {
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Compte introuvable.",
+    })
+  }
+  if (profile.deletedAt !== undefined) {
+    throw new ConvexError({
+      code: "ALREADY_ANONYMIZED",
+      message: "Un compte anonymisé ne peut pas être récupéré.",
+    })
+  }
+
+  const roles = await ctx.db
+    .query("userRole")
+    .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+    .take(20)
+  if (roles.some((row) => row.role === "admin" && !row.revokedAt)) {
+    throw new ConvexError({
+      code: "FORBIDDEN_ADMIN_TARGET",
+      message:
+        "La récupération d'un compte administrateur suit une procédure renforcée.",
+    })
+  }
+
+  const user = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+    model: "user",
+    where: [{ field: "_id", value: args.userId }],
+  })) as { email?: string } | null
+  const email = user?.email?.trim().toLowerCase() ?? ""
+  if (!email) {
+    throw new ConvexError({
+      code: "AUTH_ACCOUNT_NOT_FOUND",
+      message: "Le compte d'authentification est absent.",
+    })
+  }
+
+  const expected = profile.idnId ?? email
+  if (
+    args.confirmIdentifier.trim().toUpperCase() !== expected.toUpperCase()
+  ) {
+    throw new ConvexError({
+      code: "CONFIRMATION_MISMATCH",
+      message: "L'identifiant saisi ne correspond pas à ce compte.",
+    })
+  }
+
+  return { adminId: admin.userId, email, profile }
+}
+
+/**
  * Garde serveur appelée depuis l'action de génération.
  *
  * Une action Convex n'a pas accès à `ctx.db`; cette query interne réalise
@@ -91,68 +174,8 @@ export const preparePasswordResetCode = internalQuery({
     email: v.string(),
   }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx)
-
-    if (args.userId === admin.userId) {
-      throw new ConvexError({
-        code: "FORBIDDEN_SELF_RECOVERY",
-        message:
-          "Vous ne pouvez pas générer un code de récupération pour votre propre compte administrateur.",
-      })
-    }
-
-    const profile = await ctx.db
-      .query("userProfile")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .unique()
-    if (!profile) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Compte introuvable.",
-      })
-    }
-    if (profile.deletedAt !== undefined) {
-      throw new ConvexError({
-        code: "ALREADY_ANONYMIZED",
-        message: "Un compte anonymisé ne peut pas être récupéré.",
-      })
-    }
-
-    const roles = await ctx.db
-      .query("userRole")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .take(20)
-    if (roles.some((row) => row.role === "admin" && !row.revokedAt)) {
-      throw new ConvexError({
-        code: "FORBIDDEN_ADMIN_TARGET",
-        message:
-          "La récupération d'un compte administrateur suit une procédure renforcée.",
-      })
-    }
-
-    const user = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-      model: "user",
-      where: [{ field: "_id", value: args.userId }],
-    })) as { email?: string } | null
-    const email = user?.email?.trim().toLowerCase() ?? ""
-    if (!email) {
-      throw new ConvexError({
-        code: "AUTH_ACCOUNT_NOT_FOUND",
-        message: "Le compte d'authentification est absent.",
-      })
-    }
-
-    const expected = profile.idnId ?? email
-    if (
-      args.confirmIdentifier.trim().toUpperCase() !== expected.toUpperCase()
-    ) {
-      throw new ConvexError({
-        code: "CONFIRMATION_MISMATCH",
-        message: "L'identifiant saisi ne correspond pas à ce compte.",
-      })
-    }
-
-    return { adminId: admin.userId, email }
+    const { adminId, email } = await resolveRecoveryTarget(ctx, args)
+    return { adminId, email }
   },
 })
 
@@ -215,6 +238,71 @@ export const generatePasswordResetCode = action({
       targetId: args.userId,
       metadata: {
         kind: "password_reset_code_issued",
+        channel: "admin_manual",
+        expiresAt,
+      },
+    })
+
+    return { code, expiresAt }
+  },
+})
+
+/**
+ * Code provisoire pour la récupération du PIN — pendant de
+ * `generatePasswordResetCode` quand l'envoi automatique par SMS est bloqué
+ * (carte « Récupération du PIN par SMS ») ou n'arrive pas.
+ *
+ * Contrairement au mot de passe, ce parcours n'appartient pas à Better Auth :
+ * le code vit dans `pinRecoveryChallenge` (statut `issued`), sous empreinte
+ * salée par l'utilisateur, et `pinRecovery.verifyAdminCode` le convertit en
+ * jeton de réinitialisation — le même que la voie SMS, consommé par
+ * `pinRecovery.resetPin`. Une nouvelle émission remplace la précédente ; le
+ * code en clair n'est ni journalisé ni relisible : la réponse de cette
+ * mutation est le seul endroit où l'opérateur peut le copier.
+ */
+export const generatePinResetCode = mutation({
+  args: {
+    userId: v.string(),
+    confirmIdentifier: v.string(),
+  },
+  returns: v.object({
+    code: v.string(),
+    expiresAt: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const target = await resolveRecoveryTarget(ctx, args)
+    const now = Date.now()
+
+    const previous = await ctx.db
+      .query("pinRecoveryChallenge")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50)
+    for (const row of previous) {
+      if (row.status === "issued") await ctx.db.delete(row._id)
+    }
+
+    const code = generateSixDigitCode()
+    const expiresAt = now + ADMIN_PIN_CODE_TTL_MS
+    await ctx.db.insert("pinRecoveryChallenge", {
+      requestId: crypto.randomUUID(),
+      userId: args.userId,
+      status: "issued",
+      channel: "admin_code",
+      codeHash: await hashAdminPinCode(args.userId, code),
+      issuedBy: target.adminId,
+      attempts: 0,
+      expiresAt,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await ctx.runMutation(internal.audit.recordAudit, {
+      actorId: target.adminId,
+      action: "admin_action",
+      targetType: "user",
+      targetId: args.userId,
+      metadata: {
+        kind: "pin_reset_code_issued",
         channel: "admin_manual",
         expiresAt,
       },
