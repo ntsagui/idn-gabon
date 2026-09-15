@@ -1,7 +1,12 @@
 import { ConvexError, v } from "convex/values"
 
 import { internal } from "./_generated/api"
-import { internalMutation, mutation, query } from "./_generated/server"
+import {
+  internalMutation,
+  mutation,
+  query,
+  type MutationCtx,
+} from "./_generated/server"
 import { authComponent } from "./auth"
 import { requireAuth } from "./lib/auth"
 import { NOTIFICATION_CATEGORIES } from "./schema"
@@ -409,31 +414,127 @@ export const markRead = mutation({
   },
 })
 
+// ─────────────────────────────────────────────────────────────────────────
+// Effacement en masse (« Tout effacer »)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Nombre de notifications visitées (lues, et soft-deletées si besoin) par
+ * transaction. Aligné sur `markAllRead` (500) : loin des plafonds Convex
+ * (8 192 documents écrits, 16 384 lus, 1 s de calcul), et suffisant pour
+ * servir la quasi-totalité des citoyens en une seule passe.
+ */
+const CLEAR_BATCH = 500
+
+/**
+ * Soft-delete un lot de notifications du citoyen `userId`, du plus récent
+ * au plus ancien — ce que l'écran affiche disparaît dès la première passe —
+ * en repartant de la borne `before` (exclue) si elle est fournie.
+ *
+ * POURQUOI UN FLUX (`for await`) ET PAS `.paginate()` : Convex n'autorise
+ * qu'un seul appel paginé par exécution de fonction (erreur backend
+ * `MultiplePaginatedDatabaseQueries`, rendue « Server Error » côté client).
+ * La première version bouclait sur `.paginate({ numItems: 200 })` : dès
+ * qu'un citoyen dépassait 200 notifications, la deuxième page levait
+ * l'erreur et « Tout effacer » échouait — précisément pour les comptes qui
+ * en avaient le plus besoin. Même correctif que `admin/duplicates.ts`.
+ *
+ * POURQUOI UN PLAFOND ET UNE BORNE : une mutation est une transaction aux
+ * limites finies (documents lus et écrits, temps de calcul). On s'arrête
+ * donc après `CLEAR_BATCH` documents et on rend la borne `createdAt` d'où
+ * la passe suivante reprendra — l'index `by_userId` est trié par
+ * `createdAt`, donc sans relire ce qui est déjà traité. L'arrêt se fait sur
+ * un changement de `createdAt` : deux notifications émises à la même
+ * milliseconde ne doivent pas être séparées par une borne stricte, sinon la
+ * seconde échapperait à la passe suivante.
+ *
+ * @returns la borne (exclue) de la passe suivante, ou `null` si tout est
+ *   effacé.
+ */
+async function clearBatch(
+  ctx: MutationCtx,
+  userId: string,
+  deletedAt: number,
+  before?: number,
+): Promise<number | null> {
+  const stream = ctx.db
+    .query("notification")
+    .withIndex("by_userId", (q) => {
+      const mine = q.eq("userId", userId)
+      return before === undefined ? mine : mine.lt("createdAt", before)
+    })
+    .order("desc")
+
+  let visited = 0
+  let lastCreatedAt: number | null = null
+  for await (const d of stream) {
+    if (visited >= CLEAR_BATCH && d.createdAt !== lastCreatedAt) {
+      return lastCreatedAt
+    }
+    visited++
+    lastCreatedAt = d.createdAt
+    // Idempotent : une notification déjà effacée garde sa date d'effacement.
+    if (d.deletedAt === undefined) {
+      await ctx.db.patch(d._id, { deletedAt })
+    }
+  }
+  return null
+}
+
 /**
  * Soft-delete toutes les notifications du citoyen courant. Utilisé par
  * le bouton « Tout effacer » du centre de notifications.
+ *
+ * Le premier lot est traité dans l'appel lui-même — l'écran se vide sans
+ * attendre — et le reste, s'il y en a, est confié à `clearAllContinue`
+ * (cf. guidelines.md § Query guidelines : lots + `scheduler.runAfter(0)`).
+ * Une notification arrivée après le clic a un `createdAt` postérieur à la
+ * borne : les passes suivantes ne l'effacent pas, le citoyen ne l'a jamais
+ * vue.
  */
 export const clearAll = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
     const user = await requireAuth(ctx)
-    const now = Date.now()
-    // On itère par batch pour rester dans les limites de transaction.
-    let cursor: string | null = null
-    while (true) {
-      const page = await ctx.db
-        .query("notification")
-        .withIndex("by_userId", (q) => q.eq("userId", user.userId))
-        .order("desc")
-        .paginate({ numItems: 200, cursor })
-      for (const d of page.page) {
-        if (d.deletedAt === undefined) {
-          await ctx.db.patch(d._id, { deletedAt: now })
-        }
-      }
-      if (page.isDone) break
-      cursor = page.continueCursor
+    const deletedAt = Date.now()
+    const before = await clearBatch(ctx, user.userId, deletedAt)
+    if (before !== null) {
+      await ctx.scheduler.runAfter(0, internal.notifications.clearAllContinue, {
+        userId: user.userId,
+        deletedAt,
+        before,
+      })
+    }
+    return null
+  },
+})
+
+/**
+ * Suite de `clearAll` au-delà du premier lot : se replanifie tant qu'il
+ * reste des notifications. Interne — `userId` vient de l'appel authentifié
+ * initial, jamais du client — et `deletedAt` est propagé pour que tout ce
+ * qu'un même clic efface porte la même date.
+ */
+export const clearAllContinue = internalMutation({
+  args: {
+    userId: v.string(),
+    deletedAt: v.number(),
+    before: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const before = await clearBatch(
+      ctx,
+      args.userId,
+      args.deletedAt,
+      args.before,
+    )
+    if (before !== null) {
+      await ctx.scheduler.runAfter(0, internal.notifications.clearAllContinue, {
+        ...args,
+        before,
+      })
     }
     return null
   },
