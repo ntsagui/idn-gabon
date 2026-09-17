@@ -144,6 +144,30 @@ async function seedCitizen(
   return { userId, email, idnId: opts.idnId }
 }
 
+/**
+ * Agent contrôleur : citoyen portant le rôle `identity_controller`. Le code
+ * provisoire de mot de passe ne sert que les comptes qui se connectent par mot
+ * de passe (`lib/signInMethods.ts`) ; un citoyen sans rôle se le voit refuser
+ * (`RECOVERY_METHOD_NOT_USED`, verrouillé par `recoveryMethods.test.ts`). Sur
+ * un tel compte, le cas du mauvais identifiant buterait sur le moyen de
+ * connexion avant d'atteindre la confirmation, et ne prouverait plus rien.
+ */
+async function seedController(
+  t: ReturnType<typeof convexTest>,
+  opts: { handle: string; idnId: string },
+) {
+  const account = await seedCitizen(t, opts)
+  await t.run((ctx) =>
+    ctx.db.insert("userRole", {
+      userId: account.userId,
+      role: "identity_controller",
+      assignedBy: ADMIN,
+      assignedAt: Date.now(),
+    }),
+  )
+  return account
+}
+
 describe("suppression d'un compte par l'admin", () => {
   test("la suppression définitive libère le handle @idn.ga, l'anonymisation non", async () => {
     // POURQUOI : c'est la seule différence observable entre les deux actions
@@ -324,7 +348,7 @@ describe("suppression d'un compte par l'admin", () => {
 describe("code provisoire de réinitialisation", () => {
   test("génère un code à six chiffres compatible avec Better Auth sans le stocker en clair", async () => {
     const t = makeTestClient()
-    const citizen = await seedCitizen(t, {
+    const controller = await seedController(t, {
       handle: "recuperation",
       idnId: "GA-0010-0010",
     })
@@ -333,8 +357,8 @@ describe("code provisoire de réinitialisation", () => {
     const issued = await t
       .withIdentity({ subject: ADMIN })
       .action(api.admin.accounts.generatePasswordResetCode, {
-        userId: citizen.userId,
-        confirmIdentifier: citizen.idnId,
+        userId: controller.userId,
+        confirmIdentifier: controller.idnId,
       })
 
     expect(issued.code).toMatch(/^\d{6}$/)
@@ -347,7 +371,7 @@ describe("code provisoire de réinitialisation", () => {
         where: [
           {
             field: "identifier",
-            value: `forget-password-otp-${citizen.email}`,
+            value: `forget-password-otp-${controller.email}`,
             operator: "eq",
           },
         ],
@@ -362,7 +386,7 @@ describe("code provisoire de réinitialisation", () => {
       ctx.db
         .query("auditLog")
         .withIndex("by_target", (q) =>
-          q.eq("targetType", "user").eq("targetId", citizen.userId),
+          q.eq("targetType", "user").eq("targetId", controller.userId),
         )
         .order("desc")
         .first(),
@@ -380,14 +404,14 @@ describe("code provisoire de réinitialisation", () => {
 
   test("une nouvelle génération invalide le code précédent", async () => {
     const t = makeTestClient()
-    const citizen = await seedCitizen(t, {
+    const controller = await seedController(t, {
       handle: "rotation",
       idnId: "GA-0011-0011",
     })
     const asAdmin = t.withIdentity({ subject: ADMIN })
     const args = {
-      userId: citizen.userId,
-      confirmIdentifier: citizen.idnId,
+      userId: controller.userId,
+      confirmIdentifier: controller.idnId,
     }
 
     await asAdmin.action(api.admin.accounts.generatePasswordResetCode, args)
@@ -399,7 +423,7 @@ describe("code provisoire de réinitialisation", () => {
         where: [
           {
             field: "identifier",
-            value: `forget-password-otp-${citizen.email}`,
+            value: `forget-password-otp-${controller.email}`,
             operator: "eq",
           },
         ],
@@ -411,12 +435,12 @@ describe("code provisoire de réinitialisation", () => {
 
   test("bloque un mauvais identifiant de confirmation et les non-admins", async () => {
     const t = makeTestClient()
-    const citizen = await seedCitizen(t, {
+    const controller = await seedController(t, {
       handle: "protege-reset",
       idnId: "GA-0012-0012",
     })
     const args = {
-      userId: citizen.userId,
+      userId: controller.userId,
       confirmIdentifier: "GA-9999-9999",
     }
 
@@ -431,7 +455,7 @@ describe("code provisoire de réinitialisation", () => {
         .withIdentity({ subject: "citizen_1" })
         .action(api.admin.accounts.generatePasswordResetCode, {
           ...args,
-          confirmIdentifier: citizen.idnId,
+          confirmIdentifier: controller.idnId,
         }),
     ).rejects.toThrow(/refusé/)
   })
