@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { LockIcon, MailIcon, QrCodeIcon } from "lucide-react"
 import { toast } from "sonner"
@@ -16,6 +15,14 @@ import { authClient } from "@/lib/auth-client"
 import { signIn } from "../_content/sign-in"
 import { safeRedirectTo } from "../_lib/redirect"
 import { OtpInput } from "./otp-input"
+
+/**
+ * L'app contrôleur n'a pas de route `/forgot-password` : les comptes sont
+ * partagés avec le portail citoyen, dont le parcours de récupération (code
+ * par email ou code provisoire remis par un administrateur) sert aussi ici.
+ * Même origine que `PUBLIC_SITE_URL` dans `apps/developer/lib/seo.ts`.
+ */
+const FORGOT_PASSWORD_URL = "https://identite.ga/forgot-password"
 
 /**
  * Formulaire de connexion — copie 1:1 de
@@ -203,12 +210,12 @@ export function SignInForm({ notice }: { notice?: string } = {}) {
                 </p>
               )}
               <div className="flex justify-end pt-1">
-                <Link
-                  href="/forgot-password"
+                <a
+                  href={FORGOT_PASSWORD_URL}
                   className="text-[13px] font-medium text-idn-green hover:underline dark:text-idn-green-on-dark"
                 >
                   {signIn.forgotLink}
-                </Link>
+                </a>
               </div>
             </div>
 

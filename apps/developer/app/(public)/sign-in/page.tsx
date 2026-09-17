@@ -16,6 +16,7 @@ import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
 
 import { authClient } from "@/lib/auth-client"
+import { PUBLIC_SITE_URL } from "@/lib/seo"
 
 import { fr } from "../../_content/fr"
 import { IdnIcons } from "../../_components/icons"
@@ -159,8 +160,14 @@ function DeveloperSignInPageInner() {
           ) : null}
         </div>
 
-        <div className="pt-1 text-right text-xs text-idn-muted">
-          {fr.signIn.forgotPassword}
+        <div className="pt-1 text-right text-xs">
+          {/* Pas de parcours propre : comptes partagés avec le portail citoyen. */}
+          <a
+            href={`${PUBLIC_SITE_URL}/forgot-password`}
+            className="font-medium text-idn-green underline-offset-2 hover:underline focus-visible:underline"
+          >
+            {fr.signIn.forgotPassword}
+          </a>
         </div>
 
         <Button
