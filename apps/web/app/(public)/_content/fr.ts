@@ -40,6 +40,7 @@ export const footer = {
     { href: "/legal/terms", label: "Conditions d'utilisation" },
     { href: "/legal/accessibilite", label: "Accessibilité" },
     { href: "/contact", label: "Contact" },
+    { href: "/verifier", label: "Vérifier un acte officiel" },
   ],
   skipToMain: "Aller au contenu principal",
 } as const;
@@ -950,4 +951,65 @@ export const services = {
     { value: "2", label: "Niveau 2" },
     { value: "3", label: "Niveau 3" },
   ] as const,
+} as const;
+
+/**
+ * Lecteur des actes officiels de l'administration (QR code). Les actes sont
+ * émis par administration.ga ; identite.ga les lit par sa route publique.
+ */
+export const verifier = {
+  meta: {
+    title: "Vérifier un acte officiel",
+    description:
+      "Vérifiez l'authenticité d'un acte officiel de l'administration gabonaise à partir du code imprimé sous son QR code.",
+  },
+  hero: {
+    eyebrow: "ACTES OFFICIELS",
+    title: "Vérifier un acte officiel",
+    sub: "Chaque acte officiel porte un QR code et un code de vérification. Scannez le QR code, ou saisissez le code : vous verrez l'acte tel qu'il a été émis, pour le comparer à celui que vous avez en main.",
+  },
+  entry: {
+    note: "La vérification ne demande aucun compte et n'affiche aucune donnée personnelle : seulement le numéro de l'acte, l'administration émettrice, ses dates et le document lui-même.",
+  },
+  form: {
+    label: "Code de vérification",
+    placeholder: "ABCD-EFGH-JKMN…",
+    help: "Le code figure sous le QR code, au bas de l'acte.",
+    submit: "Vérifier l'acte",
+    validation: {
+      required: "Saisissez le code imprimé sous le QR code de l'acte.",
+      format: "Ce code n'a pas le bon format : 12 caractères, par exemple ABCD-EFGH-JKMN.",
+    },
+  },
+  result: {
+    meta: {
+      title: "Vérification d'un acte officiel",
+      description: "Authenticité d'un acte officiel de l'administration gabonaise.",
+    },
+    title: "Vérification d'un acte officiel",
+    another: "Vérifier un autre code",
+  },
+  reader: {
+    loading: "Vérification du document en cours…",
+    compare: "Comparez ce document à celui que vous avez en main.",
+    frameTitle: "Document officiel",
+    openPdf: "Ouvrir le PDF dans un nouvel onglet",
+    unknownHelp:
+      "Ce code ne correspond à aucun acte émis. Vérifiez le code imprimé sous le QR code, ou scannez-le à nouveau.",
+    unavailableHelp: "Réessayez dans un instant.",
+    errorHelp: "La vérification n'a pas pu aboutir : la connexion a été interrompue.",
+    retry: "Réessayer",
+    fields: {
+      number: "Numéro d'acte",
+      type: "Type",
+      issuer: "Administration émettrice",
+      issuedAt: "Émis le",
+      signature: "Signature",
+      signedPrefix: "Signé",
+      notSigned: "Non signé à ce jour",
+      fingerprint: "Empreinte du contenu",
+      revokedReason: "Motif de révocation",
+      supersededBy: "Remplacé par l'acte",
+    },
+  },
 } as const;
