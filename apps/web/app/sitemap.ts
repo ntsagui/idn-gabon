@@ -24,6 +24,7 @@ const ROUTES: RouteConfig[] = [
   { path: "/legal/licenses", changeFrequency: "yearly", priority: 0.3 },
   { path: "/contact", changeFrequency: "yearly", priority: 0.6 },
   { path: "/status", changeFrequency: "monthly", priority: 0.4 },
+  { path: "/verifier", changeFrequency: "yearly", priority: 0.5 },
 ]
 
 export default function sitemap(): MetadataRoute.Sitemap {
