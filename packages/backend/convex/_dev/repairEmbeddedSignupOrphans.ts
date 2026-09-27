@@ -1,10 +1,15 @@
 import { ConvexError, v } from "convex/values"
 
-import { components, internal } from "../_generated/api"
-import type { MutationCtx, QueryCtx } from "../_generated/server"
+import { internal } from "../_generated/api"
+import type { QueryCtx } from "../_generated/server"
 import { internalMutation, internalQuery } from "../_generated/server"
+import {
+  deleteIncompleteSignup,
+  findBetterAuthUserByEmail,
+  IDN_DOMAIN,
+  inspectIncompleteSignup,
+} from "../lib/incompleteSignup"
 
-const IDN_DOMAIN = "@idn.ga"
 const MAX_EMAILS = 25
 const CONFIRMATION = "SUPPRIMER LES INSCRIPTIONS IDN INCOMPLETES"
 
@@ -27,15 +32,6 @@ const inspectionValidator = v.object({
 
 type ReadCtx = Pick<QueryCtx, "db" | "runQuery">
 
-type BetterAuthUser = {
-  _id: string
-  email: string
-  emailVerified: boolean
-  createdAt: number
-}
-
-type BetterAuthPage = { page: Array<Record<string, unknown>> }
-
 function normalizeEmails(emails: string[]): string[] {
   const normalized = [
     ...new Set(emails.map((email) => email.trim().toLowerCase())),
@@ -55,30 +51,8 @@ function normalizeEmails(emails: string[]): string[] {
   return normalized
 }
 
-async function findMany(
-  ctx: ReadCtx,
-  model:
-    | "session"
-    | "account"
-    | "twoFactor"
-    | "oauthApplication"
-    | "oauthAccessToken"
-    | "oauthConsent",
-  userId: string,
-): Promise<Array<Record<string, unknown>>> {
-  const result = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
-    model,
-    where: [{ field: "userId", value: userId, operator: "eq" }],
-    paginationOpts: { numItems: 200, cursor: null },
-  })) as BetterAuthPage
-  return result.page
-}
-
 async function inspectOne(ctx: ReadCtx, email: string) {
-  const user = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-    model: "user",
-    where: [{ field: "email", value: email, operator: "eq" }],
-  })) as BetterAuthUser | null
+  const user = await findBetterAuthUserByEmail(ctx, email)
 
   if (!user) {
     return {
@@ -93,65 +67,17 @@ async function inspectOne(ctx: ReadCtx, email: string) {
     }
   }
 
-  const profile = await ctx.db
-    .query("userProfile")
-    .withIndex("by_userId", (q) => q.eq("userId", user._id))
-    .unique()
-  const roles = await ctx.db
-    .query("userRole")
-    .withIndex("by_userId", (q) => q.eq("userId", user._id))
-    .take(1)
-  const accountCreatedAudit = await ctx.db
-    .query("auditLog")
-    .withIndex("by_target", (q) =>
-      q.eq("targetType", "user").eq("targetId", user._id),
-    )
-    .take(20)
-
-  const [
-    sessions,
-    accounts,
-    twoFactors,
-    oauthApplications,
-    accessTokens,
-    consents,
-  ] = await Promise.all([
-    findMany(ctx, "session", user._id),
-    findMany(ctx, "account", user._id),
-    findMany(ctx, "twoFactor", user._id),
-    findMany(ctx, "oauthApplication", user._id),
-    findMany(ctx, "oauthAccessToken", user._id),
-    findMany(ctx, "oauthConsent", user._id),
-  ])
-
-  const reasons: string[] = []
-  if (user.email.toLowerCase() !== email) reasons.push("EMAIL_MISMATCH")
-  if (user.emailVerified) reasons.push("EMAIL_ALREADY_VERIFIED")
-  if (user.createdAt < INCIDENT_START || user.createdAt >= INCIDENT_END) {
-    reasons.push("OUTSIDE_INCIDENT_WINDOW")
-  }
-  if (profile) reasons.push("PROFILE_EXISTS")
-  if (roles.length > 0) reasons.push("ROLE_EXISTS")
-  if (accountCreatedAudit.some((entry) => entry.action === "account_created")) {
-    reasons.push("ACCOUNT_CREATED_AUDIT_EXISTS")
-  }
-  if (accounts.some((account) => account.providerId !== "credential")) {
-    reasons.push("NON_CREDENTIAL_ACCOUNT_EXISTS")
-  }
-  if (twoFactors.length > 0) reasons.push("TWO_FACTOR_EXISTS")
-  if (oauthApplications.length > 0) reasons.push("OAUTH_APPLICATION_EXISTS")
-  if (accessTokens.length > 0) reasons.push("OAUTH_ACCESS_TOKEN_EXISTS")
-  if (consents.length > 0) reasons.push("OAUTH_CONSENT_EXISTS")
+  const inspection = await inspectIncompleteSignup(ctx, user, {
+    expectedEmail: email,
+    createdWithin: { from: INCIDENT_START, to: INCIDENT_END },
+  })
 
   return {
     email,
     userId: user._id,
     createdAt: user.createdAt,
     emailVerified: user.emailVerified,
-    eligible: reasons.length === 0,
-    reasons,
-    sessionCount: sessions.length,
-    accountCount: accounts.length,
+    ...inspection,
   }
 }
 
@@ -202,28 +128,7 @@ export const run = internalMutation({
 
     for (const item of inspections) {
       const userId = item.userId!
-      for (const model of ["session", "account"] as const) {
-        await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-          input: {
-            model,
-            where: [{ field: "userId", value: userId, operator: "eq" }],
-          },
-          paginationOpts: { numItems: 200, cursor: null },
-        })
-      }
-      await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-        input: {
-          model: "verification",
-          where: [{ field: "identifier", value: item.email, operator: "eq" }],
-        },
-        paginationOpts: { numItems: 200, cursor: null },
-      })
-      await ctx.runMutation(components.betterAuth.adapter.deleteOne, {
-        input: {
-          model: "user",
-          where: [{ field: "_id", value: userId }],
-        },
-      })
+      await deleteIncompleteSignup(ctx, { _id: userId, email: item.email })
       await ctx.runMutation(internal.audit.recordAudit, {
         action: "admin_action",
         targetType: "user",

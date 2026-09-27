@@ -203,6 +203,9 @@ export const AUDIT_ACTIONS = [
   "duplicate_flagged",
   "duplicate_flag_resolved",
   "signup_blocked_duplicate",
+  // Inscription abandonnée par le citoyen après un refus : la coquille Better
+  // Auth (compte sans profil ni PIN) est supprimée et l'adresse libérée.
+  "signup_abandoned",
 ] as const
 
 export const AUDIT_TARGET_TYPES = [

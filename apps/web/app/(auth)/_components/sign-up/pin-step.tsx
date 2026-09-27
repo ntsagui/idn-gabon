@@ -107,6 +107,9 @@ export function PinStep() {
   const router = useRouter()
   const convex = useConvex()
   const completeSignup = useMutation(api.onboarding.completeSignup)
+  const abandonIncompleteSignup = useMutation(
+    api.onboarding.abandonIncompleteSignup,
+  )
 
   const onboarding = React.useMemo(
     () => ({
@@ -218,6 +221,16 @@ export function PinStep() {
             : idnSignup.errorIdentityVerified,
         )
         setBlockedByDuplicate(true)
+        // Le refus est définitif pour cet état civil : le compte ouvert par
+        // `ensureExpectedSession` resterait sans profil ni PIN et confisquerait
+        // l'adresse choisie. On le supprime et on ferme la session, pour qu'une
+        // nouvelle tentative (après correction de l'identité) reparte de zéro.
+        try {
+          await abandonIncompleteSignup({})
+          await authClient.signOut()
+        } catch {
+          // Nettoyage de courtoisie : un échec ici ne change rien au refus.
+        }
       } else {
         setError(
           data?.message ??

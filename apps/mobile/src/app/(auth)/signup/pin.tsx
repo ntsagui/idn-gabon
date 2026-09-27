@@ -54,6 +54,7 @@ export default function SignupPin() {
   const router = useRouter();
   const convex = useConvex();
   const completeSignup = useMutation(api.onboarding.completeSignup);
+  const abandonIncompleteSignup = useMutation(api.onboarding.abandonIncompleteSignup);
   const [signupContext, setSignupContext] = useState<SignupContext | null>(null);
   const [pin, setPin] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -163,6 +164,18 @@ export default function SignupPin() {
         setError('Une identité vérifiée correspond déjà à ces informations. Vérifiez votre saisie ou contactez le support.');
       } else {
         setError(data?.message ?? (err instanceof Error ? err.message : 'Erreur lors de l’enregistrement du PIN.'));
+      }
+      if (data?.code === 'NIP_ALREADY_VERIFIED' || data?.code === 'IDENTITY_ALREADY_VERIFIED') {
+        // Le refus est définitif pour cet état civil : le compte ouvert par
+        // `ensureExpectedSession` resterait sans profil ni PIN et confisquerait
+        // l'adresse choisie. On le supprime et on ferme la session, pour qu'une
+        // nouvelle tentative (après correction de l'identité) reparte de zéro.
+        try {
+          await abandonIncompleteSignup({});
+          await authClient.signOut();
+        } catch {
+          // Nettoyage de courtoisie : un échec ici ne change rien au refus.
+        }
       }
       setPin('');
       setConfirm('');

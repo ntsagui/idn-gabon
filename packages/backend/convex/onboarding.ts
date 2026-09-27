@@ -12,6 +12,11 @@ import {
 import { assessIdentityCollision } from "./lib/duplicateGuard"
 import { raiseDuplicateFlags } from "./lib/duplicateFlags"
 import { derivePivotKeys } from "./lib/identity"
+import {
+  deleteIncompleteSignup,
+  findBetterAuthUserById,
+  inspectIncompleteSignup,
+} from "./lib/incompleteSignup"
 import { generateIdnId } from "./lib/idnId"
 import { derivePinHash, PIN_REGEX } from "./lib/pin"
 import { PROFILE_TYPES } from "./schema"
@@ -696,5 +701,53 @@ export const completeSignup = mutation({
     })
 
     return { profileId, idnHandle: expectedHandle, idnId }
+  },
+})
+
+/** Au-delà, une inscription n'est plus « en cours » : un compte sans profil
+ *  aussi ancien relève de la réparation admin, pas du libre-service. */
+const ABANDON_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Abandonne l'inscription en cours du compte appelant.
+ *
+ * `completeSignup` a besoin d'une session, donc d'un compte Better Auth créé
+ * AVANT elle. Quand elle refuse (identité ou NIP déjà vérifiés, typiquement),
+ * ce compte reste : sans profil ni PIN, avec un mot de passe interne jeté, il
+ * est inutilisable, et il confisque l'adresse `@idn.ga` choisie. Le client
+ * appelle cette mutation juste après le refus pour libérer l'adresse.
+ *
+ * Ne supprime QUE le compte de l'appelant, et seulement s'il est encore une
+ * coquille (cf. `lib/incompleteSignup.ts`) : un profil créé entre-temps, un
+ * rôle, un consentement ou un second facteur suffisent à tout arrêter. Dans
+ * ce cas, la mutation répond `abandoned: false` sans erreur — l'appel est un
+ * nettoyage de courtoisie, pas une action que le client doit réussir.
+ *
+ * Ne révèle rien que l'appelant ne sache déjà : il ne peut viser que son
+ * propre compte, et la réponse ne dit pas pourquoi un compte est conservé.
+ */
+export const abandonIncompleteSignup = mutation({
+  args: {},
+  returns: v.object({ abandoned: v.boolean() }),
+  handler: async (ctx) => {
+    const authUser = await requireAuth(ctx)
+    const user = await findBetterAuthUserById(ctx, authUser.userId)
+    if (!user) return { abandoned: false }
+
+    const now = Date.now()
+    const inspection = await inspectIncompleteSignup(ctx, user, {
+      createdWithin: { from: now - ABANDON_MAX_AGE_MS, to: now + 1 },
+    })
+    if (!inspection.eligible) return { abandoned: false }
+
+    await deleteIncompleteSignup(ctx, user)
+    await ctx.runMutation(internal.audit.recordAudit, {
+      actorId: user._id,
+      action: "signup_abandoned",
+      targetType: "user",
+      targetId: user._id,
+      metadata: { email: user.email.toLowerCase() },
+    })
+    return { abandoned: true }
   },
 })
