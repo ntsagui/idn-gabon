@@ -175,6 +175,9 @@ export const AUDIT_ACTIONS = [
   "oauth_app_created",
   "oauth_app_modified",
   "oauth_app_disabled",
+  // Jetons émis à un partenaire de confiance par échange direct de session
+  // (lib/partnerTokenExchange.ts), sans passer par /oauth2/authorize.
+  "partner_token_exchanged",
   // Sessions
   "session_revoked",
   "session_revoked_global",

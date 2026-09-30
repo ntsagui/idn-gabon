@@ -26,7 +26,7 @@ const FILTERS: readonly Filter[] = [
   {
     id: "consents",
     label: "Consentements",
-    actions: ["consent_granted", "consent_revoked"],
+    actions: ["consent_granted", "consent_revoked", "partner_token_exchanged"],
   },
   {
     id: "kyc",
@@ -112,6 +112,11 @@ const ACTION_LABEL: Record<
   kyc_rejected: { e: "KYC refusé", cat: "KYC", col: "yellow" },
   consent_granted: { e: "Consentement accordé", cat: "CONS", col: "blue" },
   consent_revoked: { e: "Consentement révoqué", cat: "CONS", col: "muted" },
+  partner_token_exchanged: {
+    e: "Connexion à une application partenaire",
+    cat: "CONS",
+    col: "blue",
+  },
   session_revoked: { e: "Session révoquée", cat: "SÉC", col: "green" },
   session_revoked_global: {
     e: "Toutes les sessions ont été révoquées",

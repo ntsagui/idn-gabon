@@ -23,6 +23,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   kyc_rejected: "Vérification refusée",
   consent_granted: "Consentement accordé",
   consent_revoked: "Consentement révoqué",
+  partner_token_exchanged: "Connexion à une application partenaire",
   oauth_app_created: "Application OAuth créée",
   oauth_app_modified: "Application OAuth modifiée",
   oauth_app_disabled: "Application OAuth désactivée",
