@@ -19,7 +19,7 @@ import {
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
 
-import { IdnIcons } from "./icons"
+import { Plus } from "lucide-react"
 
 /**
  * Dialog "Nouvelle app" — bouton primaire en en-tête de la page Applications.
@@ -53,10 +53,10 @@ export function CreateAppDialog() {
         scopes,
         loa,
       })
-      toast.success(`Application créée (client_id : ${clientId}).`)
+      toast.success(`Application « ${name} » créée.`)
       setOpen(false)
       reset()
-      router.refresh()
+      router.push(`/apps/${encodeURIComponent(clientId)}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Création impossible.")
     } finally {
@@ -67,20 +67,17 @@ export function CreateAppDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-2 rounded-lg border border-idn-green bg-idn-green px-3 text-[13px] font-medium text-white outline-none transition-colors hover:bg-idn-green-dark focus-visible:ring-2 focus-visible:ring-idn-green focus-visible:ring-offset-2"
-        >
-          <span aria-hidden>{IdnIcons.plus}</span>
-          Nouvelle app
-        </button>
+        <Button size="sm">
+          <Plus aria-hidden />
+          Nouvelle application
+        </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="shadow-none sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Nouvelle application OAuth</DialogTitle>
           <DialogDescription>
-            Crée une application en mode <em>pending</em>. Elle devra être
-            approuvée pour passer en production.
+            L&apos;application est créée en attente de revue. Elle ne pourra
+            servir en production qu&apos;après votre approbation depuis sa fiche.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
@@ -95,7 +92,7 @@ export function CreateAppDialog() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="new-app-redirect">Redirect URI</Label>
+            <Label htmlFor="new-app-redirect">URL de redirection</Label>
             <Input
               id="new-app-redirect"
               value={redirect}
@@ -112,23 +109,27 @@ export function CreateAppDialog() {
               value={scopes}
               onChange={(e) => setScopes(e.target.value)}
               placeholder="profile, email, birth_cert"
+              aria-describedby="new-app-scopes-help"
             />
-            <p className="text-[11px] text-idn-muted">
+            <p id="new-app-scopes-help" className="text-xs text-idn-muted">
               Séparés par des virgules.
             </p>
           </div>
           <div className="space-y-1.5">
-            <Label>Niveau min. requis</Label>
-            <div className="flex gap-2">
+            <p id="new-app-loa" className="text-sm font-medium leading-none">
+              Niveau de garantie minimal
+            </p>
+            <div role="group" aria-labelledby="new-app-loa" className="flex gap-2">
               {[1, 2, 3].map((l) => (
                 <button
                   key={l}
                   type="button"
                   onClick={() => setLoa(l as 1 | 2 | 3)}
+                  aria-pressed={loa === l}
                   className={
-                    "h-9 flex-1 rounded-lg border text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-idn-green " +
+                    "h-9 flex-1 rounded-md border text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-idn-green " +
                     (loa === l
-                      ? "border-idn-green bg-idn-green-soft text-idn-green"
+                      ? "border-idn-green bg-idn-green-soft text-idn-green-dark dark:bg-[#0F2A18] dark:text-idn-green-on-dark"
                       : "border-idn-border bg-transparent text-idn-ink hover:bg-idn-surface-2")
                   }
                 >

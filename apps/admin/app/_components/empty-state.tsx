@@ -2,11 +2,7 @@ import type { ReactNode } from "react"
 
 import { cn } from "@repo/ui/lib/utils"
 
-/**
- * État vide réutilisable pour les listes (apps, users, logs, etc.).
- * Sobre, aligné sur la charte IDN : bordure + fond surface, pas d'icône
- * décorative trop bruyante.
- */
+/** État vide utile : ce qui se passe, pourquoi, et quoi faire. */
 export function EmptyState({
   title,
   description,
@@ -14,26 +10,20 @@ export function EmptyState({
   className,
 }: {
   title: string
-  description?: string
+  description?: ReactNode
   action?: ReactNode
   className?: string
 }) {
   return (
     <div
       className={cn(
-        "portal-panel flex min-h-[260px] flex-col items-center justify-center gap-2 border-dashed px-6 py-14 text-center",
+        "flex flex-col items-center justify-center gap-1.5 px-6 py-12 text-center",
         className,
       )}
     >
-      <span
-        className="mb-3 grid size-10 place-items-center rounded-xl bg-[var(--portal-accent-soft)] text-[var(--portal-accent)]"
-        aria-hidden
-      >
-        ·
-      </span>
       <p className="text-sm font-semibold text-idn-ink">{title}</p>
       {description ? (
-        <p className="max-w-md text-xs text-idn-muted">{description}</p>
+        <p className="max-w-md text-[13px] text-idn-muted">{description}</p>
       ) : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </div>

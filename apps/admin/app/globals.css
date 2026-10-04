@@ -1,6 +1,58 @@
 @import "@repo/ui/globals.css";
 
-.portal-canvas {
-  --portal-accent: var(--idn-blue);
-  --portal-accent-soft: var(--idn-blue-soft);
+/*
+ * Console d'administration — surface de travail.
+ *
+ * Charte v2 : une seule voix (vert IDN), relief par la bordure 1px et le
+ * contraste fond / surface, jamais par l'ombre ni par un dégradé (ADR-0008).
+ * Les classes partagées `.portal-*` de @repo/ui portent encore ombres et
+ * dégradés : la console ne les utilise pas.
+ */
+
+@layer components {
+  .adm-panel {
+    border: 1px solid var(--idn-border);
+    border-radius: 12px;
+    background: var(--idn-surface);
+  }
+
+  .adm-kicker {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 16px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--idn-muted);
+  }
+
+  .adm-skeleton {
+    border-radius: 6px;
+    background: var(--idn-surface-2);
+    animation: adm-pulse 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+
+  .adm-enter {
+    animation: adm-fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes adm-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes adm-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adm-skeleton,
+  .adm-enter {
+    animation: none;
+  }
 }

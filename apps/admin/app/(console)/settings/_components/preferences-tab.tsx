@@ -19,82 +19,48 @@ import {
   SettingsSection,
 } from "../../../_components/settings-section"
 
+/**
+ * Affichage de la console. Seul le thème est proposé : la console n'existe
+ * qu'en français, un sélecteur de langue n'y changerait rien.
+ */
 export function PreferencesTab() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const prefs = useQuery(api.preferences.getMyPreferences) as any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const update = useMutation(api.preferences.updateMyPreferences) as any
+  const prefs = useQuery(api.preferences.getMyPreferences)
+  const update = useMutation(api.preferences.updateMyPreferences)
   const { theme, setTheme } = useTheme()
-
-  const onLanguageChange = async (lang: "fr" | "en") => {
-    try {
-      await update({ language: lang })
-      toast.success(fr.settings.preferences.saveSuccessToast)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur")
-    }
-  }
 
   const onThemeChange = async (t: "light" | "dark" | "auto") => {
     setTheme(t === "auto" ? "system" : t)
     try {
       await update({ theme: t })
-      toast.success(fr.settings.preferences.saveSuccessToast)
+      toast.success("Thème enregistré.")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur")
+      toast.error(err instanceof Error ? err.message : "Enregistrement impossible.")
     }
   }
 
   if (prefs === undefined) {
-    return <div className="h-32 animate-pulse rounded-xl bg-secondary" />
+    return <div className="adm-skeleton h-32" />
   }
 
-  const currentLang = (prefs?.language ?? "fr") as "fr" | "en"
   const currentTheme =
     theme === "system"
       ? "auto"
       : ((theme ?? prefs?.theme ?? "auto") as "light" | "dark" | "auto")
 
   return (
-    <SettingsSection
-      title={fr.settings.preferences.title}
-      sub={fr.settings.preferences.sub}
-    >
-      <SettingsRow
-        label={fr.settings.preferences.language.label}
-        description={fr.settings.preferences.language.description}
-        trailing={
-          <Select
-            value={currentLang}
-            onValueChange={(v) => void onLanguageChange(v as "fr" | "en")}
-          >
-            <SelectTrigger className="!h-10 w-40 !text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {fr.settings.preferences.language.options.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        }
-      />
+    <SettingsSection title="Affichage" sub="Apparence de la console sur cet appareil.">
       <SettingsRow
         label={fr.settings.preferences.theme.label}
         description={fr.settings.preferences.theme.description}
         trailing={
           <Select
             value={currentTheme}
-            onValueChange={(v) =>
-              void onThemeChange(v as "light" | "dark" | "auto")
-            }
+            onValueChange={(v) => void onThemeChange(v as "light" | "dark" | "auto")}
           >
-            <SelectTrigger className="!h-10 w-40 !text-sm">
+            <SelectTrigger aria-label={fr.settings.preferences.theme.label} className="!h-9 w-40 text-[13px]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="shadow-none">
               {fr.settings.preferences.theme.options.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}

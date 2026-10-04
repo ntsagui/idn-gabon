@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@repo/ui/components/dialog"
+import { Button } from "@repo/ui/components/button"
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
 
@@ -39,12 +40,15 @@ export function UserRowActions({
   email,
   deletedAt,
   showDetails = true,
+  onDeleted,
 }: {
   userId: string
   idnId?: string
   email: string
   deletedAt?: number
   showDetails?: boolean
+  /** Appelé après une suppression définitive (la fiche n'existe plus). */
+  onDeleted?: () => void
 }) {
   const anonymize = useMutation(api.admin.accounts.anonymizeUser)
   const hardDelete = useMutation(api.admin.accounts.deleteUserPermanently)
@@ -82,6 +86,7 @@ export function UserRowActions({
         toast.success(t.deleted)
       }
       close()
+      if (mode === "delete") onDeleted?.()
     } catch (err) {
       toast.error(errorMessage(err))
     } finally {
@@ -93,36 +98,33 @@ export function UserRowActions({
     <>
       <div className="flex items-center justify-end gap-1.5">
         {showDetails ? (
-          <Link
-            href={`/users/${encodeURIComponent(userId)}`}
-            className="inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-idn-border bg-transparent px-2.5 text-[11px] font-medium text-idn-green outline-none hover:bg-idn-green-soft focus-visible:ring-2 focus-visible:ring-idn-green"
-          >
-            Voir
-          </Link>
+          <Button asChild variant="ghost" size="sm">
+            <Link href={`/users/${encodeURIComponent(userId)}`}>Ouvrir la fiche</Link>
+          </Button>
         ) : null}
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => setMode("anonymize")}
           disabled={deletedAt !== undefined}
-          title={
-            deletedAt !== undefined ? "Compte déjà anonymisé" : t.anonymizeTitle
-          }
-          className="inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-idn-border bg-transparent px-2.5 text-[11px] font-medium text-idn-muted outline-none hover:bg-idn-surface-2 hover:text-idn-ink focus-visible:ring-2 focus-visible:ring-idn-green disabled:opacity-40"
+          title={deletedAt !== undefined ? "Compte déjà anonymisé" : undefined}
         >
           {t.anonymize}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => setMode("delete")}
-          title={t.deleteTitle}
-          className="inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-idn-border bg-transparent px-2.5 text-[11px] font-medium text-idn-muted outline-none hover:border-[#B83A3A] hover:bg-idn-surface-2 hover:text-[#B83A3A] focus-visible:ring-2 focus-visible:ring-idn-green"
+          className="text-[#B3261E] hover:bg-[#FBE9E7] hover:text-[#B3261E] dark:text-[#F2A49E] dark:hover:bg-[#3A1513]"
         >
           {t.delete}
-        </button>
+        </Button>
       </div>
 
-      <Dialog open={mode !== null} onOpenChange={(o) => !o && close()}>
-        <DialogContent className="sm:max-w-[480px]">
+      <Dialog open={mode !== null} onOpenChange={(o) => !o && !busy && close()}>
+        <DialogContent className="shadow-none sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle>
               {mode === "delete" ? t.deleteTitle : t.anonymizeTitle}
@@ -133,7 +135,7 @@ export function UserRowActions({
           </DialogHeader>
 
           <form onSubmit={onSubmit} className="space-y-4">
-            <p className="text-[12px] text-idn-muted">{t.auditNote}</p>
+            <p className="text-xs text-idn-muted">{t.auditNote}</p>
 
             <div className="space-y-1.5">
               <Label htmlFor="confirm-account" className="select-text">
@@ -145,7 +147,7 @@ export function UserRowActions({
                 onChange={(e) => setConfirm(e.target.value)}
                 autoComplete="off"
                 required
-                placeholder={expected}
+                className="font-mono"
               />
             </div>
 
@@ -155,30 +157,24 @@ export function UserRowActions({
                 id="delete-reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Doublon de GA-XXXX-XXXX"
               />
             </div>
 
             <DialogFooter>
-              <button
-                type="button"
-                onClick={close}
-                className="inline-flex h-9 items-center rounded-lg border border-idn-border bg-transparent px-3 text-[13px] font-medium text-idn-ink outline-none hover:bg-idn-surface-2 focus-visible:ring-2 focus-visible:ring-idn-green"
-              >
+              <Button type="button" variant="outline" onClick={close} disabled={busy}>
                 {t.cancel}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
+                variant={mode === "delete" ? "destructive" : "default"}
                 disabled={busy || confirm.trim() === ""}
-                className={
-                  "inline-flex h-9 items-center rounded-lg px-3 text-[13px] font-medium text-white outline-none focus-visible:ring-2 focus-visible:ring-idn-green focus-visible:ring-offset-2 disabled:opacity-50 " +
-                  (mode === "delete"
-                    ? "bg-[#B83A3A] hover:bg-[#9C2F2F]"
-                    : "bg-idn-green hover:bg-idn-green-dark")
-                }
               >
-                {busy ? "…" : mode === "delete" ? t.delete : t.anonymize}
-              </button>
+                {busy
+                  ? "En cours…"
+                  : mode === "delete"
+                    ? "Supprimer définitivement"
+                    : "Anonymiser le compte"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

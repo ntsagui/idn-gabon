@@ -1,112 +1,164 @@
+"use client"
+
 /**
- * Providers email & SMS — port de idn-desktop.jsx:1490-1631 (AdminProviders).
+ * Fournisseurs e-mail et SMS : état effectif des intégrations, lu côté
+ * serveur (`admin.integrations.getStatus`). Aucune valeur secrète n'est
+ * transmise au navigateur, seulement la présence des variables.
  *
- * V1 : page **lecture seule**. La configuration des providers est faite
- * manuellement via les variables d'environnement Convex (RESEND_API_KEY,
- * etc.). Aucun bouton d'activation : un badge "Phase 2" prévient le
- * super-admin qu'il ne peut pas encore basculer depuis l'UI.
+ * La configuration se fait dans les variables d'environnement du déploiement
+ * Convex : la page le dit, elle ne propose pas de bascule qui n'aurait aucun
+ * effet sur les envois.
  */
-import { cn } from "@repo/ui/lib/utils"
+import { useQuery } from "convex/react"
+import { Check, X } from "lucide-react"
 
-import { fr } from "../../_content/fr"
-import { OpHeader } from "../../_components/op-header"
-import {
-  EMAIL_PROVIDERS,
-  SMS_PROVIDERS,
-  type Provider,
-} from "../../_mocks/providers"
+import { api } from "@repo/backend/convex/_generated/api"
 
-const EMAIL_ACTIVE = "resend"
+import { PageBody, PageHeader } from "../../_components/page-header"
+import { Field, Panel } from "../../_components/panel"
+import { PanelSkeleton } from "../../_components/skeleton"
+import { StatusPill } from "../../_components/status-pill"
+import { fmtDateTime, fmtNumber, relativeTime } from "../../_lib/format"
 
-function ProviderRow({
-  provider,
-  active,
-}: {
-  provider: Provider
-  active: boolean
-}) {
+type EnvEntry = { name: string; present: boolean; required: boolean; purpose: string }
+type Delivery = { at: number; detail?: string } | null
+
+function EnvTable({ env }: { env: EnvEntry[] }) {
   return (
-    <div
-      className={cn(
-        "mb-2 flex items-center gap-3 rounded-[10px] border-[1.5px] px-3.5 py-3",
-        active
-          ? "border-idn-green bg-idn-green-soft dark:bg-[#0F2A18]"
-          : "border-idn-border-soft bg-transparent opacity-70",
-      )}
-    >
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-idn-surface-2 text-xs font-semibold text-idn-ink">
-        {provider.name[0]}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium text-idn-ink">
-          {provider.name}
-        </div>
-        <div className="mt-0.5 text-[11px] text-idn-muted">{provider.desc}</div>
-      </div>
-      {active ? (
-        <span className="rounded-full bg-white px-2.5 py-[3px] text-[11px] font-semibold text-idn-green dark:bg-[#0A1F11]">
-          {fr.providers.badgeActive}
-        </span>
-      ) : (
-        <span className="rounded-full bg-idn-surface-2 px-2.5 py-[3px] text-[11px] font-medium text-idn-muted">
-          Inactif
-        </span>
-      )}
-    </div>
+    <table className="w-full border-collapse text-left text-[13px]">
+      <caption className="sr-only">Variables d&apos;environnement</caption>
+      <thead>
+        <tr className="border-b border-idn-border">
+          <th scope="col" className="h-9 pr-3 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-idn-muted">Variable</th>
+          <th scope="col" className="h-9 pr-3 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-idn-muted">Rôle</th>
+          <th scope="col" className="h-9 text-right font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-idn-muted">État</th>
+        </tr>
+      </thead>
+      <tbody>
+        {env.map((e) => (
+          <tr key={e.name} className="border-b border-idn-border-soft last:border-0">
+            <td className="py-2.5 pr-3 align-top font-mono text-xs text-idn-ink">
+              {e.name}
+              {!e.required ? <span className="block font-sans text-[11px] text-idn-muted">Facultative</span> : null}
+            </td>
+            <td className="py-2.5 pr-3 align-top text-idn-ink-2">{e.purpose}</td>
+            <td className="py-2.5 text-right align-top">
+              {e.present ? (
+                <span className="inline-flex items-center gap-1 text-idn-green-dark dark:text-idn-green-on-dark">
+                  <Check aria-hidden className="size-3.5" /> Définie
+                </span>
+              ) : (
+                <span className={e.required ? "inline-flex items-center gap-1 text-[#B3261E] dark:text-[#F2A49E]" : "inline-flex items-center gap-1 text-idn-muted"}>
+                  <X aria-hidden className="size-3.5" /> Absente
+                </span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
-function Section({
-  title,
-  providers,
-  activeId,
-}: {
-  title: string
-  providers: Provider[]
-  activeId: string | null
-}) {
+function DeliveryValue({ value, empty }: { value: Delivery; empty: string }) {
+  if (!value) return <span className="text-idn-muted">{empty}</span>
   return (
-    <section className="portal-panel mb-4 p-5">
-      <h2 className="mb-3.5 text-[13px] font-semibold text-idn-ink">{title}</h2>
-      {providers.map((p) => (
-        <ProviderRow key={p.id} provider={p} active={p.id === activeId} />
-      ))}
-    </section>
+    <span>
+      {relativeTime(value.at)}
+      <span className="block text-xs text-idn-muted">
+        {fmtDateTime(value.at)}
+        {value.detail ? ` · ${value.detail}` : ""}
+      </span>
+    </span>
   )
 }
 
 export default function ProvidersPage() {
+  const status = useQuery(api.admin.integrations.getStatus, {})
+
   return (
     <>
-      <OpHeader
-        sub={fr.providers.sub}
-        title={fr.providers.title}
-        right={
-          <span className="inline-flex h-7 items-center rounded-full border border-idn-yellow bg-idn-yellow-soft px-3 text-[11px] font-semibold text-[#7a5a00]">
-            Phase 2 · configuration manuelle
-          </span>
-        }
+      <PageHeader
+        kicker="Configuration"
+        title="Fournisseurs e-mail et SMS"
+        description="État réel des intégrations d'envoi, lu sur le déploiement. Les valeurs secrètes ne sont jamais affichées."
       />
-      <div className="portal-canvas flex-1 overflow-auto">
-        <div className="portal-limit-narrow">
-          <p className="portal-note mb-4 px-4 py-3 text-xs leading-relaxed text-idn-ink-2">
-            Le basculement des providers se fait actuellement via les variables
-            d&apos;environnement Convex (
-            <code className="font-mono text-[11px]">RESEND_API_KEY</code>,
-            etc.). La gestion depuis cette page sera activée en Phase 2.
-          </p>
-          <Section
-            title={fr.providers.emailSectionTitle}
-            providers={EMAIL_PROVIDERS}
-            activeId={EMAIL_ACTIVE}
-          />
-          <Section
-            title={fr.providers.smsSectionTitle}
-            providers={SMS_PROVIDERS}
-            activeId={null}
-          />
-        </div>
-      </div>
+      <PageBody>
+        {status === undefined ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <PanelSkeleton className="h-72" />
+            <PanelSkeleton className="h-72" />
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Panel
+              id="email"
+              title="E-mail"
+              description={status.email.provider}
+              actions={
+                <StatusPill tone={status.email.configured ? "green" : "red"}>
+                  {status.email.configured ? "Configuré" : "Configuration incomplète"}
+                </StatusPill>
+              }
+              bodyClassName="space-y-5"
+            >
+              <dl>
+                <Field label="Passerelle" mono>{status.email.bridgeHost}</Field>
+                <Field label="Adresse d'expédition">
+                  <span className="font-mono text-xs">{status.email.fromAddress}</span>
+                  {status.email.fromIsDefault ? (
+                    <span className="block text-xs text-idn-muted">Valeur par défaut</span>
+                  ) : null}
+                </Field>
+                <Field label="Dernier envoi réussi">
+                  <DeliveryValue value={status.email.lastSuccess} empty="Aucun envoi tracé" />
+                </Field>
+                <Field label="Dernier échec">
+                  <DeliveryValue value={status.email.lastFailure} empty="Aucun échec tracé" />
+                </Field>
+              </dl>
+              <EnvTable env={status.email.env} />
+              <p className="text-xs text-idn-muted">
+                Envois concernés : codes de vérification, décisions KYC, messages
+                iBoîte sortants. Seuls les messages iBoîte gardent une trace
+                d&apos;envoi en base ; les e-mails transactionnels n&apos;en
+                laissent pas.
+              </p>
+            </Panel>
+
+            <Panel
+              id="sms"
+              title="SMS"
+              description={status.sms.provider}
+              actions={
+                <StatusPill tone={status.sms.configured ? "green" : "red"}>
+                  {status.sms.configured ? "Configuré" : "Configuration incomplète"}
+                </StatusPill>
+              }
+              bodyClassName="space-y-5"
+            >
+              <dl>
+                <Field label="Région Bird" mono>{status.sms.region}</Field>
+                <Field label="Dernier envoi accepté">
+                  <DeliveryValue value={status.sms.lastSuccess} empty="Aucun envoi tracé" />
+                </Field>
+                <Field label="Codes envoyés · 7 jours">
+                  <span className="font-mono">{fmtNumber(status.sms.sentLast7Days)}</span>
+                </Field>
+              </dl>
+              <EnvTable env={status.sms.env} />
+              <p className="text-xs text-idn-muted">
+                Envois concernés : récupération du PIN et changement de numéro.
+                Les envois refusés par Bird ne sont pas tracés en base.
+              </p>
+            </Panel>
+          </div>
+        )}
+        <p className="mt-4 text-[13px] text-idn-muted">
+          Pour modifier une intégration, mettez à jour la variable dans les
+          paramètres du déploiement Convex, puis rechargez cette page.
+        </p>
+      </PageBody>
     </>
   )
 }

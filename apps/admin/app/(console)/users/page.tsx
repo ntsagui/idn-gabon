@@ -1,313 +1,428 @@
 "use client"
 
 /**
- * Utilisateurs — port de idn-desktop.jsx:1095-1247 (AdminUsers).
+ * Comptes IDN — annuaire filtrable et vue « Doublons ».
  *
- * Deux onglets sur la même population : la liste paginée, et le même jeu de
- * comptes regroupé par identité pour repérer les doublons. Les doublons ne
- * sont pas une rubrique de l'administration mais un autre regard sur les
- * comptes — ils vivent donc ici, pas dans la navigation.
- *
- * Trois modes d'affichage qui ne coexistent jamais :
- *   • liste paginée (`admin.users.listProfiles`, 10 par page) — le défaut ;
- *   • résultats de recherche (`admin.users.searchProfiles`) dès que la
- *     saisie dépasse deux caractères ;
- *   • vue doublons (`DuplicatesView`).
- *
- * La liste était auparavant tronquée à 50 comptes chargés d'un bloc : au-delà,
- * les comptes suivants étaient simplement invisibles depuis la console.
+ * Les doublons ne sont pas une rubrique à part mais un autre regard sur la
+ * même population : ils vivent dans un onglet de cette page (`?vue=doublons`).
  */
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useQuery } from "convex/react"
-
-import { LoABadge } from "@repo/ui/components/loa-badge"
+import { Search, X } from "lucide-react"
 
 import { api } from "@repo/backend/convex/_generated/api"
+import { Button } from "@repo/ui/components/button"
+import { Input } from "@repo/ui/components/input"
+import { LoABadge } from "@repo/ui/components/loa-badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/select"
+import { cn } from "@repo/ui/lib/utils"
 
-import { fr } from "../../_content/fr"
 import { DuplicatesView } from "../../_components/duplicates-view"
 import { EmptyState } from "../../_components/empty-state"
-import { IdnIcons } from "../../_components/icons"
-import { OpHeader } from "../../_components/op-header"
+import { PageBody, PageHeader } from "../../_components/page-header"
 import { Pagination } from "../../_components/pagination"
-import { UserRowActions } from "../../_components/user-row-actions"
+import { PersonCell } from "../../_components/person"
+import { TableSkeleton } from "../../_components/skeleton"
+import { StatusPill } from "../../_components/status-pill"
+import { DataTable, SortTh, Td, Th, Tr } from "../../_components/table"
+import { fmtDate, fmtNumber, plural, relativeTime } from "../../_lib/format"
+import {
+  KYC_STATUS,
+  PROFILE_LABEL,
+  ROLE_LABEL,
+  ROLES,
+  type KycStatus,
+  type ProfileType,
+  type Role,
+} from "../../_lib/labels"
 
-type ProfileRow = {
-  _id: string
-  userId: string
-  email: string
-  name?: string
-  idnId?: string
-  dateOfBirth?: string
-  profileType: string
-  loa: number
-  hasPivot: boolean
-  deletedAt?: number
-  createdAt: number
+const PAGE_SIZE = 20
+
+type Sort = "newest" | "oldest" | "name" | "loa"
+type SortColumn = "name" | "loa" | "created"
+
+type Filters = {
+  loa: "all" | "1" | "2" | "3"
+  profileType: "all" | ProfileType
+  role: "all" | "none" | Role
+  kycStatus: "all" | "none" | KycStatus
+  state: "all" | "active" | "deleted"
 }
 
-const PAGE_SIZE = 10
-
-function initials(name: string | undefined, email: string) {
-  if (name) {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase()
-  }
-  return email.slice(0, 2).toUpperCase()
+const NO_FILTERS: Filters = {
+  loa: "all",
+  profileType: "all",
+  role: "all",
+  kycStatus: "all",
+  state: "all",
 }
-
-const PROFILE_LABEL: Record<string, string> = {
-  citizen: "Citoyen",
-  resident: "Résident",
-  visitor: "Visiteur",
-  developer: "Développeur",
-}
-
-function fmtJoined(ts: number) {
-  return new Date(ts).toLocaleDateString("fr-FR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  })
-}
-
-const GRID = "grid grid-cols-[2fr_2fr_1fr_1fr_1fr_230px]"
-
-type Tab = "list" | "duplicates"
 
 export default function UsersPage() {
-  const [tab, setTab] = useState<Tab>("list")
-  const [input, setInput] = useState("")
-  const [term, setTerm] = useState("")
-  const [page, setPage] = useState(0)
-
-  // Debounce : la recherche par nom balaie la table, on ne la déclenche pas
-  // à chaque frappe.
-  useEffect(() => {
-    const id = setTimeout(() => setTerm(input.trim()), 300)
-    return () => clearTimeout(id)
-  }, [input])
-
-  // Une nouvelle recherche repart de la première page, sinon on resterait
-  // bloqué sur une page qui n'existe plus dans le nouveau résultat.
-  useEffect(() => {
-    setPage(0)
-  }, [term])
-
-  const searching = tab === "list" && term.length >= 2
-
-  const listed = useQuery(
-    api.admin.users.listProfiles,
-    tab === "list" && !searching ? { page, pageSize: PAGE_SIZE } : "skip",
+  return (
+    <Suspense fallback={null}>
+      <UsersPageInner />
+    </Suspense>
   )
-  const search = useQuery(
-    api.admin.users.searchProfiles,
-    searching ? { q: term } : "skip",
-  )
-  const duplicateGroups = useQuery(
-    api.admin.duplicates.duplicateGroupCount,
-    {},
-  ) as number | undefined
-  const total = useQuery(api.admin.users.totalAccounts, {}) as
-    | number
-    | undefined
+}
 
-  const rows: ProfileRow[] = searching
-    ? ((search?.results ?? []) as ProfileRow[])
-    : ((listed?.rows ?? []) as ProfileRow[])
+function UsersPageInner() {
+  const params = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const view = params.get("vue") === "doublons" ? "duplicates" : "list"
 
-  const loading = searching ? search === undefined : listed === undefined
+  const total = useQuery(api.admin.directory.countAccounts, {})?.total
+  const openFlags = useQuery(api.duplicates.queries.openFlagCount, {})
+  const groups = useQuery(api.admin.duplicates.duplicateGroupCount, {})
+  const toReview = (openFlags ?? 0) + (groups ?? 0)
 
-  const subValue = total
-    ? `${total.toLocaleString("fr-FR")} COMPTES`
-    : "0 COMPTE"
+  const setView = (next: "list" | "duplicates") =>
+    router.replace(next === "list" ? pathname : `${pathname}?vue=doublons`)
 
   return (
     <>
-      <OpHeader
-        sub={`COMPTES · ${subValue}`}
-        title={fr.users.title}
-        right={
-          tab === "list" ? (
-            <div className="relative">
-              <label htmlFor="user-search" className="sr-only">
-                {fr.users.searchLabel}
-              </label>
-              <span
-                aria-hidden
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-idn-muted"
-              >
-                {IdnIcons.search}
-              </span>
-              <input
-                id="user-search"
-                type="search"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={fr.users.search}
-                className="h-8 w-[260px] rounded-lg border border-idn-border bg-transparent pl-9 pr-3 text-[13px] text-idn-ink outline-none placeholder:text-idn-muted focus-visible:ring-2 focus-visible:ring-idn-green"
-              />
-            </div>
-          ) : null
-        }
+      <PageHeader
+        kicker={total === undefined ? "Registre" : `Registre · ${plural(total, "compte", "comptes")}`}
+        title="Comptes IDN"
+        description="Recherchez un compte, filtrez le registre et ouvrez une fiche pour agir."
       />
-
-      <div className="portal-canvas flex-1 overflow-auto">
-        <div className="portal-limit">
-          <div
-            role="tablist"
-            aria-label={fr.users.tabsLabel}
-            className="mb-5 inline-flex gap-1 rounded-lg border border-idn-border bg-idn-surface p-1"
-          >
-            {(
-              [
-                ["list", fr.users.tabList, undefined],
-                ["duplicates", fr.duplicates.title, duplicateGroups],
-              ] as const
-            ).map(([id, label, count]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                onClick={() => setTab(id as Tab)}
-                className={
-                  "inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-idn-green " +
-                  (tab === id
-                    ? "bg-idn-green-soft text-idn-green"
-                    : "text-idn-muted hover:bg-idn-surface-2 hover:text-idn-ink")
-                }
-              >
-                {label}
-                {count ? (
-                  <span className="rounded bg-idn-surface-2 px-1 text-[10px] font-semibold text-idn-muted">
-                    {count}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-
-          {tab === "duplicates" ? (
-            <DuplicatesView />
-          ) : (
-            <>
-              {searching ? (
-                <p
-                  aria-live="polite"
-                  className="mb-3 text-[12px] text-idn-muted"
-                >
-                  {loading
-                    ? fr.users.loading
-                    : fr.users.resultCount(rows.length)}
-                </p>
-              ) : null}
-
-              {searching && search?.truncated ? (
-                <p className="mb-3 rounded-lg border border-idn-border bg-idn-surface-2 px-3 py-2 text-[12px] text-idn-muted">
-                  {fr.users.searchTruncated}
-                </p>
-              ) : null}
-
-              {!searching && listed?.truncated ? (
-                <p className="mb-3 rounded-lg border border-idn-border bg-idn-surface-2 px-3 py-2 text-[12px] text-idn-muted">
-                  {fr.users.listTruncated}
-                </p>
-              ) : null}
-
-              {loading ? (
-                <p className="text-[13px] text-idn-muted">{fr.users.loading}</p>
-              ) : rows.length === 0 ? (
-                <EmptyState
-                  title={searching ? "Aucun résultat" : "Aucun compte IDN"}
-                  description={
-                    searching
-                      ? "Aucun compte ne correspond à cette recherche."
-                      : "Les comptes inscrits via apps/web apparaîtront ici dès leur première session."
-                  }
-                />
-              ) : (
-                <>
-                  <div className="portal-table">
-                    <div
-                      className={`${GRID} border-b border-idn-border bg-idn-surface-2 px-[18px] py-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-idn-muted`}
-                    >
-                      <div>{fr.users.cols.name}</div>
-                      <div>{fr.users.cols.email}</div>
-                      <div>{fr.users.cols.loa}</div>
-                      <div>{fr.users.cols.profile}</div>
-                      <div>{fr.users.cols.joined}</div>
-                      <div></div>
-                    </div>
-                    {rows.map((u, i) => (
-                      <div
-                        key={u._id}
-                        className={
-                          `${GRID} items-center px-[18px] py-3.5 text-[13px] text-idn-ink ` +
-                          (i === rows.length - 1
-                            ? ""
-                            : "border-b border-idn-border-soft")
-                        }
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
-                            style={{
-                              background:
-                                "linear-gradient(135deg,#0E7C3A,#0A5C2C)",
-                            }}
-                            aria-hidden
-                          >
-                            {initials(u.name, u.email)}
-                          </div>
-                          <Link
-                            href={`/users/${encodeURIComponent(u.userId)}`}
-                            className="truncate font-medium outline-none hover:text-idn-green hover:underline focus-visible:ring-2 focus-visible:ring-idn-green"
-                          >
-                            {u.name ?? u.email.split("@")[0]}
-                          </Link>
-                        </div>
-                        <div className="truncate font-mono text-[11px] text-idn-muted">
-                          {u.email || "—"}
-                        </div>
-                        <div>
-                          <LoABadge level={(u.loa as 1 | 2 | 3) ?? 1} compact />
-                        </div>
-                        <div className="text-idn-ink-2">
-                          {PROFILE_LABEL[u.profileType] ?? u.profileType}
-                        </div>
-                        <div className="text-xs text-idn-muted">
-                          {fmtJoined(u.createdAt)}
-                        </div>
-                        <UserRowActions
-                          userId={u.userId}
-                          idnId={u.idnId}
-                          email={u.email}
-                          deletedAt={u.deletedAt}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  {!searching && listed ? (
-                    <Pagination
-                      page={listed.page}
-                      pageCount={listed.pageCount}
-                      total={listed.total}
-                      onChange={setPage}
-                    />
-                  ) : null}
-                </>
+      <PageBody>
+        <div role="tablist" aria-label="Vue des comptes" className="mb-4 flex gap-1 border-b border-idn-border">
+          {(
+            [
+              ["list", "Tous les comptes", undefined],
+              ["duplicates", "Doublons", toReview],
+            ] as const
+          ).map(([id, label, count]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`tab-${id}`}
+              aria-selected={view === id}
+              aria-controls={`panel-${id}`}
+              onClick={() => setView(id)}
+              className={cn(
+                "-mb-px inline-flex h-10 items-center gap-2 border-b-2 px-3 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-idn-green",
+                view === id
+                  ? "border-idn-green text-idn-ink"
+                  : "border-transparent text-idn-muted hover:text-idn-ink",
               )}
-            </>
-          )}
+            >
+              {label}
+              {count ? (
+                <span className="rounded-full bg-idn-yellow-soft px-1.5 font-mono text-[11px] leading-5 text-[#6B5400] dark:bg-[#2E2708] dark:text-[#F2D45C]">
+                  {fmtNumber(count)}
+                  <span className="sr-only"> à examiner</span>
+                </span>
+              ) : null}
+            </button>
+          ))}
         </div>
-      </div>
+
+        <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`}>
+          {view === "duplicates" ? <DuplicatesView /> : <AccountDirectory />}
+        </div>
+      </PageBody>
     </>
+  )
+}
+
+function AccountDirectory() {
+  const router = useRouter()
+  const [input, setInput] = useState("")
+  const [term, setTerm] = useState("")
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS)
+  const [sort, setSort] = useState<Sort>("newest")
+  const [page, setPage] = useState(0)
+
+  // La recherche par nom balaie le registre : on attend la fin de la frappe.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setTerm(input.trim())
+      setPage(0)
+    }, 300)
+    return () => clearTimeout(id)
+  }, [input])
+
+  const result = useQuery(api.admin.directory.listAccounts, {
+    page,
+    pageSize: PAGE_SIZE,
+    q: term.length >= 2 ? term : undefined,
+    loa: filters.loa === "all" ? undefined : (Number(filters.loa) as 1 | 2 | 3),
+    profileType: filters.profileType === "all" ? undefined : filters.profileType,
+    role: filters.role === "all" ? undefined : filters.role,
+    kycStatus: filters.kycStatus === "all" ? undefined : filters.kycStatus,
+    state: filters.state === "all" ? undefined : filters.state,
+    sort,
+  })
+
+  const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
+    setFilters((f) => ({ ...f, [key]: value }))
+    setPage(0)
+  }
+  const filtered =
+    term.length >= 2 ||
+    (Object.keys(filters) as Array<keyof Filters>).some((k) => filters[k] !== "all")
+
+  const sortColumn: SortColumn =
+    sort === "name" ? "name" : sort === "loa" ? "loa" : "created"
+  const direction: "asc" | "desc" = sort === "name" || sort === "oldest" ? "asc" : "desc"
+  const onSort = (col: SortColumn) => {
+    setPage(0)
+    if (col === "name") setSort("name")
+    else if (col === "loa") setSort("loa")
+    else setSort(sort === "newest" ? "oldest" : "newest")
+  }
+
+  return (
+    <div className="adm-panel">
+      <div className="flex flex-wrap items-end gap-3 border-b border-idn-border-soft p-4">
+        <div className="relative min-w-[240px] flex-1">
+          <label htmlFor="account-search" className="sr-only">
+            Rechercher un compte
+          </label>
+          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-idn-muted" />
+          <Input
+            id="account-search"
+            type="search"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Nom, e-mail, ID IDN ou NIP"
+            className="h-9 pl-9"
+          />
+        </div>
+        <FilterSelect
+          label="Niveau"
+          value={filters.loa}
+          onChange={(v) => setFilter("loa", v)}
+          options={[
+            ["all", "Tous les niveaux"],
+            ["1", "Niveau 1"],
+            ["2", "Niveau 2"],
+            ["3", "Niveau 3"],
+          ]}
+        />
+        <FilterSelect
+          label="Profil"
+          value={filters.profileType}
+          onChange={(v) => setFilter("profileType", v)}
+          options={[
+            ["all", "Tous les profils"],
+            ...(Object.entries(PROFILE_LABEL) as Array<[ProfileType, string]>),
+          ]}
+        />
+        <FilterSelect
+          label="Rôle"
+          value={filters.role}
+          onChange={(v) => setFilter("role", v)}
+          options={[
+            ["all", "Tous les rôles"],
+            ["none", "Sans rôle"],
+            ...ROLES.map((r) => [r, ROLE_LABEL[r]] as [Role, string]),
+          ]}
+        />
+        <FilterSelect
+          label="Statut KYC"
+          value={filters.kycStatus}
+          onChange={(v) => setFilter("kycStatus", v)}
+          options={[
+            ["all", "Tous les statuts"],
+            ["none", "Aucun dossier"],
+            ...(Object.entries(KYC_STATUS) as Array<[KycStatus, { label: string }]>).map(
+              ([k, s]) => [k, s.label] as [KycStatus, string],
+            ),
+          ]}
+        />
+        <FilterSelect
+          label="État"
+          value={filters.state}
+          onChange={(v) => setFilter("state", v)}
+          options={[
+            ["all", "Tous"],
+            ["active", "Actifs"],
+            ["deleted", "Anonymisés"],
+          ]}
+        />
+        {filtered ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9"
+            onClick={() => {
+              setInput("")
+              setTerm("")
+              setFilters(NO_FILTERS)
+              setPage(0)
+            }}
+          >
+            <X aria-hidden />
+            Réinitialiser
+          </Button>
+        ) : null}
+      </div>
+
+      {result?.truncated ? (
+        <p className="border-b border-idn-border-soft bg-idn-yellow-soft px-4 py-2 text-[13px] text-[#6B5400] dark:bg-[#2E2708] dark:text-[#F2D45C]">
+          Résultat partiel : le registre dépasse la capacité de balayage de la
+          console. Affinez avec un e-mail, un ID IDN ou un NIP.
+        </p>
+      ) : null}
+
+      {filters.role !== "all" && filters.role !== "none" ? (
+        <p className="border-b border-idn-border-soft bg-idn-blue-soft px-4 py-2 text-[13px] text-idn-blue dark:bg-[#10243A] dark:text-idn-blue-on-dark">
+          Seuls les comptes dotés d&apos;un profil citoyen figurent ici. Les
+          comptes opérateurs créés depuis la console sont listés dans{" "}
+          <Link href="/roles" className="font-medium underline underline-offset-2">
+            Rôles et habilitations
+          </Link>
+          .
+        </p>
+      ) : null}
+
+      {result === undefined ? (
+        <TableSkeleton rows={8} />
+      ) : result.rows.length === 0 ? (
+        <EmptyState
+          title={filtered ? "Aucun compte ne correspond" : "Aucun compte IDN"}
+          description={
+            filtered
+              ? "Élargissez la recherche ou retirez un filtre."
+              : "Les comptes apparaissent ici dès la fin de leur inscription."
+          }
+          action={
+            filtered ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setInput("")
+                  setFilters(NO_FILTERS)
+                }}
+              >
+                Retirer les filtres
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <>
+          <DataTable
+            label="Comptes IDN"
+            head={
+              <>
+                <SortTh label="Compte" sortKey="name" current={sortColumn} direction={direction} onSort={onSort} />
+                <Th>E-mail</Th>
+                <SortTh label="Niveau" sortKey="loa" current={sortColumn} direction={direction} onSort={onSort} />
+                <Th>Profil</Th>
+                <Th>Rôles</Th>
+                <Th>KYC</Th>
+                <SortTh label="Inscription" sortKey="created" current={sortColumn} direction={direction} onSort={onSort} />
+              </>
+            }
+          >
+            {result.rows.map((u) => (
+              <Tr
+                key={u.userId}
+                onActivate={() => router.push(`/users/${encodeURIComponent(u.userId)}`)}
+              >
+                <Td className="max-w-[240px]">
+                  <PersonCell person={{ ...u, email: u.email || undefined, exists: true }} />
+                </Td>
+                <Td className="max-w-[220px] truncate font-mono text-xs text-idn-muted">
+                  {u.email || "Aucun e-mail"}
+                </Td>
+                <Td>
+                  <LoABadge level={u.loa as 1 | 2 | 3} compact />
+                </Td>
+                <Td className="text-idn-ink-2">
+                  {PROFILE_LABEL[u.profileType as ProfileType] ?? u.profileType}
+                </Td>
+                <Td>
+                  {u.roles.length === 0 ? (
+                    <span className="text-idn-muted">Aucun</span>
+                  ) : (
+                    <span className="flex flex-wrap gap-1">
+                      {u.roles.map((r) => (
+                        <span key={r} className="rounded bg-idn-surface-2 px-1.5 text-xs leading-5 text-idn-ink-2">
+                          {ROLE_LABEL[r as Role] ?? r}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </Td>
+                <Td>
+                  {u.deletedAt !== undefined ? (
+                    <StatusPill tone="neutral">Anonymisé</StatusPill>
+                  ) : u.kycStatus ? (
+                    <StatusPill tone={KYC_STATUS[u.kycStatus as KycStatus].tone}>
+                      {KYC_STATUS[u.kycStatus as KycStatus].label}
+                    </StatusPill>
+                  ) : (
+                    <span className="text-idn-muted">Aucun dossier</span>
+                  )}
+                </Td>
+                <Td className="whitespace-nowrap text-idn-muted">
+                  <time dateTime={new Date(u.createdAt).toISOString()} title={fmtDate(u.createdAt)}>
+                    {relativeTime(u.createdAt)}
+                  </time>
+                </Td>
+              </Tr>
+            ))}
+          </DataTable>
+          <Pagination
+            page={result.page}
+            pageCount={result.pageCount}
+            total={result.total}
+            noun={["compte", "comptes"]}
+            onChange={setPage}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+function FilterSelect<V extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: V
+  onChange: (value: V) => void
+  options: Array<[V, string]>
+}) {
+  const id = `filter-${label
+    .normalize("NFD")
+    .replace(/[^a-zA-Z]/g, "")
+    .toLowerCase()}`
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="adm-kicker" htmlFor={id}>
+        {label}
+      </label>
+      <Select value={value} onValueChange={(v) => onChange(v as V)}>
+        <SelectTrigger id={id} className="!h-9 min-w-[150px] text-[13px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="shadow-none">
+          {options.map(([v, l]) => (
+            <SelectItem key={v} value={v}>
+              {l}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   )
 }

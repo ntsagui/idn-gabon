@@ -1,36 +1,20 @@
 /**
- * Strings française de la console super-admin.
+ * Chaînes françaises partagées de la console d'administration.
  *
- * SOURCE — ressources/interfaces/project/idn-desktop.jsx (lignes 518-1822).
- * Toutes les chaînes sont copiées **verbatim** depuis les maquettes haute
- * fidélité. NE PAS modifier sans validation produit.
+ * Origine : maquettes ressources/interfaces/project/idn-desktop.jsx. Les
+ * chaînes propres à une seule page vivent dans cette page.
  */
 
 export const fr = {
-  brand: {
-    name: "Identité Numérique",
-    operator: "Admin · Système",
-    role: "ESPACE ADMIN",
-    badge: "O",
-    connecte: "connecté",
-  },
   settings: {
-    sub: "PARAMÈTRES",
-    title: "Paramètres du compte",
-    menu: "Paramètres",
-    signOut: "Se déconnecter",
-    tabs: {
-      account: "Compte",
-      preferences: "Préférences",
-    },
     account: {
       title: "Identité",
       sub: "Informations administratives du compte.",
       nameLabel: "Nom complet",
-      emailLabel: "Adresse email",
+      emailLabel: "Adresse e-mail",
       emailHelper: "Utilisée pour la connexion et les notifications.",
       roleLabel: "Rôle",
-      roleValue: "Administrateur Système",
+      roleValue: "Administrateur",
     },
     password: {
       title: "Mot de passe",
@@ -50,14 +34,6 @@ export const fr = {
       title: "Préférences",
       sub: "Langue de l'interface et thème.",
       saveSuccessToast: "Préférence enregistrée.",
-      language: {
-        label: "Langue",
-        description: "Langue affichée dans la console.",
-        options: [
-          { value: "fr", label: "Français" },
-          { value: "en", label: "English" },
-        ],
-      },
       theme: {
         label: "Thème",
         description: "Clair, sombre, ou suivant les préférences système.",
@@ -86,71 +62,7 @@ export const fr = {
       "Impossible de vous connecter pour le moment. Réessayez dans un instant.",
   },
 
-  nav: {
-    dashboard: "Tableau de bord",
-    apps: "Applications OAuth",
-    users: "Comptes IDN",
-    logs: "Logs & audit",
-    roles: "Rôles & habilitations",
-    providers: "Providers email/SMS",
-    signOut: "Se déconnecter",
-  },
-
-  dashboard: {
-    sub: "VUE D'ENSEMBLE · 7 derniers jours",
-    title: "Tableau de bord",
-    exportCsv: "Exporter CSV",
-    stats: {
-      accounts: { label: "COMPTES IDN", value: "142 318", delta: "+1.4%", hint: "vs sem. dernière" },
-      logins:   { label: "CONNEXIONS / 24H", value: "38 942", delta: "+8.2%", hint: "pic à 14h32" },
-      apps:     { label: "APPS ACTIVES", value: "23", hint: "2 en attente de revue" },
-      otpFail:  { label: "ÉCHECS OTP", value: "2.3%", hint: "seuil alerte : 5%" },
-    },
-    chart: {
-      title: "Connexions par jour",
-      subtitle: "15 jours glissants",
-      legendSuccess: "Réussies",
-      axisLeft: "26 AVR",
-      axisMid: "03 MAI",
-      axisRight: "10 MAI",
-    },
-    pie: {
-      title: "Répartition par niveau",
-      subtitle: "Comptes actifs",
-    },
-    activity: {
-      title: "Activité récente",
-    },
-  },
-
-  apps: {
-    sub: "OAUTH · 23 APPLICATIONS",
-    title: "Applications",
-    search: "Rechercher…",
-    newApp: "Nouvelle app",
-    cols: {
-      name: "NOM",
-      clientId: "CLIENT_ID",
-      loaMin: "NIVEAU MIN.",
-      scopes: "SCOPES",
-      status: "STATUT",
-    },
-  },
-
   appDetail: {
-    titleHead: "Détail de l'application",
-    deactivate: "Désactiver",
-    approveProd: "Approuver pour production",
-    oauthConfig: "Configuration OAuth",
-    dailyConnections: "Connexions par jour",
-    eventHistory: "Historique d'événements",
-    cred: {
-      clientId: "CLIENT_ID",
-      redirectUris: "REDIRECT URIS",
-      scopes: "SCOPES",
-      loaMin: "NIVEAU MIN.",
-      consent: "CONSENT",
-    },
     delegation: {
       title: "Délégation d'identité",
       description:
@@ -177,27 +89,6 @@ export const fr = {
   },
 
   users: {
-    sub: "COMPTES · 142 318 ACTIFS",
-    title: "Utilisateurs",
-    search: "Email, ID IDN, NIP, nom…",
-    searchLabel: "Rechercher un compte",
-    clearSearch: "Effacer la recherche",
-    loading: "Chargement…",
-    tabsLabel: "Vue des comptes",
-    tabList: "Tous les comptes",
-    listTruncated:
-      "Liste partielle : le registre dépasse la capacité de balayage. Utilisez la recherche pour atteindre un compte précis.",
-    resultCount: (n: number) =>
-      n === 0 ? "Aucun résultat" : n === 1 ? "1 résultat" : `${n} résultats`,
-    searchTruncated:
-      "Recherche partielle : seuls les premiers comptes ont été balayés. Affinez avec un email ou un ID IDN.",
-    cols: {
-      name: "NOM",
-      email: "EMAIL",
-      loa: "NIVEAU",
-      profile: "PROFIL",
-      joined: "INSCRIT",
-    },
     actions: {
       anonymize: "Anonymiser",
       delete: "Supprimer",
@@ -217,21 +108,7 @@ export const fr = {
     },
   },
 
-  pagination: {
-    label: "Pagination",
-    previous: "Précédent",
-    next: "Suivant",
-    goToPage: (n: number) => `Aller à la page ${n}`,
-    summary: (page: number, pageCount: number, total: number) =>
-      `Page ${page} sur ${pageCount} · ${total.toLocaleString("fr-FR")} compte${total > 1 ? "s" : ""}`,
-    totalOnly: (total: number) =>
-      `${total.toLocaleString("fr-FR")} compte${total > 1 ? "s" : ""}`,
-  },
-
   duplicates: {
-    sub: "DOUBLONS · NOM + PRÉNOM + DATE DE NAISSANCE",
-    title: "Comptes en double",
-    navLabel: "Doublons",
     emptyTitle: "Aucun doublon détecté",
     emptyBody:
       "Aucun compte ne partage nom, prénom et date de naissance avec un autre. Les comptes sans identité pivot renseignée ne sont pas comparables et n'apparaissent pas ici.",
@@ -268,33 +145,6 @@ export const fr = {
       resolveHint:
         "Fermer un signalement ne modifie aucun compte : la suppression reste une action distincte.",
     },
-    cols: {
-      account: "COMPTE",
-      loa: "NIVEAU",
-      created: "CRÉÉ LE",
-    },
   },
 
-  logs: {
-    sub: "AUDIT · TEMPS RÉEL",
-    title: "Logs",
-    filters: "Filtres",
-    export: "Exporter",
-  },
-
-  roles: {
-    sub: "HABILITATIONS · 56 AGENTS",
-    title: "Rôles & habilitations",
-    newRole: "Nouveau rôle",
-    agents: "agents",
-  },
-
-  providers: {
-    sub: "COMMUNICATION · MULTI-PROVIDER",
-    title: "Providers email & SMS",
-    emailSectionTitle: "Email — un provider actif",
-    smsSectionTitle: "SMS — Phase 2 (non actif)",
-    badgeActive: "ACTIF",
-    activate: "Activer",
-  },
 } as const

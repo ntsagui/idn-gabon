@@ -1,242 +1,290 @@
 "use client"
 
 /**
- * Rôles & habilitations — port de idn-desktop.jsx:1372-1488 (AdminRoles).
+ * Rôles et habilitations : matrice des droits par rôle, titulaires,
+ * attribution et révocation.
  *
- * Câblé sur :
- *   - admin.roles.listRolesSummary (cartes par rôle)
- *   - admin.roles.listOperators (table opérateurs avec verified)
- *   - admin.operators.createOperator (action — nouveau contrôleur/dev)
- *   - admin.roles.setDeveloperVerified (validation production dev)
- *   - admin.roles.revoke (révocation par ligne)
- *
- * Pour les développeurs : un badge indique « Validé pour la production »
- * (vert) ou « Sandbox uniquement » (muted). Le super-admin peut basculer
- * via le bouton « Valider prod. » / « Retirer prod. ».
+ * Chaque rôle n'ouvre que son portail (`lib/auth.requireRole`) : un
+ * administrateur n'accède pas au portail de contrôle sans le rôle contrôleur.
  */
-import { useState } from "react"
-import { useQuery } from "convex/react"
+import { useMemo, useState } from "react"
+import { useMutation, useQuery } from "convex/react"
+import { ConvexError } from "convex/values"
+import { Check, Minus } from "lucide-react"
+import { toast } from "sonner"
 
-import { cn } from "@repo/ui/lib/utils"
 import { api } from "@repo/backend/convex/_generated/api"
+import { Button } from "@repo/ui/components/button"
+import { cn } from "@repo/ui/lib/utils"
 
-import { fr } from "../../_content/fr"
+import { AssignRoleDialog } from "../../_components/assign-role-dialog"
+import { ConfirmDialog } from "../../_components/confirm-dialog"
 import { CreateOperatorDialog } from "../../_components/create-operator-dialog"
 import { EmptyState } from "../../_components/empty-state"
-import { OperatorRowActions } from "../../_components/operator-row-actions"
-import { OpHeader } from "../../_components/op-header"
+import { PageBody, PageHeader } from "../../_components/page-header"
+import { Panel } from "../../_components/panel"
+import { PersonCell } from "../../_components/person"
+import { TableSkeleton } from "../../_components/skeleton"
+import { StatusPill } from "../../_components/status-pill"
+import { DataTable, Td, Th, Tr } from "../../_components/table"
+import { fmtNumber, plural, since } from "../../_lib/format"
+import { ROLE_LABEL, ROLES, type Role } from "../../_lib/labels"
 
-type RoleSummary = { role: string; count: number }
-type Operator = {
-  userId: string
-  email: string
-  name?: string
-  role: string
-  assignedAt: number
-  verified: boolean
-  verifiedAt?: number
-}
-
-type RoleBadgeColor = "green" | "blue" | "muted" | "yellow"
-type RoleKey = "admin" | "identity_controller" | "developer" | "all"
-
-const BADGE_BG: Record<RoleBadgeColor, string> = {
-  green: "bg-idn-green",
-  blue: "bg-idn-blue",
-  muted: "bg-idn-muted",
-  yellow: "bg-idn-yellow",
-}
-
-type RoleCard = {
-  role: "admin" | "identity_controller" | "developer"
-  name: string
-  perms: string[]
-  badge: RoleBadgeColor
-}
-
-const ROLE_CATALOG: RoleCard[] = [
+const CAPABILITIES: Array<{ label: string; roles: Role[]; note?: string }> = [
+  { label: "Console d'administration : comptes, applications, journal", roles: ["admin"] },
+  { label: "Codes provisoires de mot de passe et de PIN", roles: ["admin"] },
+  { label: "Attribution et révocation des rôles", roles: ["admin"] },
+  { label: "Revue et suspension des applications OAuth", roles: ["admin"] },
+  { label: "Portail de contrôle : file KYC, examen, vérification d'identité", roles: ["identity_controller"] },
+  { label: "Portail développeur : applications, clés d'API, webhooks", roles: ["developer"] },
   {
-    role: "admin",
-    name: "Administrateur Système",
-    perms: [
-      "Tout accès",
-      "Gestion comptes",
-      "Gestion apps",
-      "Logs",
-      "Providers",
-    ],
-    badge: "green",
-  },
-  {
-    role: "identity_controller",
-    name: "Contrôleur d'Identité",
-    perms: ["Scanner ID", "Valider KYC", "Historique", "MFA + PIN obligatoire"],
-    badge: "blue",
-  },
-  {
-    role: "developer",
-    name: "Développeur",
-    perms: ["Console développeur", "Apps OAuth", "Webhooks", "Sandbox"],
-    badge: "muted",
+    label: "Publication en production",
+    roles: ["developer"],
+    note: "Après validation du développeur par un administrateur",
   },
 ]
 
-const FILTER_LABEL: Record<RoleKey, string> = {
-  all: "Tous",
-  admin: "Administrateurs",
-  identity_controller: "Contrôleurs",
-  developer: "Développeurs",
+type Filter = "all" | Role
+
+function errorMessage(err: unknown, fallback: string) {
+  if (err instanceof ConvexError) {
+    const data = err.data as { message?: string } | undefined
+    if (data?.message) return data.message
+  }
+  return err instanceof Error ? err.message : fallback
 }
 
 export default function RolesPage() {
-  const [filter, setFilter] = useState<RoleKey>("all")
+  const summary = useQuery(api.admin.roles.listRolesSummary, {})
+  const operators = useQuery(api.admin.roles.listOperators, { limit: 500 })
+  const revoke = useMutation(api.admin.roles.revoke)
+  const setVerified = useMutation(api.admin.roles.setDeveloperVerified)
+  const [filter, setFilter] = useState<Filter>("all")
+  const [pending, setPending] = useState<
+    | { kind: "revoke"; userId: string; role: Role; label: string }
+    | { kind: "verify"; userId: string; verified: boolean; label: string }
+    | null
+  >(null)
 
-  const summary = useQuery(api.admin.roles.listRolesSummary, {}) as
-    | RoleSummary[]
-    | undefined
-  const operators = useQuery(api.admin.roles.listOperators, { limit: 200 }) as
-    | Operator[]
-    | undefined
-
-  const counts: Record<string, number> = {}
-  for (const r of summary ?? []) counts[r.role] = r.count
-  const totalAgents = (summary ?? []).reduce((s, r) => s + r.count, 0)
-
-  const filteredOperators = (operators ?? []).filter(
-    (o) => filter === "all" || o.role === filter,
-  )
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const r of summary ?? []) c[r.role] = r.count
+    return c
+  }, [summary])
+  const totalAssignments = (summary ?? []).reduce((s, r) => s + r.count, 0)
+  const rows = (operators ?? []).filter((o) => filter === "all" || o.role === filter)
 
   return (
     <>
-      <OpHeader
-        sub={`HABILITATIONS · ${totalAgents} AGENT${totalAgents > 1 ? "S" : ""}`}
-        title={fr.roles.title}
-        right={<CreateOperatorDialog triggerLabel="Nouvel opérateur" />}
+      <PageHeader
+        kicker={summary ? `Sécurité · ${plural(totalAssignments, "habilitation", "habilitations")}` : "Sécurité"}
+        title="Rôles et habilitations"
+        description="Qui peut faire quoi dans les portails professionnels d'IDN."
+        actions={
+          <>
+            <CreateOperatorDialog />
+            <AssignRoleDialog />
+          </>
+        }
       />
-      <div className="portal-canvas flex-1 overflow-auto">
-        <div className="portal-limit">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {ROLE_CATALOG.map((r) => {
-              const count = counts[r.role] ?? 0
-              return (
-                <article key={r.role} className="portal-panel p-5">
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className={cn("h-2 w-2 rounded-full", BADGE_BG[r.badge])}
-                      aria-hidden
-                    />
-                    <h2 className="text-sm font-semibold text-idn-ink">
-                      {r.name}
-                    </h2>
-                    <span className="ml-auto font-mono text-[11px] text-idn-muted">
-                      {count} {fr.roles.agents}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {r.perms.map((p) => (
-                      <span
-                        key={p}
-                        className="rounded-full bg-idn-surface-2 px-2.5 py-[3px] text-[11px] text-idn-ink-2"
-                      >
-                        {p}
+      <PageBody>
+        <Panel id="matrix" title="Matrice des droits" bodyClassName="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
+              <caption className="sr-only">Droits accordés par chaque rôle</caption>
+              <thead className="bg-idn-surface-2">
+                <tr className="border-b border-idn-border">
+                  <th scope="col" className="h-10 px-4 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-idn-muted">
+                    Droit
+                  </th>
+                  {ROLES.map((r) => (
+                    <th key={r} scope="col" className="h-10 px-4 text-center">
+                      <span className="block text-[13px] font-semibold text-idn-ink">{ROLE_LABEL[r]}</span>
+                      <span className="block font-mono text-[11px] font-normal text-idn-muted">
+                        {summary ? plural(counts[r] ?? 0, "titulaire", "titulaires") : "…"}
                       </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {CAPABILITIES.map((cap) => (
+                  <tr key={cap.label} className="border-b border-idn-border-soft last:border-0">
+                    <th scope="row" className="px-4 py-2.5 font-normal text-idn-ink">
+                      {cap.label}
+                      {cap.note ? <span className="block text-xs text-idn-muted">{cap.note}</span> : null}
+                    </th>
+                    {ROLES.map((r) => (
+                      <td key={r} className="px-4 py-2.5 text-center">
+                        {cap.roles.includes(r) ? (
+                          <>
+                            <Check aria-hidden className="mx-auto size-4 text-idn-green" />
+                            <span className="sr-only">Oui</span>
+                          </>
+                        ) : (
+                          <>
+                            <Minus aria-hidden className="mx-auto size-4 text-idn-muted-soft" />
+                            <span className="sr-only">Non</span>
+                          </>
+                        )}
+                      </td>
                     ))}
-                  </div>
-                </article>
-              )
-            })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        </Panel>
 
-          <div className="mt-7 mb-3 flex items-center justify-between">
-            <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-idn-muted">
-              Opérateurs habilités
-            </h2>
-            <div className="flex gap-1">
-              {(Object.keys(FILTER_LABEL) as RoleKey[]).map((k) => (
+        <Panel
+          id="holders"
+          title="Titulaires"
+          className="mt-4"
+          bodyClassName="p-0"
+          actions={
+            <div role="group" aria-label="Filtrer par rôle" className="flex flex-wrap gap-1">
+              {(["all", ...ROLES] as Filter[]).map((k) => (
                 <button
                   key={k}
                   type="button"
+                  aria-pressed={filter === k}
                   onClick={() => setFilter(k)}
                   className={cn(
-                    "h-7 rounded-lg px-2.5 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-idn-green",
+                    "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-idn-green",
                     filter === k
-                      ? "bg-idn-green-soft text-idn-green"
-                      : "text-idn-muted hover:bg-idn-surface-2",
+                      ? "bg-idn-green-soft text-idn-green-dark dark:bg-[#0F2A18] dark:text-idn-green-on-dark"
+                      : "text-idn-muted hover:bg-idn-surface-2 hover:text-idn-ink",
                   )}
                 >
-                  {FILTER_LABEL[k]}
+                  {k === "all" ? "Tous" : ROLE_LABEL[k]}
+                  <span className="font-mono text-[11px]">
+                    {fmtNumber(k === "all" ? totalAssignments : (counts[k] ?? 0))}
+                  </span>
                 </button>
               ))}
             </div>
-          </div>
-
-          {filteredOperators.length === 0 ? (
+          }
+        >
+          {operators === undefined ? (
+            <TableSkeleton rows={4} />
+          ) : rows.length === 0 ? (
             <EmptyState
-              title="Aucun opérateur"
-              description="Utilisez le bouton « Nouvel opérateur » pour créer un compte contrôleur ou développeur."
+              title="Aucun titulaire"
+              description="Attribuez ce rôle à un compte existant ou créez un compte opérateur."
+              action={<AssignRoleDialog defaultRole={filter === "all" ? undefined : filter} />}
             />
           ) : (
-            <div className="portal-table">
-              <div className="grid grid-cols-[2fr_2fr_1.2fr_1fr_180px] border-b border-idn-border bg-idn-surface-2 px-[18px] py-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-idn-muted">
-                <div>NOM</div>
-                <div>EMAIL</div>
-                <div>RÔLE</div>
-                <div>STATUT</div>
-                <div className="text-right">ACTIONS</div>
-              </div>
-              {filteredOperators.map((o, i, arr) => (
-                <div
-                  key={`${o.userId}-${o.role}`}
-                  className={
-                    "grid grid-cols-[2fr_2fr_1.2fr_1fr_180px] items-center px-[18px] py-3 text-[13px] text-idn-ink " +
-                    (i === arr.length - 1
-                      ? ""
-                      : "border-b border-idn-border-soft")
-                  }
-                >
-                  <div className="font-medium">{o.name ?? "—"}</div>
-                  <div className="font-mono text-[11px] text-idn-muted">
-                    {o.email}
-                  </div>
-                  <div className="text-idn-ink-2">
-                    {ROLE_CATALOG.find((r) => r.role === o.role)?.name ??
-                      o.role}
-                  </div>
-                  <div>
-                    {o.role === "developer" ? (
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-full px-2.5 py-[3px] text-[11px] font-medium",
-                          o.verified
-                            ? "bg-idn-green-soft text-idn-green"
-                            : "bg-idn-surface-2 text-idn-muted",
-                        )}
-                      >
-                        {o.verified ? "Validé prod." : "Sandbox uniquement"}
+            <DataTable
+              label="Titulaires des rôles"
+              head={
+                <>
+                  <Th>Titulaire</Th>
+                  <Th>Rôle</Th>
+                  <Th>Ancienneté</Th>
+                  <Th>Production</Th>
+                  <Th align="right">Actions</Th>
+                </>
+              }
+            >
+              {rows.map((o) => {
+                const label = o.name ?? o.email
+                return (
+                  <Tr key={`${o.userId}-${o.role}`}>
+                    <Td className="max-w-[260px]">
+                      <PersonCell
+                        person={{ userId: o.userId, name: o.name, email: o.email, exists: true }}
+                        secondary="email"
+                      />
+                    </Td>
+                    <Td>{ROLE_LABEL[o.role as Role] ?? o.role}</Td>
+                    <Td className="whitespace-nowrap text-idn-muted">{since(o.assignedAt)}</Td>
+                    <Td>
+                      {o.role === "developer" ? (
+                        <StatusPill tone={o.verified ? "green" : "neutral"}>
+                          {o.verified ? "Validé" : "Sandbox uniquement"}
+                        </StatusPill>
+                      ) : (
+                        <span className="text-idn-muted">Sans objet</span>
+                      )}
+                    </Td>
+                    <Td align="right">
+                      <span className="flex justify-end gap-1.5">
+                        {o.role === "developer" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setPending({ kind: "verify", userId: o.userId, verified: !o.verified, label })
+                            }
+                          >
+                            {o.verified ? "Retirer la validation" : "Valider pour la production"}
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setPending({ kind: "revoke", userId: o.userId, role: o.role as Role, label })
+                          }
+                          className="text-[#B3261E] hover:bg-[#FBE9E7] hover:text-[#B3261E] dark:text-[#F2A49E] dark:hover:bg-[#3A1513]"
+                        >
+                          Révoquer
+                        </Button>
                       </span>
-                    ) : (
-                      <span className="text-xs text-idn-muted">
-                        {new Date(o.assignedAt).toLocaleDateString("fr-FR", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </span>
-                    )}
-                  </div>
-                  <OperatorRowActions
-                    userId={o.userId}
-                    role={
-                      o.role as "admin" | "identity_controller" | "developer"
-                    }
-                    verified={o.verified}
-                  />
-                </div>
-              ))}
-            </div>
+                    </Td>
+                  </Tr>
+                )
+              })}
+            </DataTable>
           )}
-        </div>
-      </div>
+        </Panel>
+      </PageBody>
+
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(o) => !o && setPending(null)}
+        title={
+          pending?.kind === "revoke"
+            ? `Révoquer le rôle ${ROLE_LABEL[pending.role]} de ${pending.label}`
+            : pending?.kind === "verify" && pending.verified
+              ? `Valider ${pending.label} pour la production`
+              : `Retirer la validation de ${pending?.label ?? ""}`
+        }
+        consequence={
+          pending?.kind === "revoke"
+            ? "L'accès au portail correspondant est retiré immédiatement. Le compte citoyen n'est pas modifié. L'action est journalisée."
+            : pending?.kind === "verify" && pending.verified
+              ? "Le développeur pourra demander la mise en production de ses applications. Chaque demande reste soumise à votre approbation."
+              : "Le développeur ne pourra plus créer ni publier d'application hors Sandbox. Ses applications déjà en production ne sont pas suspendues."
+        }
+        confirmLabel={
+          pending?.kind === "revoke"
+            ? "Révoquer le rôle"
+            : pending?.kind === "verify" && pending.verified
+              ? "Valider"
+              : "Retirer la validation"
+        }
+        destructive={pending?.kind === "revoke" || (pending?.kind === "verify" && !pending.verified)}
+        onConfirm={async () => {
+          if (!pending) return
+          try {
+            if (pending.kind === "revoke") {
+              await revoke({ userId: pending.userId, role: pending.role })
+              toast.success(`Rôle ${ROLE_LABEL[pending.role]} révoqué pour ${pending.label}.`)
+            } else {
+              await setVerified({ userId: pending.userId, verified: pending.verified })
+              toast.success(
+                pending.verified
+                  ? `${pending.label} est validé pour la production.`
+                  : `Validation production retirée pour ${pending.label}.`,
+              )
+            }
+          } catch (err) {
+            toast.error(errorMessage(err, "Action impossible."))
+            throw err
+          }
+        }}
+      />
     </>
   )
 }

@@ -43,10 +43,15 @@ async function describeAccount(ctx: QueryCtx, userId: string | undefined) {
     .query("userProfile")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .unique()
-  const user = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-    model: "user",
-    where: [{ field: "_id", value: userId }],
-  })) as { email?: string } | null
+  // Un identifiant qui n'est pas un `_id` Better Auth valide (donnée de
+  // démonstration, compte purgé) fait lever l'adapter : sans ce filet, une
+  // seule ligne rendait toute la file d'arbitrage illisible.
+  const user = (await ctx
+    .runQuery(components.betterAuth.adapter.findOne, {
+      model: "user",
+      where: [{ field: "_id", value: userId }],
+    })
+    .catch(() => null)) as { email?: string } | null
   return {
     userId,
     email: user?.email ?? "",

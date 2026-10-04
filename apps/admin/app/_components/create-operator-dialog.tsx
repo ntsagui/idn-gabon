@@ -18,7 +18,7 @@ import {
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
 
-import { IdnIcons } from "./icons"
+import { UserRoundPlus } from "lucide-react"
 
 type Role = "identity_controller" | "developer"
 
@@ -81,36 +81,34 @@ export function CreateOperatorDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-2 rounded-lg border border-idn-green bg-idn-green px-3 text-[13px] font-medium text-white outline-none transition-colors hover:bg-idn-green-dark focus-visible:ring-2 focus-visible:ring-idn-green focus-visible:ring-offset-2"
-        >
-          <span aria-hidden>{IdnIcons.plus}</span>
-          {triggerLabel ?? "Nouvel opérateur"}
-        </button>
+        <Button size="sm" variant="outline">
+          <UserRoundPlus aria-hidden />
+          {triggerLabel ?? "Créer un compte opérateur"}
+        </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[460px]">
+      <DialogContent className="shadow-none sm:max-w-[460px]">
         <DialogHeader>
-          <DialogTitle>Nouvel opérateur</DialogTitle>
+          <DialogTitle>Créer un compte opérateur</DialogTitle>
           <DialogDescription>
-            Crée un compte Better Auth et assigne le rôle choisi. Le mot de
-            passe sera communiqué hors-ligne à l&apos;intéressé.
+            Le compte est créé avec le rôle choisi. Communiquez le mot de passe
+            provisoire à l&apos;agent par un canal distinct.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Rôle</Label>
-            <div className="flex gap-2">
+            <p id="op-role" className="text-sm font-medium leading-none">Rôle</p>
+            <div role="group" aria-labelledby="op-role" className="flex gap-2">
               {(Object.entries(ROLE_LABEL) as [Role, string][]).map(
                 ([r, label]) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => setRole(r)}
+                    aria-pressed={role === r}
                     className={
-                      "h-9 flex-1 rounded-lg border text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-idn-green " +
+                      "h-9 flex-1 rounded-md border text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-idn-green " +
                       (role === r
-                        ? "border-idn-green bg-idn-green-soft text-idn-green"
+                        ? "border-idn-green bg-idn-green-soft text-idn-green-dark dark:bg-[#0F2A18] dark:text-idn-green-on-dark"
                         : "border-idn-border bg-transparent text-idn-ink hover:bg-idn-surface-2")
                     }
                   >
@@ -131,7 +129,7 @@ export function CreateOperatorDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="op-email">Email professionnel</Label>
+            <Label htmlFor="op-email">E-mail professionnel</Label>
             <Input
               id="op-email"
               value={email}
@@ -154,8 +152,8 @@ export function CreateOperatorDialog({
               minLength={12}
               placeholder="Au moins 12 caractères"
             />
-            <p className="text-[11px] text-idn-muted">
-              L&apos;agent devra le changer à sa première connexion.
+            <p className="text-xs text-idn-muted">
+              Au moins 12 caractères. L&apos;agent le remplace depuis ses paramètres.
             </p>
           </div>
           <DialogFooter>

@@ -5,9 +5,15 @@ import { useConvexAuth, useQuery } from "convex/react"
 import { useEffect } from "react"
 
 import { api } from "@repo/backend/convex/_generated/api"
+import { IdnMark } from "@repo/ui/components/idn-mark"
 
-import { OpShell } from "../_components/op-shell"
+import { Shell } from "../_components/shell"
 
+/**
+ * Garde d'accès de la console : session Convex prête ET rôle administrateur.
+ * Aucune query de la console ne part avant que le jeton soit disponible —
+ * elles sont toutes rendues sous ce garde.
+ */
 export default function ConsoleLayout({
   children,
 }: {
@@ -16,10 +22,8 @@ export default function ConsoleLayout({
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth()
   const router = useRouter()
 
-  const me = useQuery(
-    api.profile.getCurrentUser,
-    isAuthenticated ? {} : "skip",
-  )
+  const me = useQuery(api.profile.getCurrentUser, isAuthenticated ? {} : "skip")
+  const isAdmin = Boolean(me?.roles?.includes("admin"))
 
   useEffect(() => {
     if (isAuthLoading) return
@@ -28,27 +32,30 @@ export default function ConsoleLayout({
       return
     }
     if (me === undefined) return
-    if (!me || !me.roles?.includes("admin")) {
-      router.replace("/sign-in?error=forbidden")
-    }
-  }, [isAuthLoading, isAuthenticated, me, router])
+    if (!isAdmin) router.replace("/sign-in?error=forbidden")
+  }, [isAuthLoading, isAuthenticated, me, isAdmin, router])
 
-  if (isAuthLoading || !isAuthenticated || me === undefined) {
-    return <div className="min-h-svh bg-background" />
-  }
-  if (!me || !me.roles?.includes("admin")) {
-    return <div className="min-h-svh bg-background" />
+  if (isAuthLoading || !isAuthenticated || me === undefined || !isAdmin) {
+    return (
+      <div
+        role="status"
+        className="flex min-h-svh flex-col items-center justify-center gap-3 bg-idn-bg"
+      >
+        <IdnMark size={32} aria-hidden />
+        <p className="adm-kicker">Vérification de l&apos;accès…</p>
+      </div>
+    )
   }
 
   return (
     <>
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-idn-green focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
       >
         Aller au contenu principal
       </a>
-      <OpShell>{children}</OpShell>
+      <Shell>{children}</Shell>
     </>
   )
 }

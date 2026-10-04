@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@repo/ui/components/dialog"
+import { Button } from "@repo/ui/components/button"
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
 
@@ -111,21 +112,22 @@ export function RecoveryCodeCard({
 
   return (
     <>
-      <section className="portal-panel p-5">
-        <h2 className="text-[13px] font-semibold text-idn-ink">{title}</h2>
-        <p className="mt-2 text-xs leading-relaxed text-idn-muted">{intro}</p>
-        <button
+      <section className="adm-panel p-5">
+        <h3 className="text-[15px] font-semibold text-idn-ink">{title}</h3>
+        <p className="mt-1 text-[13px] leading-relaxed text-idn-muted">{intro}</p>
+        <Button
           type="button"
+          size="sm"
+          className="mt-4"
           onClick={() => setOpen(true)}
           disabled={disabledReason !== null}
-          title={disabledReason ?? "Générer un code à usage unique"}
-          className="mt-4 inline-flex h-9 items-center rounded-lg bg-idn-green px-3 text-[13px] font-medium text-white outline-none hover:bg-idn-green-dark focus-visible:ring-2 focus-visible:ring-idn-green focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45"
+          aria-describedby={disabledReason ? `${confirmInputId}-blocked` : undefined}
         >
           Générer un code provisoire
-        </button>
+        </Button>
         {disabledReason ? (
-          <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
-            {disabledReason}
+          <p id={`${confirmInputId}-blocked`} className="mt-2 text-xs text-[#6B5400] dark:text-[#F2D45C]">
+            Indisponible : {disabledReason.charAt(0).toLowerCase() + disabledReason.slice(1)}.
           </p>
         ) : null}
       </section>
@@ -136,7 +138,7 @@ export function RecoveryCodeCard({
           if (!nextOpen) close()
         }}
       >
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="shadow-none sm:max-w-[500px]">
           {issued ? (
             <>
               <DialogHeader>
@@ -147,7 +149,7 @@ export function RecoveryCodeCard({
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="rounded-xl border border-idn-border bg-idn-surface-2 px-5 py-5 text-center">
+              <div className="rounded-lg border border-idn-border bg-idn-surface-2 px-5 py-5 text-center">
                 <p
                   aria-label={`Code provisoire ${issued.code}`}
                   className="select-all font-mono text-3xl font-semibold tracking-[0.28em] text-idn-ink"
@@ -169,20 +171,12 @@ export function RecoveryCodeCard({
               </div>
 
               <DialogFooter>
-                <button
-                  type="button"
-                  onClick={close}
-                  className="inline-flex h-9 items-center rounded-lg border border-idn-border bg-transparent px-3 text-[13px] font-medium text-idn-ink outline-none hover:bg-idn-surface-2 focus-visible:ring-2 focus-visible:ring-idn-green"
-                >
-                  Fermer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void copyCode()}
-                  className="inline-flex h-9 items-center rounded-lg bg-idn-green px-3 text-[13px] font-medium text-white outline-none hover:bg-idn-green-dark focus-visible:ring-2 focus-visible:ring-idn-green focus-visible:ring-offset-2"
-                >
+                <Button type="button" variant="outline" onClick={close}>
+                  Terminer
+                </Button>
+                <Button type="button" onClick={() => void copyCode()}>
                   Copier le code
-                </button>
+                </Button>
               </DialogFooter>
             </>
           ) : (
@@ -197,7 +191,7 @@ export function RecoveryCodeCard({
               </DialogHeader>
 
               <form onSubmit={onSubmit} className="space-y-4">
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                <div className="rounded-md bg-idn-yellow-soft px-3 py-2.5 text-xs leading-relaxed text-[#6B5400] dark:bg-[#2E2708] dark:text-[#F2D45C]">
                   Confirmez l’identité du titulaire par la procédure support
                   avant de communiquer ce code.
                 </div>
@@ -215,20 +209,12 @@ export function RecoveryCodeCard({
                   />
                 </div>
                 <DialogFooter>
-                  <button
-                    type="button"
-                    onClick={close}
-                    className="inline-flex h-9 items-center rounded-lg border border-idn-border bg-transparent px-3 text-[13px] font-medium text-idn-ink outline-none hover:bg-idn-surface-2 focus-visible:ring-2 focus-visible:ring-idn-green"
-                  >
+                  <Button type="button" variant="outline" onClick={close}>
                     Annuler
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={busy || confirm.trim() === ""}
-                    className="inline-flex h-9 items-center rounded-lg bg-idn-green px-3 text-[13px] font-medium text-white outline-none hover:bg-idn-green-dark focus-visible:ring-2 focus-visible:ring-idn-green focus-visible:ring-offset-2 disabled:opacity-50"
-                  >
+                  </Button>
+                  <Button type="submit" disabled={busy || confirm.trim() === ""}>
                     {busy ? "Génération…" : "Générer le code"}
-                  </button>
+                  </Button>
                 </DialogFooter>
               </form>
             </>

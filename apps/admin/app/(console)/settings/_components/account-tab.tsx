@@ -34,7 +34,7 @@ function describeError(err: unknown, fallback: string): string {
 }
 
 const ROLE_LABEL: Record<string, string> = {
-  admin: "Administrateur Système",
+  admin: "Administrateur",
   identity_controller: "Contrôleur d'Identité",
   developer: "Développeur",
 }
@@ -44,11 +44,11 @@ export function AccountTab() {
   const me = useQuery(api.profile.getCurrentUser) as any
 
   if (me === undefined) {
-    return <div className="h-40 animate-pulse rounded-xl bg-secondary" />
+    return <div className="adm-skeleton h-40" />
   }
   if (me === null) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+      <div className="adm-panel p-6 text-sm text-idn-muted">
         Session introuvable. Reconnectez-vous.
       </div>
     )
@@ -88,7 +88,7 @@ export function AccountTab() {
         <SettingsRow
           label={fr.settings.account.roleLabel}
           trailing={
-            <span className="rounded-full bg-idn-green-soft px-2 py-0.5 text-xs font-semibold text-idn-green dark:bg-[#0F2A18] dark:text-idn-green-on-dark">
+            <span className="rounded-full bg-idn-green-soft px-2.5 py-0.5 text-xs font-medium text-idn-green-dark dark:bg-[#0F2A18] dark:text-idn-green-on-dark">
               {(primaryRole && ROLE_LABEL[primaryRole]) ??
                 fr.settings.account.roleValue}
             </span>
@@ -158,7 +158,7 @@ function PasswordChangeRow() {
           <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
             {fr.settings.password.cta}
           </Button>
-          <DialogContent>
+          <DialogContent className="shadow-none">
             <DialogHeader>
               <DialogTitle>{fr.settings.password.modalTitle}</DialogTitle>
               <DialogDescription>

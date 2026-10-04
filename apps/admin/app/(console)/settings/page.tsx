@@ -7,29 +7,25 @@ import {
   TabsTrigger,
 } from "@repo/ui/components/tabs"
 
-import { fr } from "../../_content/fr"
-import { OpHeader } from "../../_components/op-header"
+import { PageBody, PageHeader } from "../../_components/page-header"
 import { AccountTab } from "./_components/account-tab"
 import { PreferencesTab } from "./_components/preferences-tab"
 
-/**
- * Paramètres super-admin — onglets Compte et Préférences.
- * Pattern : apps/controller/(private)/settings/page.tsx.
- */
+/** Paramètres du compte administrateur : identité, mot de passe, thème. */
 export default function AdminSettingsPage() {
   return (
     <>
-      <OpHeader sub={fr.settings.sub} title={fr.settings.title} />
-      <div className="portal-canvas flex-1 overflow-auto">
-        <div className="portal-limit-narrow">
+      <PageHeader
+        kicker="Configuration"
+        title="Paramètres"
+        description="Votre compte administrateur et l'affichage de la console."
+      />
+      <PageBody>
+        <div className="max-w-[820px]">
           <Tabs defaultValue="account">
             <TabsList variant="line" className="w-full justify-start gap-1">
-              <TabsTrigger value="account">
-                {fr.settings.tabs.account}
-              </TabsTrigger>
-              <TabsTrigger value="preferences">
-                {fr.settings.tabs.preferences}
-              </TabsTrigger>
+              <TabsTrigger value="account">Compte</TabsTrigger>
+              <TabsTrigger value="preferences">Affichage</TabsTrigger>
             </TabsList>
             <TabsContent value="account" className="mt-6">
               <AccountTab />
@@ -39,7 +35,7 @@ export default function AdminSettingsPage() {
             </TabsContent>
           </Tabs>
         </div>
-      </div>
+      </PageBody>
     </>
   )
 }
