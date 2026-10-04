@@ -40,9 +40,6 @@ export function PublicNav({ className }: { className?: string }) {
           <span className="hidden whitespace-nowrap text-sm font-semibold text-foreground sm:inline">
             {navActions.brand}
           </span>
-          <span className="hidden whitespace-nowrap rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold tracking-[0.05em] text-muted-foreground md:inline">
-            {navActions.republic}
-          </span>
         </Link>
 
         <nav

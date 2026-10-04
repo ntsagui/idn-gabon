@@ -8,7 +8,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint --max-warnings 0",
-    "check-types": "next typegen && tsc --noEmit"
+    "check-types": "next typegen && tsc --noEmit",
+    "lottie:brand": "node scripts/brand-lottie.mjs"
   },
   "dependencies": {
     "@livekit/components-styles": "^1.2.0",
@@ -30,6 +31,7 @@
     "framer-motion": "^12.23.24",
     "html2canvas-pro": "^2.0.2",
     "jspdf": "^4.2.1",
+    "lottie-react": "^3.1.2",
     "next": "16.2.0",
     "postcss": "^8.5.14",
     "qrcode.react": "^4.2.0",
@@ -44,6 +46,7 @@
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "eslint": "^9.39.1",
+    "svgpath": "^2.6.0",
     "typescript": "5.9.2"
   }
 }

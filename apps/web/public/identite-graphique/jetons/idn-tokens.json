@@ -1,0 +1,53 @@
+{
+  "color": {
+    "green": "#0e7c3a",
+    "greenDark": "#0a5c2c",
+    "greenSoft": "#e6f2ea",
+    "yellow": "#f2c811",
+    "yellowSoft": "#fcf4d6",
+    "blue": "#2563ac",
+    "blueSoft": "#e6eef7",
+    "destructive": "#b3261e",
+    "light": {
+      "bg": "#fafaf8",
+      "surface": "#ffffff",
+      "surface2": "#f4f3ee",
+      "border": "#e6e4dd",
+      "ink": "#16170f",
+      "ink2": "#3a3d2e",
+      "muted": "#5e6058"
+    },
+    "dark": {
+      "bg": "#0e110d",
+      "surface": "#181c16",
+      "surface2": "#22271f",
+      "border": "#2c3128",
+      "ink": "#f2f0e8",
+      "ink2": "#d4d2c7",
+      "muted": "#b0b2a4",
+      "greenText": "#5bc57f",
+      "blueText": "#6ba4e0"
+    }
+  },
+  "radius": {
+    "sm": 6,
+    "md": 10,
+    "lg": 14,
+    "xl": 20,
+    "pill": 9999
+  },
+  "font": {
+    "sans": "IBM Plex Sans",
+    "mono": "IBM Plex Mono"
+  },
+  "motion": {
+    "easeOut": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "easeInOut": "cubic-bezier(0.65, 0, 0.35, 1)",
+    "easeBack": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+    "durations": {
+      "hover": 150,
+      "screen": 250,
+      "panel": 400
+    }
+  }
+}

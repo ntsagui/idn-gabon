@@ -1,0 +1,38 @@
+/* IDN — jetons de design (générés par apps/web/scripts/brand-lottie.mjs) */
+:root {
+  --idn-green: #0e7c3a;
+  --idn-green-dark: #0a5c2c;
+  --idn-green-soft: #e6f2ea;
+  --idn-yellow: #f2c811;
+  --idn-yellow-soft: #fcf4d6;
+  --idn-blue: #2563ac;
+  --idn-blue-soft: #e6eef7;
+  --idn-destructive: #b3261e;
+  --idn-bg: #fafaf8;
+  --idn-surface: #ffffff;
+  --idn-surface-2: #f4f3ee;
+  --idn-border: #e6e4dd;
+  --idn-ink: #16170f;
+  --idn-ink-2: #3a3d2e;
+  --idn-muted: #5e6058;
+  --idn-radius-sm: 6px;
+  --idn-radius-md: 10px;
+  --idn-radius-lg: 14px;
+  --idn-radius-xl: 20px;
+  --idn-radius-pill: 9999px;
+  --idn-font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --idn-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --idn-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark {
+  --idn-bg: #0e110d;
+  --idn-surface: #181c16;
+  --idn-surface-2: #22271f;
+  --idn-border: #2c3128;
+  --idn-ink: #f2f0e8;
+  --idn-ink-2: #d4d2c7;
+  --idn-muted: #b0b2a4;
+  --idn-green-text: #5bc57f;
+  --idn-blue-text: #6ba4e0;
+}

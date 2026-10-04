@@ -1,0 +1,1240 @@
+/* Maquettes des supports physiques IDN — tokens limités à .root.
+   ADR-0008 : aucune ombre, aucun dégradé ; relief par bordures 1px.
+   Chaque support est un conteneur : ses textes sont en cqw et restent
+   proportionnés à toute largeur. */
+
+.root {
+  --green: #0e7c3a;
+  --green-dark: #0a5c2c;
+  --green-soft: #e6f2ea;
+  --green-on-dark: #5bc57f;
+  --forest: #08271b;
+  --yellow: #f2c811;
+  --blue: #2563ac;
+  --red: #b3261e;
+
+  --bg: #fafaf8;
+  --surface: #ffffff;
+  --surface-2: #f4f3ee;
+  --border: #e6e4dd;
+  --border-strong: #8a8c80;
+  --ink: #16170f;
+  --ink-2: #3a3d2e;
+  --muted: #5e6058;
+  --focus: #2563ac;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+
+  --sans: var(--font-plex-sans), system-ui, sans-serif;
+  --mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  color-scheme: light;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  font-family: var(--sans);
+  color: var(--ink);
+}
+
+:where(.root) :where(p, dl, dd, ol, ul) {
+  margin: 0;
+  padding: 0;
+}
+
+:where(.root) :where(ol, ul) {
+  list-style: none;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+/* Symbole inversé : carré blanc, empreinte verte */
+.inv rect {
+  fill: #fff;
+}
+
+.inv g {
+  stroke: #0e7c3a;
+}
+
+/* ---------- Carte de présentation ---------- */
+
+.showcase {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+
+.stage {
+  container-type: inline-size;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 5;
+  padding: 8%;
+}
+
+.caption {
+  flex: 1;
+  padding: 16px 18px 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.captionTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.captionFormat {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.captionUsage {
+  margin-top: 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ---------- Barres du drapeau ---------- */
+
+.flag {
+  display: flex;
+  gap: 0.8cqw;
+}
+
+.flag > span {
+  flex: 1;
+  border-radius: 0.3cqw;
+}
+
+.flagOnGreen > span:nth-child(1) {
+  background: #fff;
+}
+
+.flagOnGreen > span:nth-child(2) {
+  background: var(--yellow);
+}
+
+.flagOnGreen > span:nth-child(3) {
+  background: var(--blue);
+}
+
+.qrSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ---------- 1. Carte IDN (ID-1) ---------- */
+
+.idWrap {
+  width: 100%;
+}
+
+.flipper {
+  perspective: 260cqw;
+  cursor: pointer;
+}
+
+.flipInner {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 85.6 / 54;
+  transform-style: preserve-3d;
+  transition: transform 600ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.flipped .flipInner {
+  transform: rotateY(180deg);
+}
+
+.face {
+  container-type: inline-size;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3.7%/ 5.9%;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.verso {
+  transform: rotateY(180deg);
+}
+
+.rectoBand {
+  display: flex;
+  align-items: center;
+  gap: 2cqw;
+  height: 10cqw;
+  padding: 0 4cqw;
+  background: var(--green);
+  color: #fff;
+  font-size: 2.4cqw;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rectoMark {
+  width: 6cqw;
+  height: 6cqw;
+}
+
+.rectoFlag {
+  height: 1cqw;
+  margin: 1.2cqw 4cqw 0;
+}
+
+.rectoBody {
+  position: relative;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 21cqw minmax(0, 1fr);
+  gap: 4cqw;
+  padding: 3cqw 4cqw 3.4cqw;
+}
+
+.watermark {
+  position: absolute;
+  right: -7cqw;
+  bottom: -9cqw;
+  width: 40cqw;
+  height: 40cqw;
+  color: var(--green);
+  opacity: 0.07;
+  pointer-events: none;
+}
+
+.rectoAside,
+.rectoMain {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.rectoAside {
+  gap: 2.4cqw;
+}
+
+.rectoMain {
+  justify-content: space-between;
+}
+
+.photo {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 4;
+  background: var(--green-soft);
+  border: 1px solid #cfe3d6;
+  border-radius: 1.4cqw;
+  color: var(--green-dark);
+  font-size: 8cqw;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.chip {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 0.35cqw;
+  width: 10cqw;
+  height: 7.6cqw;
+  padding: 0.35cqw;
+  background: #b8961a;
+  border-radius: 1.4cqw;
+}
+
+.chip > span {
+  background: var(--yellow);
+  border-radius: 0.5cqw;
+}
+
+.fields {
+  display: grid;
+  gap: 1.5cqw;
+}
+
+.fields dt {
+  font-size: 1.9cqw;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fields dd {
+  font-size: 3.3cqw;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.rectoFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2cqw;
+}
+
+.level {
+  padding: 0.6cqw 1.6cqw;
+  background: var(--green-soft);
+  border-radius: 99cqw;
+  color: var(--green-dark);
+  font-size: 1.9cqw;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.expiry {
+  font-size: 1.9cqw;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.versoTop {
+  position: relative;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 22cqw minmax(0, 1fr);
+  gap: 4cqw;
+  align-items: start;
+  padding: 4cqw 4cqw 0;
+}
+
+.versoQr {
+  padding: 1cqw;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 1.2cqw;
+}
+
+.versoText {
+  display: grid;
+  gap: 1.2cqw;
+  padding-right: 8cqw;
+}
+
+.versoLabel {
+  font-size: 1.9cqw;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.versoUrl {
+  font-family: var(--mono);
+  font-size: 2.6cqw;
+  font-weight: 500;
+  color: var(--green-dark);
+}
+
+.versoNotice {
+  font-size: 2.2cqw;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+.versoAuthority {
+  font-size: 1.8cqw;
+  color: var(--muted);
+}
+
+.versoMark {
+  position: absolute;
+  top: 4cqw;
+  right: 4cqw;
+  width: 6cqw;
+  height: 6cqw;
+}
+
+.mrz {
+  padding: 2.2cqw 4cqw;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 4.4cqw;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  white-space: pre;
+}
+
+.flipBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 5cqw;
+}
+
+.flipButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.flipButton:hover {
+  border-color: var(--ink);
+}
+
+.flipButton:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.flipButton[aria-pressed="true"] {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.flipIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.flipState {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---------- 2. Affiche A3 ---------- */
+
+.cropFrame {
+  position: relative;
+  width: 64%;
+}
+
+.crop {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.crop::before,
+.crop::after {
+  content: "";
+  position: absolute;
+  background: var(--border-strong);
+}
+
+.crop::before {
+  width: 3.6cqw;
+  height: 1px;
+  top: 0;
+}
+
+.crop::after {
+  width: 1px;
+  height: 3.6cqw;
+  left: 0;
+}
+
+.cropTl,
+.cropTr {
+  top: 0;
+}
+
+.cropBl,
+.cropBr {
+  bottom: 0;
+}
+
+.cropTl,
+.cropBl {
+  left: 0;
+}
+
+.cropTr,
+.cropBr {
+  right: 0;
+}
+
+.cropTl::before,
+.cropBl::before {
+  right: 1.2cqw;
+}
+
+.cropTr::before,
+.cropBr::before {
+  left: 1.2cqw;
+}
+
+.cropTl::after,
+.cropTr::after {
+  bottom: 1.2cqw;
+}
+
+.cropBl::after,
+.cropBr::after {
+  top: 1.2cqw;
+}
+
+.poster {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  aspect-ratio: 297 / 420;
+  padding: 8cqw 8cqw 0;
+  overflow: hidden;
+  background: var(--forest);
+  color: #fff;
+}
+
+.posterTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 4cqw;
+  font-size: 2.3cqw;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--green-on-dark);
+}
+
+.posterTop .mono {
+  letter-spacing: 0;
+  text-transform: none;
+  color: rgb(255 255 255 / 0.7);
+}
+
+.posterTitle {
+  margin-top: 9cqw;
+  font-size: 12cqw;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.posterTitle span {
+  display: block;
+  color: var(--green-on-dark);
+}
+
+.posterLead {
+  max-width: 80cqw;
+  margin-top: 4cqw;
+  font-size: 3.4cqw;
+  line-height: 1.4;
+  color: rgb(255 255 255 / 0.8);
+}
+
+.benefits {
+  display: grid;
+  gap: 2.6cqw;
+  margin-top: 6cqw;
+}
+
+.benefits li {
+  display: flex;
+  align-items: center;
+  gap: 3.2cqw;
+  font-size: 3.3cqw;
+  font-weight: 500;
+}
+
+.benefitIcon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 7cqw;
+  height: 7cqw;
+  border: 1px solid rgb(91 197 127 / 0.55);
+  border-radius: 1.8cqw;
+  color: var(--green-on-dark);
+}
+
+.benefitIcon svg {
+  width: 4cqw;
+  height: 4cqw;
+}
+
+.posterSpacer,
+.kakeSpacer,
+.stickerSpacer {
+  flex: 1;
+}
+
+.posterQrRow {
+  display: grid;
+  grid-template-columns: 17cqw minmax(0, 1fr);
+  gap: 5cqw;
+  align-items: center;
+  padding: 4cqw 0;
+  border-top: 1px solid rgb(255 255 255 / 0.14);
+}
+
+.posterQr {
+  padding: 1.4cqw;
+  background: #fff;
+  border-radius: 1.8cqw;
+}
+
+.posterQrTitle {
+  font-size: 4cqw;
+  font-weight: 600;
+}
+
+.posterQrUrl {
+  margin-top: 0.6cqw;
+  font-family: var(--mono);
+  font-size: 2.8cqw;
+  color: var(--green-on-dark);
+}
+
+.posterQrNote {
+  margin-top: 0.6cqw;
+  font-size: 2.2cqw;
+  color: rgb(255 255 255 / 0.6);
+}
+
+.posterSign {
+  display: flex;
+  align-items: center;
+  gap: 2.8cqw;
+  padding-bottom: 4cqw;
+}
+
+.posterMark {
+  width: 8cqw;
+  height: 8cqw;
+}
+
+.posterSignText {
+  display: flex;
+  flex-direction: column;
+}
+
+.posterSignText span:first-child {
+  font-size: 3.4cqw;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.posterSignText span:last-child {
+  font-size: 2cqw;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--green-on-dark);
+}
+
+.posterLegal {
+  margin-left: auto;
+  font-size: 1.5cqw;
+  line-height: 1.4;
+  text-align: right;
+  color: rgb(255 255 255 / 0.5);
+}
+
+.posterFlag {
+  height: 2cqw;
+  margin: 0 -8cqw;
+  gap: 0;
+}
+
+.posterFlag > span {
+  border-radius: 0;
+}
+
+/* ---------- 3. Kakemono 85 × 200 cm ---------- */
+
+.kakeWrap {
+  width: 40%;
+}
+
+.kakemono {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  aspect-ratio: 85 / 200;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.kakeHead {
+  padding: 9cqw 9cqw 10cqw;
+  background: var(--green);
+  color: #fff;
+}
+
+.kakeMark {
+  width: 13cqw;
+  height: 13cqw;
+}
+
+.kakeKicker {
+  margin-top: 6cqw;
+  font-size: 3.8cqw;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.82);
+}
+
+.kakeTitle {
+  margin-top: 2.4cqw;
+  font-size: 11cqw;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+}
+
+.kakeFlag {
+  height: 2cqw;
+  gap: 0;
+}
+
+.kakeFlag > span {
+  border-radius: 0;
+}
+
+.steps {
+  display: grid;
+  gap: 5.5cqw;
+  padding: 9cqw 9cqw 8cqw;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 12cqw minmax(0, 1fr);
+  gap: 4.5cqw;
+  align-items: center;
+}
+
+.stepNum {
+  display: grid;
+  place-items: center;
+  width: 12cqw;
+  height: 12cqw;
+  background: var(--green-soft);
+  border-radius: 50%;
+  color: var(--green-dark);
+  font-size: 5.6cqw;
+  font-weight: 600;
+}
+
+.stepTitle {
+  display: block;
+  font-size: 5.4cqw;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.stepHint {
+  display: block;
+  margin-top: 0.6cqw;
+  font-size: 3.6cqw;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.hours {
+  display: grid;
+  gap: 1cqw;
+  margin: 0 9cqw;
+  padding-top: 6cqw;
+  border-top: 1px solid var(--border);
+  font-size: 4.2cqw;
+  color: var(--ink);
+}
+
+.hoursLabel {
+  margin-bottom: 1cqw;
+  font-size: 3.2cqw;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.free {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2cqw;
+  margin: 0 9cqw 7cqw;
+  padding: 3cqw 4cqw;
+  background: var(--green-soft);
+  border-radius: 99cqw;
+  color: var(--green-dark);
+  font-size: 4.8cqw;
+  font-weight: 600;
+}
+
+.free svg {
+  width: 5cqw;
+  height: 5cqw;
+}
+
+.kakeFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2cqw;
+  padding: 4.5cqw 9cqw;
+  background: var(--green-dark);
+  color: #fff;
+  font-size: 3.4cqw;
+}
+
+.kakeFoot span:last-child {
+  font-size: 2.6cqw;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.75);
+}
+
+.kakeBase {
+  height: 2.4cqw;
+  margin: 0 -10%;
+  background: var(--ink-2);
+  border-radius: 0.6cqw 0.6cqw 1.2cqw 1.2cqw;
+}
+
+/* ---------- 4. Badge agent CR80 portrait ---------- */
+
+.badge {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 50%;
+  aspect-ratio: 54 / 85.6;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5.8% / 3.7%;
+  text-align: center;
+}
+
+.badgeSlot {
+  flex: none;
+  width: 30cqw;
+  height: 5cqw;
+  margin-top: 6cqw;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 99cqw;
+}
+
+.badgeHead {
+  display: flex;
+  align-items: center;
+  gap: 2.6cqw;
+  margin-top: 5cqw;
+  text-align: left;
+}
+
+.badgeMark {
+  width: 9cqw;
+  height: 9cqw;
+}
+
+.badgeHeadText {
+  display: flex;
+  flex-direction: column;
+}
+
+.badgeHeadText span:first-child {
+  font-size: 4cqw;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.badgeHeadText span:last-child {
+  font-size: 2.6cqw;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.badgePhoto {
+  display: grid;
+  place-items: center;
+  width: 32cqw;
+  aspect-ratio: 3 / 4;
+  margin-top: 6cqw;
+  background: var(--green-soft);
+  border: 1px solid #cfe3d6;
+  border-radius: 3cqw;
+  color: var(--green-dark);
+  font-size: 12cqw;
+  font-weight: 600;
+}
+
+.badgeName {
+  margin-top: 4cqw;
+  font-size: 6.2cqw;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.badgeRole {
+  margin-top: 1cqw;
+  font-size: 3.7cqw;
+  color: var(--muted);
+}
+
+.badgeId {
+  margin-top: 1.6cqw;
+  font-family: var(--mono);
+  font-size: 3.4cqw;
+  color: var(--ink-2);
+}
+
+.badgeBand {
+  align-self: stretch;
+  margin-top: 5cqw;
+  padding: 2.6cqw 4cqw;
+  background: var(--green);
+  color: #fff;
+  font-size: 4cqw;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.badgeQrRow {
+  display: grid;
+  grid-template-columns: 22cqw minmax(0, 1fr);
+  gap: 4.5cqw;
+  align-items: center;
+  align-self: stretch;
+  padding: 5.5cqw 8cqw;
+  text-align: left;
+}
+
+.badgeQr {
+  padding: 1cqw;
+  border: 1px solid var(--border);
+  border-radius: 1.6cqw;
+}
+
+.badgeQrTitle {
+  font-size: 3.7cqw;
+  font-weight: 600;
+}
+
+.badgeQrNote {
+  margin-top: 0.8cqw;
+  font-size: 2.8cqw;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.badgeValid {
+  margin-top: 1.4cqw;
+  font-family: var(--mono);
+  font-size: 2.5cqw;
+  color: var(--ink-2);
+}
+
+/* ---------- 5. Vitrophanie 15 × 15 cm ---------- */
+
+.sticker {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  width: 68%;
+  aspect-ratio: 1;
+  padding: 9cqw;
+  background: var(--green);
+  border: 2.5cqw solid #fff;
+  border-radius: 8cqw;
+  outline: 1px solid var(--border-strong);
+  color: #fff;
+}
+
+.stickerMark {
+  width: 18cqw;
+  height: 18cqw;
+}
+
+.stickerTitle {
+  margin-top: 7cqw;
+  font-size: 8.4cqw;
+  font-weight: 600;
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+}
+
+.stickerFlag {
+  width: 30cqw;
+  height: 1.6cqw;
+}
+
+.stickerFoot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 3cqw;
+  margin-top: 3cqw;
+  font-size: 4.6cqw;
+  font-weight: 600;
+}
+
+.stickerFoot .mono {
+  font-size: 3.4cqw;
+  font-weight: 400;
+  color: rgb(255 255 255 / 0.82);
+}
+
+/* ---------- 6. Papeterie ---------- */
+
+.stationery {
+  display: grid;
+  gap: 6cqw;
+  width: 100%;
+}
+
+.envelope {
+  container-type: inline-size;
+  position: relative;
+  aspect-ratio: 220 / 110;
+  padding: 5cqw 6cqw;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6cqw;
+}
+
+.envSign {
+  display: flex;
+  align-items: center;
+  gap: 2cqw;
+}
+
+.envMark {
+  width: 6.5cqw;
+  height: 6.5cqw;
+}
+
+.envSignText {
+  display: flex;
+  flex-direction: column;
+}
+
+.envSignText span:first-child {
+  font-size: 2.8cqw;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.envSignText span:last-child {
+  font-size: 1.8cqw;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.envFlag {
+  width: 14cqw;
+  height: 0.7cqw;
+  margin-top: 2cqw;
+  gap: 0.4cqw;
+}
+
+.envReturn {
+  margin-top: 1.4cqw;
+  font-size: 1.7cqw;
+  color: var(--muted);
+}
+
+.envPostage {
+  position: absolute;
+  top: 5cqw;
+  right: 6cqw;
+  padding: 1cqw 1.8cqw;
+  border: 1px solid var(--ink-2);
+  font-family: var(--mono);
+  font-size: 1.6cqw;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* Fenêtre DL normalisée : 90 × 45 mm, à 20 mm du bord droit et 15 mm du bas */
+.envWindow {
+  position: absolute;
+  right: 9.1cqw;
+  bottom: 6.8cqw;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 40.9cqw;
+  height: 20.5cqw;
+  padding: 0 3.6cqw;
+  background: #fcfcfa;
+  border: 1px solid #d6d4cc;
+  border-radius: 1.2cqw;
+  font-size: 2.1cqw;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.envLegal {
+  position: absolute;
+  left: 6cqw;
+  bottom: 4cqw;
+  font-size: 1.4cqw;
+  color: var(--muted);
+}
+
+.bizRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4cqw;
+}
+
+.biz {
+  container-type: inline-size;
+  position: relative;
+  aspect-ratio: 85 / 55;
+  border: 1px solid var(--border);
+  border-radius: 3.5% / 5.4%;
+}
+
+.bizFront {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8cqw 8cqw 9cqw;
+  background: var(--surface);
+}
+
+.bizTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4cqw;
+}
+
+.bizName {
+  font-size: 6.4cqw;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.bizRole {
+  margin-top: 1cqw;
+  font-size: 4cqw;
+  color: var(--muted);
+}
+
+.bizMark {
+  width: 10cqw;
+  height: 10cqw;
+}
+
+.bizContact {
+  font-family: var(--mono);
+  font-size: 3.8cqw;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.bizFlag {
+  position: absolute;
+  left: 8cqw;
+  bottom: 4.5cqw;
+  width: 18cqw;
+  height: 1.2cqw;
+}
+
+.bizBack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.bizBackMark {
+  width: 18cqw;
+  height: 18cqw;
+}
+
+.bizBackName {
+  margin-top: 4cqw;
+  font-size: 5.4cqw;
+  font-weight: 600;
+}
+
+.bizBackUrl {
+  margin-top: 1cqw;
+  font-family: var(--mono);
+  font-size: 3.6cqw;
+  color: rgb(255 255 255 / 0.85);
+}
+
+.bizBackFlag {
+  width: 22cqw;
+  height: 1.2cqw;
+  margin-top: 5cqw;
+}
+
+.faceLabel {
+  margin-top: 1.6cqw;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* ---------- Responsive & mouvement ---------- */
+
+@media (max-width: 1024px) {
+  .root {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .root {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flipInner {
+    transition: none;
+  }
+}

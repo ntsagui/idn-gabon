@@ -1,0 +1,1052 @@
+/* Kit partenaires IDN — tokens limités à .root (ADR-0008 : aucune ombre,
+   relief par bordures 1px et contraste fond/surface). */
+
+.root {
+  --green: #0e7c3a;
+  --green-dark: #0a5c2c;
+  --green-soft: #e6f2ea;
+  --yellow: #f2c811;
+  --blue: #2563ac;
+  --blue-soft: #e6eef7;
+  --red: #b3261e;
+
+  --bg: #fafaf8;
+  --surface: #ffffff;
+  --surface-2: #f4f3ee;
+  --border: #e6e4dd;
+  /* Contour des champs et contrôles : contraste >= 3:1 (RGAA 3.3) */
+  --border-strong: #8a8c80;
+  --ink: #16170f;
+  --ink-2: #3a3d2e;
+  --muted: #5e6058;
+  --focus: #2563ac;
+
+  --dark-bg: #0e110d;
+  --dark-surface: #181c16;
+  --dark-border: #2c3128;
+  --dark-ink: #f2f0e8;
+  --dark-muted: #b0b2a4;
+
+  /* Identité propre à la mairie (fictive) : bleu ardoise */
+  --slate: #3b4a63;
+  --slate-dark: #2b3648;
+  --slate-soft: #eef1f5;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 9999px;
+
+  --sans: var(--font-plex-sans), system-ui, sans-serif;
+  --mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  color-scheme: light;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 48px;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.root *,
+.root *::before,
+.root *::after {
+  box-sizing: border-box;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  min-width: 0;
+}
+
+.sectionHead {
+  display: grid;
+  gap: 6px;
+  max-width: 68ch;
+}
+
+.h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.lead {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Générateur ---------- */
+
+.generator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  min-width: 0;
+}
+
+@media (min-width: 1000px) {
+  .generator {
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.options {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.option {
+  position: relative;
+  display: inline-flex;
+}
+
+.option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.option span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+/* Pastille : l'état coché ne repose pas que sur la couleur (RGAA 3.1) */
+.option span::before {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--border-strong);
+  background: transparent;
+}
+
+.option input:checked + span {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-weight: 600;
+}
+
+.option input:checked + span::before {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.option input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.previews {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+}
+
+.previewPane {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 16px 20px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  min-width: 0;
+}
+
+.previewPane[data-bg="dark"] {
+  background: var(--dark-bg);
+  border-color: var(--dark-border);
+}
+
+.previewCaption {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.previewPane[data-bg="dark"] .previewCaption {
+  color: var(--dark-muted);
+}
+
+.previewStage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 72px;
+  min-width: 0;
+}
+
+/* ---------- Bouton IDN (aperçu ; valeurs identiques au CSS généré) ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 100%;
+  height: 44px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.btn[data-variant="plein"] {
+  background: #0e7c3a;
+  border-color: #0e7c3a;
+  color: #ffffff;
+}
+
+.btn[data-variant="plein"]:hover {
+  background: #0a5c2c;
+  border-color: #0a5c2c;
+}
+
+.btn[data-variant="contour"] {
+  background: #ffffff;
+  border-color: #0e7c3a;
+  color: #16170f;
+}
+
+.btn[data-variant="contour"]:hover {
+  background: #e6f2ea;
+}
+
+.btn[data-variant="sombre"] {
+  background: #16170f;
+  border-color: #16170f;
+  color: #ffffff;
+}
+
+.btn[data-variant="sombre"]:hover {
+  background: #3a3d2e;
+  border-color: #3a3d2e;
+}
+
+.btn[data-size="s"] {
+  height: 36px;
+  padding: 0 14px;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.btn[data-size="l"] {
+  height: 52px;
+  padding: 0 22px;
+  gap: 12px;
+  font-size: 16px;
+}
+
+.btn[data-shape="pilule"] {
+  border-radius: 9999px;
+}
+
+.btn[data-width="full"] {
+  width: 100%;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.previewPane[data-bg="dark"] .btn:focus-visible {
+  outline-color: #8fb4e3;
+}
+
+/* Symbole inversé sur la variante Plein : carré blanc, traits verts */
+.markInverse rect {
+  fill: #ffffff;
+}
+
+.markInverse g {
+  stroke: #0e7c3a;
+}
+
+/* ---------- Onglets de code ---------- */
+
+.codeBox {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.codeBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tablist {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.tab {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--green);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  margin-bottom: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.copyBtn:hover {
+  background: var(--surface-2);
+}
+
+.copyBtn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.pre {
+  margin: 0;
+  max-height: 440px;
+  padding: 16px;
+  overflow: auto;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.pre:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.codeNote {
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* ---------- Règles d'usage ---------- */
+
+.rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 12px;
+}
+
+.ruleCard {
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.ruleCard[data-kind="do"] {
+  border-top: 3px solid var(--green);
+}
+
+.ruleCard[data-kind="dont"] {
+  border-top: 3px solid var(--red);
+}
+
+.ruleTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ruleCard[data-kind="do"] .ruleTitle {
+  color: var(--green-dark);
+}
+
+.ruleCard[data-kind="dont"] .ruleTitle {
+  color: var(--red);
+}
+
+.ruleList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+/* ---------- Démo d'intégration ---------- */
+
+.demoBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.demoBar p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.secondaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondaryBtn:hover {
+  background: var(--surface-2);
+}
+
+.secondaryBtn:focus-visible,
+.primaryBtn:focus-visible,
+.slateBtn:focus-visible,
+.input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--green);
+  border-radius: var(--r-md);
+  background: var(--green);
+  color: #ffffff;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryBtn:hover {
+  background: var(--green-dark);
+  border-color: var(--green-dark);
+}
+
+.browser {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.chrome {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.dots {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: #cfcdc4;
+}
+
+.address {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 30px;
+  margin: 0;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.address svg {
+  flex: none;
+  color: var(--green);
+}
+
+.addressText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.viewport {
+  min-height: 460px;
+  min-width: 0;
+}
+
+.screenHeading {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.screenHeading:focus {
+  outline: none;
+}
+
+.screenHeading:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+
+/* Site de la mairie */
+
+.mairie {
+  background: #ffffff;
+}
+
+.mairieHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--slate);
+  color: #ffffff;
+}
+
+.mairieLogo {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: #ffffff;
+  color: var(--slate);
+}
+
+.mairieName {
+  display: grid;
+  line-height: 1.25;
+}
+
+.mairieName strong {
+  font-size: 15px;
+}
+
+.mairieName span {
+  font-size: 12px;
+  color: #e2e7ef;
+}
+
+.mairieBody {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+  padding: 24px 20px 28px;
+}
+
+.crumbs {
+  margin: 0;
+  font-size: 13px;
+  color: #4a5568;
+}
+
+.mairieIntro {
+  margin: 4px 0 0;
+  color: #3d4656;
+  font-size: 14px;
+}
+
+.idnBlock {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  padding: 16px;
+  border: 1px solid #d6dce5;
+  border-radius: var(--r-md);
+  background: var(--slate-soft);
+}
+
+.idnBlock p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate-dark);
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 13px;
+  color: #4a5568;
+}
+
+.or::before,
+.or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #d6dce5;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2b3648;
+}
+
+.input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #7c8595;
+  border-radius: var(--r-sm);
+  background: #ffffff;
+  color: #1c2330;
+  font-family: var(--sans);
+  font-size: 15px;
+}
+
+.input[readonly] {
+  border-color: var(--green);
+  background: #ffffff;
+}
+
+/* Remplissage champ par champ : 6 champs x 130 ms + 200 ms < 1 s */
+.filled .input {
+  animation: fillIn 200ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 130ms);
+}
+
+@keyframes fillIn {
+  from {
+    background-color: var(--green-soft);
+    color: transparent;
+  }
+  to {
+    background-color: #ffffff;
+    color: #1c2330;
+  }
+}
+
+.verified {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #b9dcc5;
+  border-radius: var(--r-md);
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.verified svg,
+.notice svg {
+  flex: none;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #d6dce5;
+  border-radius: var(--r-md);
+  background: #f6f7f9;
+  color: #2b3648;
+  font-size: 14px;
+}
+
+.slateBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--slate);
+  border-radius: var(--r-sm);
+  background: var(--slate);
+  color: #ffffff;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.slateBtn:hover {
+  background: var(--slate-dark);
+  border-color: var(--slate-dark);
+}
+
+.confirm {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  padding: 20px;
+  border: 1px solid #d6dce5;
+  border-radius: var(--r-md);
+  background: var(--slate-soft);
+  color: #2b3648;
+}
+
+.confirm p {
+  margin: 0;
+}
+
+.folio {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--slate-dark);
+  letter-spacing: 0.02em;
+}
+
+/* Écrans IDN */
+
+.idnScreen {
+  display: grid;
+  place-items: start center;
+  padding: 28px 16px;
+  background: var(--bg);
+}
+
+.idnCard {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  max-width: 460px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+}
+
+.pair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.pair .mairieLogo {
+  border: 1px solid var(--slate);
+  background: var(--slate);
+  color: #ffffff;
+}
+
+.idnText {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-pill);
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.accountId {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.accountId strong {
+  font-size: 15px;
+}
+
+.accountId span {
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dataTitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.dataList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.dataList li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.dataList svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--green);
+}
+
+.dataList span span {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.actions > * {
+  flex: 1 1 140px;
+}
+
+.fine {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.successBox {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 40px 16px;
+  text-align: center;
+}
+
+.lottie {
+  width: 120px;
+  height: 120px;
+}
+
+.levelIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filled .input {
+    animation: none;
+  }
+}
