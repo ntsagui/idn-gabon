@@ -122,11 +122,13 @@ export const setIdentityPivot = mutation({
     }
     // Même garde qu'à `completeSignup` : ce chemin écrit le pivot lui aussi, et
     // un contrôle posé sur un seul des deux se contournerait par l'autre.
-    const { pivotKey, nipKey } = derivePivotKeys({
+    const { pivotKey, nipKey, phoneKey } = derivePivotKeys({
       firstName: args.firstName,
       lastName: args.lastName,
       dateOfBirth: args.dateOfBirth,
       nip: nipTrim,
+      phone: phoneTrim,
+      nationality: args.nationality,
     })
     const collision = await assessIdentityCollision(ctx, {
       pivotKey,
@@ -162,6 +164,7 @@ export const setIdentityPivot = mutation({
       },
       pivotKey,
       nipKey,
+      phoneKey,
       updatedAt: Date.now(),
     })
 
@@ -591,11 +594,13 @@ export const completeSignup = mutation({
     //    Lecture indexée et insertion dans la même transaction : c'est ce qui
     //    empêche deux inscriptions simultanées de passer toutes les deux
     //    (cf. `lib/duplicateGuard.ts`).
-    const { pivotKey, nipKey } = derivePivotKeys({
+    const { pivotKey, nipKey, phoneKey } = derivePivotKeys({
       firstName: args.pivot.firstName,
       lastName: args.pivot.lastName,
       dateOfBirth: args.pivot.dateOfBirth,
       nip: nipTrim,
+      phone: phoneTrim,
+      nationality: args.pivot.nationality,
     })
     const collision = await assessIdentityCollision(ctx, { pivotKey, nipKey })
     if (collision.verdict === "refuse") {
@@ -643,6 +648,7 @@ export const completeSignup = mutation({
       },
       pivotKey,
       ...(nipKey ? { nipKey } : {}),
+      phoneKey,
       createdAt: now,
       updatedAt: now,
     })

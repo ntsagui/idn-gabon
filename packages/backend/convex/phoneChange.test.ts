@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 import { api } from "./_generated/api"
 import schema from "./schema"
+import { normalizeRecoveryPhone } from "./lib/phone"
 
 const modules = import.meta.glob("/convex/**/*.ts")
 
@@ -55,6 +56,7 @@ async function seedProfile(
       userId,
       profileType: "citizen",
       loa: 1,
+      phoneKey: normalizeRecoveryPhone(phone, "GA"),
       pivot: {
         firstName: "Ariane",
         lastName: "Nziengui",
@@ -101,6 +103,37 @@ afterEach(() => {
 })
 
 describe("changement du numéro de téléphone", () => {
+  test("valide un changement de numéro au-delà de 500 profils", async () => {
+    const t = makeTestClient()
+    const profileId = await seedProfile(t, "large_registry")
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 501; i++) {
+        await ctx.db.insert("userProfile", {
+          userId: `other-${i}`,
+          profileType: "citizen",
+          loa: 1,
+          phoneKey: null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+      }
+    })
+    mockBird(true)
+    const citizen = t.withIdentity({ subject: "large_registry" })
+    const request = await citizen.action(api.phoneChange.requestChange, {
+      phone: "+24106221489",
+    })
+    expect(
+      await citizen.action(api.phoneChange.verifyChange, {
+        requestId: request.requestId,
+        code: "123456",
+      }),
+    ).toEqual({ verified: true, phone: "+24106221489" })
+    expect(await t.run((ctx) => ctx.db.get(profileId))).toMatchObject({
+      phoneKey: "+24106221489",
+    })
+  })
+
   test("n'enregistre le nouveau numéro qu'après validation du code", async () => {
     const t = makeTestClient()
     const profileId = await seedProfile(t, "citizen_phone")
@@ -123,6 +156,7 @@ describe("changement du numéro de téléphone", () => {
 
     const afterVerification = await t.run((ctx) => ctx.db.get(profileId))
     expect(afterVerification?.pivot?.phone).toBe("+33612345678")
+    expect(afterVerification?.phoneKey).toBe("+33612345678")
     expect(afterVerification?.phoneVerifiedAt).toEqual(expect.any(Number))
     expect(bird).toHaveBeenCalledTimes(2)
   })

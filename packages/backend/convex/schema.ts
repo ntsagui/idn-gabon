@@ -351,6 +351,10 @@ export default defineSchema({
      */
     nipKey: v.optional(v.string()),
 
+    // Téléphone normalisé pour les contrôles d'unicité. null = profil traité
+    // sans numéro compatible ; undefined = profil historique à migrer.
+    phoneKey: v.optional(v.union(v.string(), v.null())),
+
     photoStorageRef: v.optional(v.id("_storage")),
     pinHash: v.optional(v.string()), // PBKDF2-SHA256, 600k itérations
     // Renseigné uniquement après validation d'un code envoyé au numéro. Les
@@ -384,7 +388,8 @@ export default defineSchema({
     .index("by_deletionScheduledAt", ["deletionScheduledAt"])
     .index("by_pivot_dob", ["pivot.dateOfBirth"])
     .index("by_pivotKey", ["pivotKey"])
-    .index("by_nipKey", ["nipKey"]),
+    .index("by_nipKey", ["nipKey"])
+    .index("by_phoneKey_and_deletedAt", ["phoneKey", "deletedAt"]),
 
   /**
    * Demande KYC (L2 / L3).

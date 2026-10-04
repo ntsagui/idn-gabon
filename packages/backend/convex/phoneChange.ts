@@ -12,12 +12,15 @@ import {
 import { requireVerifiedAuthInAction } from "./lib/auth"
 import { hashOpaqueSecret } from "./lib/pin"
 import { normalizeRecoveryPhone } from "./lib/phone"
+import {
+  isPhoneRegistryReady,
+  isPhoneUsedByAnotherProfile,
+} from "./lib/phoneRegistry"
 import { rateLimiter } from "./rateLimiter"
 
 const CODE_REGEX = /^\d{6}$/
 const CODE_TTL_MS = 10 * 60 * 1000
 const MAX_LOCAL_ATTEMPTS = 5
-const MAX_PROFILE_SCAN = 500
 
 type PreparedChange = {
   phone: string
@@ -302,6 +305,7 @@ export const confirmChange = internalMutation({
     const now = Date.now()
     await ctx.db.patch(profile._id, {
       pivot: { ...profile.pivot, phone: challenge.phone },
+      phoneKey: challenge.phone,
       phoneVerifiedAt: now,
       updatedAt: now,
     })
@@ -367,29 +371,14 @@ async function assertPhoneAvailable(
   phone: string,
   currentProfileId: Id<"userProfile">,
 ): Promise<void> {
-  const profiles = await ctx.db.query("userProfile").take(MAX_PROFILE_SCAN + 1)
-  if (profiles.length > MAX_PROFILE_SCAN) {
+  if (!(await isPhoneRegistryReady(ctx))) {
     throw new ConvexError({
       code: "PHONE_CHECK_UNAVAILABLE",
       message: "La vérification du numéro est indisponible pour le moment.",
     })
   }
 
-  const duplicate = profiles.some((candidate) => {
-    if (
-      candidate._id === currentProfileId ||
-      candidate.deletedAt !== undefined
-    ) {
-      return false
-    }
-    return (
-      normalizeRecoveryPhone(
-        candidate.pivot?.phone,
-        candidate.pivot?.nationality,
-      ) === phone
-    )
-  })
-  if (duplicate) {
+  if (await isPhoneUsedByAnotherProfile(ctx, phone, currentProfileId)) {
     throw new ConvexError({
       code: "PHONE_ALREADY_USED",
       message: "Ce numéro est déjà associé à un autre compte.",

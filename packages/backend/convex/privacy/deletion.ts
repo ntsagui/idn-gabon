@@ -120,6 +120,7 @@ async function anonymizeProfile(ctx: MutationCtx, profileId: any) {
     // premier lieu.
     pivotKey: undefined,
     nipKey: undefined,
+    phoneKey: undefined,
     photoStorageRef: undefined,
     pinHash: undefined,
     phoneVerifiedAt: undefined,

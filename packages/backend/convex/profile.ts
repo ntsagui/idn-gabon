@@ -1,7 +1,11 @@
 import { ConvexError, v } from "convex/values"
 
 import { internalQuery, mutation, query } from "./_generated/server"
-import { getCurrentAuthUser, requireAuth, requireVerifiedAuth } from "./lib/auth"
+import {
+  getCurrentAuthUser,
+  requireAuth,
+  requireVerifiedAuth,
+} from "./lib/auth"
 import { assessIdentityCollision } from "./lib/duplicateGuard"
 import { raiseDuplicateFlags } from "./lib/duplicateFlags"
 import { derivePivotKeys, normalizeNipKey } from "./lib/identity"
@@ -196,11 +200,13 @@ export const updatePivot = mutation({
     // `excludeUserId` est ce qui préserve le parcours légitime : corriger une
     // faute de frappe dans son propre nom ne doit pas se heurter à sa propre
     // identité.
-    const { pivotKey, nipKey } = derivePivotKeys({
+    const { pivotKey, nipKey, phoneKey } = derivePivotKeys({
       firstName: args.firstName,
       lastName: args.lastName,
       dateOfBirth: args.dateOfBirth,
       nip: existingNip,
+      phone: existingPhone,
+      nationality: args.nationality,
     })
     const collision = await assessIdentityCollision(ctx, {
       pivotKey,
@@ -227,6 +233,7 @@ export const updatePivot = mutation({
       },
       pivotKey,
       nipKey,
+      phoneKey,
       updatedAt: Date.now(),
     })
 

@@ -214,6 +214,7 @@ describe("liste paginée des comptes IDN", () => {
         },
         pivotKey: "nziengui|ariane|1990-01-02",
         nipKey: "12345678901234",
+        phoneKey: "+24106221489",
         pinHash: "secret-pin-hash",
         createdAt: now,
         updatedAt: now,

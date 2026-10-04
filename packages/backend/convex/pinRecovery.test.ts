@@ -4,10 +4,11 @@ import { register as registerBetterAuth } from "@convex-dev/better-auth/test"
 import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test"
 import { ConvexError } from "convex/values"
 import { convexTest } from "convex-test"
-import { describe, expect, test } from "vitest"
+import { afterEach, describe, expect, test, vi } from "vitest"
 
 import { api, components, internal } from "./_generated/api"
 import { derivePinHash, hashOpaqueSecret } from "./lib/pin"
+import { normalizeRecoveryPhone } from "./lib/phone"
 import schema from "./schema"
 
 const modules = import.meta.glob("/convex/**/*.ts")
@@ -63,6 +64,7 @@ async function seedProfile(
         phone: options.phone,
       },
       pivotKey: options.pivotKey,
+      phoneKey: normalizeRecoveryPhone(options.phone, "GA"),
       ...(options.nipKey ? { nipKey: options.nipKey } : {}),
       createdAt: now,
       updatedAt: now,
@@ -84,6 +86,113 @@ async function readChallenge(
 }
 
 describe("éligibilité à la récupération automatique du PIN", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
+  test("envoie le SMS même lorsque le registre dépasse 500 profils", async () => {
+    const t = makeTestClient()
+    const target = await seedProfile(t, {
+      email: "grand-registre@idn.ga",
+      firstName: "GrandRegistre",
+      pivotKey: "test|grand-registre|1990-01-02",
+      phone: "06 22 14 89",
+    })
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 501; i++) {
+        await ctx.db.insert("userProfile", {
+          userId: `other-${i}`,
+          profileType: "citizen",
+          loa: 1,
+          phoneKey: null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+      }
+    })
+    vi.stubEnv("BIRD_API_KEY", "bk_eu1_test")
+    const bird = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            expires_at: new Date(Date.now() + 600_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+    const request = await t.action(api.pinRecovery.requestReset, {
+      identifier: "grand-registre",
+    })
+    const challenge = await readChallenge(t, request.requestId)
+    expect(challenge).toMatchObject({
+      userId: target.userId,
+      phone: "+24106221489",
+      status: "sent",
+    })
+    expect(bird).toHaveBeenCalledTimes(1)
+  })
+
+  test("refuse un doublon de téléphone inséré après les 500 premiers profils", async () => {
+    const t = makeTestClient()
+    await seedProfile(t, {
+      email: "premier@idn.ga",
+      firstName: "Premier",
+      pivotKey: "test|premier|1990-01-02",
+      phone: "06 22 14 89",
+    })
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 501; i++) {
+        await ctx.db.insert("userProfile", {
+          userId: `other-${i}`,
+          profileType: "citizen",
+          loa: 1,
+          phoneKey: null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+      }
+    })
+    await seedProfile(t, {
+      email: "doublon@idn.ga",
+      firstName: "Doublon",
+      pivotKey: "test|doublon|1990-01-02",
+      phone: "+241 06 22 14 89",
+    })
+    const result = await t.mutation(internal.pinRecovery.prepareReset, {
+      email: "premier@idn.ga",
+      requestId: "request-duplicate-after-500",
+      expiresAt: Date.now() + 60_000,
+    })
+    expect(result.phone).toBeNull()
+  })
+
+  test("bloque l'envoi tant qu'un téléphone historique n'est pas indexé", async () => {
+    const t = makeTestClient()
+    await seedProfile(t, {
+      email: "historique@idn.ga",
+      firstName: "Historique",
+      pivotKey: "test|historique|1990-01-02",
+      phone: "06 22 14 89",
+    })
+    await t.run(async (ctx) => {
+      await ctx.db.insert("userProfile", {
+        userId: "unindexed",
+        profileType: "citizen",
+        loa: 1,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+    })
+    const result = await t.mutation(internal.pinRecovery.prepareReset, {
+      email: "historique@idn.ga",
+      requestId: "request-unindexed-registry",
+      expiresAt: Date.now() + 60_000,
+    })
+    expect(result.phone).toBeNull()
+  })
+
   test("autorise une identité et un téléphone uniques", async () => {
     const t = makeTestClient()
     const seeded = await seedProfile(t, {

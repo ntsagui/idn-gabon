@@ -1,3 +1,5 @@
+import { normalizeRecoveryPhone } from "./phone"
+
 /**
  * Clé de rapprochement d'identité pivot.
  *
@@ -67,7 +69,9 @@ export function derivePivotKeys(pivot: {
   lastName: string
   dateOfBirth: string
   nip?: string
-}): { pivotKey: string; nipKey: string | undefined } {
+  phone?: string
+  nationality?: string
+}): { pivotKey: string; nipKey: string | undefined; phoneKey: string | null } {
   return {
     pivotKey: normalizeIdentityKey(
       pivot.firstName,
@@ -75,6 +79,7 @@ export function derivePivotKeys(pivot: {
       pivot.dateOfBirth,
     ),
     nipKey: normalizeNipKey(pivot.nip),
+    phoneKey: normalizeRecoveryPhone(pivot.phone, pivot.nationality),
   }
 }
 

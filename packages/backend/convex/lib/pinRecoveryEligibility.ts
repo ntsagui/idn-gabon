@@ -1,9 +1,12 @@
 import type { Doc } from "../_generated/dataModel"
 import type { QueryCtx } from "../_generated/server"
 import { normalizeRecoveryPhone } from "./phone"
+import {
+  isPhoneRegistryReady,
+  isPhoneUsedByAnotherProfile,
+} from "./phoneRegistry"
 
 const MAX_IDENTITY_MATCHES = 50
-const MAX_AUTOMATIC_RECOVERY_PROFILES = 500
 
 export const PIN_RECOVERY_BLOCKERS = [
   "account_deleted",
@@ -13,7 +16,7 @@ export const PIN_RECOVERY_BLOCKERS = [
   "shared_identity",
   "shared_nip",
   "shared_phone",
-  "registry_scan_limit",
+  "phone_index_incomplete",
 ] as const
 
 export type PinRecoveryBlocker = (typeof PIN_RECOVERY_BLOCKERS)[number]
@@ -26,9 +29,9 @@ type RecoveryCtx = Pick<QueryCtx, "db">
  * donc un email vérifié, une identité unique et un numéro unique parmi les
  * profils actifs.
  *
- * Le scan des téléphones est borné et échoue fermé. Une future migration vers
- * un téléphone normalisé indexé supprimera ce scan ; jusque-là, dépasser la
- * borne bloque l'envoi automatique.
+ * Les téléphones sont recherchés par index, indépendamment de la taille du
+ * registre. Les profils historiques doivent tous avoir été migrés avant
+ * d'autoriser un envoi, pour ne pas manquer un numéro partagé.
  */
 export async function assessAutomaticSmsRecovery(
   ctx: RecoveryCtx,
@@ -77,26 +80,10 @@ export async function assessAutomaticSmsRecovery(
   }
 
   if (phone) {
-    const profiles = await ctx.db
-      .query("userProfile")
-      .take(MAX_AUTOMATIC_RECOVERY_PROFILES + 1)
-    if (profiles.length > MAX_AUTOMATIC_RECOVERY_PROFILES) {
-      blockers.push("registry_scan_limit")
-    } else {
-      let matchingPhones = 0
-      for (const candidate of profiles) {
-        if (candidate.deletedAt !== undefined) continue
-        const candidatePhone = normalizeRecoveryPhone(
-          candidate.pivot?.phone,
-          candidate.pivot?.nationality,
-        )
-        if (candidatePhone !== phone) continue
-        matchingPhones += 1
-        if (matchingPhones > 1) {
-          blockers.push("shared_phone")
-          break
-        }
-      }
+    if (!(await isPhoneRegistryReady(ctx))) {
+      blockers.push("phone_index_incomplete")
+    } else if (await isPhoneUsedByAnotherProfile(ctx, phone, profile._id)) {
+      blockers.push("shared_phone")
     }
   }
 

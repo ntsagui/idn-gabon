@@ -250,6 +250,14 @@ export const prepareReset = internalMutation({
           )
         : null
     const phone = recovery?.eligible ? recovery.phone : null
+    if (!phone) {
+      console.warn("[pin-recovery] SMS recovery unavailable", {
+        requestId: args.requestId,
+        blockers: recovery?.blockers ?? [
+          user ? "profile_not_found" : "account_not_found",
+        ],
+      })
+    }
     const now = Date.now()
 
     await ctx.db.insert("pinRecoveryChallenge", {
@@ -504,9 +512,11 @@ async function latestIssuedChallenge(
     .query("pinRecoveryChallenge")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .take(50)
-  return rows
-    .filter((row) => row.status === "issued")
-    .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null
+  return (
+    rows
+      .filter((row) => row.status === "issued")
+      .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null
+  )
 }
 
 function normalizeIdnEmail(identifier: string): string {
