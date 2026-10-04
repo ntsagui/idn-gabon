@@ -131,7 +131,13 @@ export const listForReview = query({
     const scanned = await base.order(order).take(SCAN_CAP + 1)
 
     const capped = scanned.length > SCAN_CAP
-    const pool = capped ? scanned.slice(0, SCAN_CAP) : scanned
+    // L'index ordonne par création de la ligne, pas par dépôt des pièces : un
+    // dossier créé tôt mais déposé hier passerait devant un dépôt de 16 jours.
+    // L'ancienneté affichée est celle du dépôt, l'ordre doit la suivre.
+    const submitted = (doc: Doc<"kycRequest">) => doc.submittedAt ?? doc._creationTime
+    const pool = (capped ? scanned.slice(0, SCAN_CAP) : scanned).sort((a, b) =>
+      order === "asc" ? submitted(a) - submitted(b) : submitted(b) - submitted(a),
+    )
     const now = Date.now()
 
     const withProfile = async (doc: Doc<"kycRequest">) => {

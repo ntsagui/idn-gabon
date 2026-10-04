@@ -169,6 +169,9 @@ export const AUDIT_ACTIONS = [
   "level3_approved",
   "level3_rejected",
   "level3_cancelled",
+  // Rendez-vous annulé par le contrôleur : la demande Niveau 3 reste ouverte
+  // et revient en attente de créneau (≠ `level3_cancelled`, demande close).
+  "level3_appointment_cancelled",
   // OAuth / consentement
   "consent_granted",
   "consent_revoked",
@@ -455,6 +458,15 @@ export default defineSchema({
      * sans le lui dire reviendrait à lui faire approuver le doublon à la main.
      */
     duplicateFlagged: v.optional(v.boolean()),
+
+    /**
+     * Champs lus sur la pièce par l'OCR (nom, prénoms, date et lieu de
+     * naissance, sexe, nationalité, date d'expiration…), comparés par le
+     * contrôleur aux données déclarées. JAMAIS le numéro de pièce, qui ne
+     * vit qu'en empreinte (`documentNumberHash`). Absent tant que le pipeline
+     * KYC ne le renseigne pas : l'écran d'examen le dit au lieu d'inventer.
+     */
+    extractedFields: v.optional(v.record(v.string(), v.string())),
 
     submittedAt: v.optional(v.number()),
     createdAt: v.number(),

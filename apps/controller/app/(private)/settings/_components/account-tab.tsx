@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { useMutation, useQuery } from "convex/react"
-import { ConvexError } from "convex/values"
 import { toast } from "sonner"
 
 import { api } from "@repo/backend/convex/_generated/api"
@@ -18,17 +17,10 @@ import {
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
 
-import { settings } from "../../../_content/fr"
-import { SettingsRow, SettingsSection } from "../../../_components/settings-section"
+import { describeError } from "../../../_lib/errors"
+import { settings } from "./content"
+import { SettingsRow, SettingsSection } from "./settings-section"
 
-function describeError(err: unknown, fallback: string): string {
-  if (err instanceof ConvexError) {
-    const data = err.data as { message?: string } | undefined
-    if (data?.message) return data.message
-  }
-  if (err instanceof Error) return err.message
-  return fallback
-}
 
 export function AccountTab() {
   const me = useQuery(api.profile.getCurrentUser)
@@ -112,7 +104,7 @@ function PasswordChangeRow() {
       setOpen(false)
       reset()
     } catch (err) {
-      const msg = describeError(err, "Erreur")
+      const msg = describeError(err, "Le mot de passe n'a pas pu être modifié. Vérifiez le mot de passe actuel.")
       setError(msg)
     } finally {
       setSubmitting(false)

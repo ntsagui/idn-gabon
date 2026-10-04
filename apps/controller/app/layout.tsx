@@ -23,11 +23,11 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Espace Contrôleur · Identité Numérique du Gabon",
-    template: "%s · Espace Contrôleur",
+    default: "Contrôle d'identité · Identité Numérique",
+    template: "%s · Contrôle d'identité",
   },
   description:
-    "Console des contrôleurs d'identité de l'IDN Gabon : revue KYC, scanner QR/NFC, vérification de signature, historique des contrôles.",
+    "Console des contrôleurs d'identité de l'Identité Numérique du Gabon : examen des dossiers, entretiens Niveau 3, contrôle terrain, vérification d'actes officiels.",
 }
 
 export default function RootLayout({

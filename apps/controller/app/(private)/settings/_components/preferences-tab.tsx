@@ -13,11 +13,12 @@ import {
   SelectValue,
 } from "@repo/ui/components/select"
 
-import { settings } from "../../../_content/fr"
+import { describeError } from "../../../_lib/errors"
+import { settings } from "./content"
 import {
   SettingsRow,
   SettingsSection,
-} from "../../../_components/settings-section"
+} from "./settings-section"
 
 export function PreferencesTab() {
   const prefs = useQuery(api.preferences.getMyPreferences)
@@ -29,7 +30,7 @@ export function PreferencesTab() {
       await update({ language: lang })
       toast.success(settings.preferences.saveSuccessToast)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur")
+      toast.error(describeError(err, "Préférence non enregistrée. Réessayez."))
     }
   }
 
@@ -39,7 +40,7 @@ export function PreferencesTab() {
       await update({ theme: t })
       toast.success(settings.preferences.saveSuccessToast)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur")
+      toast.error(describeError(err, "Préférence non enregistrée. Réessayez."))
     }
   }
 

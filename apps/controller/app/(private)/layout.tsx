@@ -1,53 +1,46 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import * as React from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { useConvexAuth, useQuery } from "convex/react"
-import { useEffect } from "react"
 
 import { api } from "@repo/backend/convex/_generated/api"
 
-import { OpShell } from "../_components/op-shell"
+import { AppShell, ShellSkeleton } from "../_components/shell/app-shell"
+import { fullName } from "../_lib/format"
 
 /**
- * Layout des pages internes du contrôleur (queue/scan/verify/history).
+ * Garde des pages de l'espace contrôleur.
  *
- * Garde double :
- *   1. session active (sinon retour à `/`),
- *   2. rôle `identity_controller` — sinon redirige aussi sur `/`.
+ * Même comportement que l'administration et le portail développeur : sans
+ * session, retour à `/sign-in?redirect_to=<page>` ; sans le rôle
+ * `identity_controller`, retour à `/sign-in` avec le motif. Pendant la
+ * vérification, le cadre de la coque s'affiche sans aucun contenu : ni
+ * écran blanc, ni page protégée entrevue. Aucune requête métier ne part
+ * avant que le jeton Convex soit prêt (les pages ne sont pas montées).
  */
-export default function PrivateLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth()
+export default function PrivateLayout({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useConvexAuth()
   const router = useRouter()
+  const pathname = usePathname() ?? "/"
+  const me = useQuery(api.profile.getCurrentUser, isAuthenticated ? {} : "skip")
+  const isController = Boolean(me?.roles?.includes("identity_controller"))
 
-  const me = useQuery(
-    api.profile.getCurrentUser,
-    isAuthenticated ? {} : "skip",
-  )
-
-  useEffect(() => {
-    if (isAuthLoading) return
+  React.useEffect(() => {
+    if (isLoading) return
     if (!isAuthenticated) {
-      router.replace("/")
+      const target = `${pathname}${window.location.search}`
+      router.replace(target === "/" ? "/sign-in" : `/sign-in?redirect_to=${encodeURIComponent(target)}`)
       return
     }
     if (me === undefined) return
-    if (!me || !me.roles?.includes("identity_controller")) {
-      router.replace("/")
-    }
-  }, [isAuthLoading, isAuthenticated, me, router])
+    if (!isController) router.replace("/sign-in?motif=role")
+  }, [isLoading, isAuthenticated, me, isController, pathname, router])
 
-  if (
-    isAuthLoading ||
-    !isAuthenticated ||
-    me === undefined ||
-    !me?.roles?.includes("identity_controller")
-  ) {
-    return <div className="min-h-svh bg-background" />
+  if (isLoading || !isAuthenticated || me === undefined || !me || !isController) {
+    return <ShellSkeleton />
   }
 
-  return <OpShell>{children}</OpShell>
+  const name = fullName(me.profile?.pivot?.firstName, me.profile?.pivot?.lastName) || me.email.split("@")[0] || me.email
+  return <AppShell user={{ name, email: me.email }}>{children}</AppShell>
 }

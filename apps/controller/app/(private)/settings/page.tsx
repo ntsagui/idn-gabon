@@ -1,37 +1,24 @@
-"use client"
+import type { Metadata } from "next"
 
-import * as React from "react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/tabs"
 
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@repo/ui/components/tabs"
-
-import { OpHeader } from "../../_components/op-header"
-import { settings } from "../../_content/fr"
+import { pages } from "../../_content/fr"
+import { PageHeader } from "../../_components/page-header"
 import { AccountTab } from "./_components/account-tab"
 import { PreferencesTab } from "./_components/preferences-tab"
 
-/**
- * Paramètres du contrôleur — onglets Compte et Préférences.
- * Le rôle est déjà vérifié par `(private)/layout.tsx`.
- */
+export const metadata: Metadata = { title: pages.settings.title }
+
 export default function ControllerSettingsPage() {
   return (
     <>
-      <OpHeader sub={settings.sub} title={settings.title} />
-      <div className="flex-1 overflow-auto p-7">
-        <div className="mx-auto w-full max-w-[820px]">
+      <PageHeader kicker={pages.settings.kicker} title={pages.settings.title} description={pages.settings.description} />
+      <div className="px-5 py-6 md:px-8">
+        <div className="w-full max-w-[820px]">
           <Tabs defaultValue="account">
             <TabsList variant="line" className="w-full justify-start gap-1">
-              <TabsTrigger value="account">
-                {settings.tabs.account}
-              </TabsTrigger>
-              <TabsTrigger value="preferences">
-                {settings.tabs.preferences}
-              </TabsTrigger>
+              <TabsTrigger value="account">Compte</TabsTrigger>
+              <TabsTrigger value="preferences">Préférences</TabsTrigger>
             </TabsList>
             <TabsContent value="account" className="mt-6">
               <AccountTab />
