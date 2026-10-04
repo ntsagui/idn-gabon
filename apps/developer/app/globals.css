@@ -1,6 +1,1 @@
 @import "@repo/ui/globals.css";
-
-.portal-canvas {
-  --portal-accent: var(--idn-green);
-  --portal-accent-soft: var(--idn-green-soft);
-}

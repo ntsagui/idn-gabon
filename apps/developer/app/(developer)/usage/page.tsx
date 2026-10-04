@@ -1,287 +1,290 @@
 "use client"
 
+import Link from "next/link"
 import { useQuery } from "convex/react"
-import {
-  ActivityIcon,
-  ArrowUpRightIcon,
-  GaugeIcon,
-  ServerIcon,
-  ShieldCheckIcon,
-} from "lucide-react"
+import { useMemo, useState } from "react"
 
 import { api } from "@repo/backend/convex/_generated/api"
+import { Button } from "@repo/ui/components/button"
+import { cn } from "@repo/ui/lib/utils"
 
-import { fr } from "../../_content/fr"
-import { groupApplications } from "../../_components/application-groups"
-import { OpHeader } from "../../_components/op-header"
-import { StatCard } from "../../_components/stat-card"
+import { BarChart } from "../../_components/bar-chart"
+import { useApplications } from "../../_components/data"
+import { formatDayKey, formatNumber, formatRelative, pluralize } from "../../_components/format"
+import { Icon } from "../../_components/icons"
+import {
+  EmptyState,
+  EnvTag,
+  LoadingBlock,
+  Notice,
+  PageBody,
+  PageHeader,
+  Panel,
+  StatTile,
+} from "../../_components/ui"
+
+type Days = 7 | 30 | 90
+type SortKey = "name" | "tokens" | "activeConsents" | "deliveriesFailed" | "lastActivityAt"
 
 export default function UsagePage() {
-  const usage = useQuery(api.developer.apps.usage, {})
-  const applications = useQuery(api.developer.apps.listMine, {})
-  const groups = applications ? groupApplications(applications) : []
+  const [days, setDays] = useState<Days>(30)
+  const [clientId, setClientId] = useState<string>("")
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "tokens", dir: "desc" })
+  const { groups } = useApplications()
+  const usage = useQuery(api.developer.usage.overview, clientId ? { days, clientId } : { days })
 
-  const hasData = usage?.hasData ?? false
-  const series = usage?.series ?? []
-  const max = Math.max(1, ...series)
-
-  const quotaLabel = `${(usage?.requestsQuota ?? 100_000) / 1000}k`.replace(
-    ".",
-    ",",
+  const options = (groups ?? []).flatMap((group) =>
+    [group.sandbox, group.production]
+      .filter((app): app is NonNullable<typeof app> => Boolean(app))
+      .map((app) => ({
+        clientId: app.clientId,
+        label: `${group.name} · ${app.env === "production" ? "Production" : "Sandbox"}`,
+      })),
   )
-  const quotaPercent = usage
-    ? Math.min(
-        100,
-        Math.round((usage.requestsThisMonth / usage.requestsQuota) * 100),
-      )
-    : 0
+
+  const rows = useMemo(() => {
+    const list = [...(usage?.apps ?? [])]
+    const factor = sort.dir === "asc" ? 1 : -1
+    list.sort((a, b) => {
+      if (sort.key === "name") return a.name.localeCompare(b.name, "fr") * factor
+      return ((a[sort.key] ?? 0) - (b[sort.key] ?? 0)) * factor
+    })
+    return list
+  }, [usage, sort])
+
+  const totals = usage?.totals
+  const deliveries = totals ? totals.deliveriesSucceeded + totals.deliveriesFailed : 0
+  const hasActivity = Boolean(totals && (totals.tokens > 0 || deliveries > 0 || totals.activeConsents > 0))
+
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => ({ key, dir: s.key === key && s.dir === "desc" ? "asc" : "desc" }))
+  const header = (label: string, key: SortKey, align: "left" | "right" = "right") => (
+    <th
+      scope="col"
+      aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      className={cn("px-4 font-medium", align === "right" && "text-right")}
+    >
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className="inline-flex items-center gap-1 rounded-sm hover:text-idn-ink focus-visible:outline-2 focus-visible:outline-idn-green"
+      >
+        {label}
+        <Icon
+          name={sort.key === key && sort.dir === "asc" ? "chevronUp" : "chevronDown"}
+          size={13}
+          className={sort.key === key ? "text-idn-ink" : "opacity-40"}
+        />
+      </button>
+    </th>
+  )
 
   return (
     <>
-      <OpHeader sub={fr.usage.sub} title={fr.usage.title} />
-      <div className="portal-canvas flex-1 overflow-auto">
-        <div className="portal-limit space-y-5">
-          <section className="overflow-hidden rounded-2xl border border-idn-border bg-idn-ink text-white shadow-[0_20px_50px_rgba(15,35,23,0.14)] dark:bg-idn-surface">
-            <div className="grid lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="relative overflow-hidden p-7">
-                <div className="absolute -right-16 -top-24 size-64 rounded-full bg-idn-green/25 blur-3xl" />
-                <div className="relative">
-                  <div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-300">
-                    <GaugeIcon className="size-4" /> Qualité de service
-                  </div>
-                  <h2 className="mt-3 text-2xl font-semibold tracking-[-0.02em]">
-                    Votre trafic, sans perdre le signal.
-                  </h2>
-                  <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
-                    Suivez le quota, la latence et les erreurs avant qu’elles ne
-                    deviennent visibles par les citoyens.
-                  </p>
-                </div>
-              </div>
-              <div className="border-t border-white/10 bg-white/[0.045] p-6 lg:border-l lg:border-t-0">
-                <div className="flex items-end justify-between">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.07em] text-white/45">
-                      Quota mensuel
-                    </div>
-                    <div className="mt-1 text-2xl font-semibold">
-                      {hasData && usage
-                        ? usage.requestsThisMonth.toLocaleString("fr-FR")
-                        : "—"}{" "}
-                      <span className="text-sm font-normal text-white/45">
-                        / {quotaLabel}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-sm font-semibold text-emerald-300">
-                    {quotaPercent}%
-                  </span>
-                </div>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full rounded-full bg-idn-green"
-                    style={{ width: `${quotaPercent}%` }}
+      <PageHeader
+        kicker="Intégration"
+        title="Usage"
+        description="Activité réelle de vos applications : connexions d'usagers, consentements et livraisons de webhooks."
+      />
+      <PageBody>
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div role="group" aria-label="Période" className="flex w-fit rounded-[10px] border border-idn-border bg-idn-surface p-0.5">
+            {([7, 30, 90] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={days === value}
+                onClick={() => setDays(value)}
+                className={cn(
+                  "h-8 rounded-[8px] px-3 text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-idn-green",
+                  days === value
+                    ? "bg-idn-green-soft text-idn-green dark:bg-[#0F2A18] dark:text-idn-green-on-dark"
+                    : "text-idn-ink-2 hover:text-idn-ink",
+                )}
+              >
+                {value} jours
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-[13px] text-idn-muted">
+            Application
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              className="h-9 max-w-[280px] rounded-[10px] border border-idn-border bg-idn-surface px-2 text-[13px] text-idn-ink focus-visible:outline-2 focus-visible:outline-idn-green"
+            >
+              <option value="">Toutes les applications</option>
+              {options.map((option) => (
+                <option key={option.clientId} value={option.clientId}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {usage === undefined || groups === undefined ? (
+          <LoadingBlock rows={4} label="Chargement de l'usage…" />
+        ) : groups.length === 0 ? (
+          <EmptyState
+            icon="chart"
+            title="Aucune application, donc aucun usage"
+            description="L'usage apparaît ici dès que des usagers se connectent via une de vos applications."
+            action={
+              <Button asChild>
+                <Link href="/applications/new">
+                  <Icon name="plus" size={16} /> Créer une application
+                </Link>
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatTile
+                label="Connexions"
+                value={formatNumber(totals!.tokens)}
+                context={`jetons émis sur ${days} jours`}
+              />
+              <StatTile
+                label="Usagers autorisés"
+                value={formatNumber(totals!.activeConsents)}
+                context="consentements actifs aujourd'hui"
+              />
+              <StatTile
+                label="Livraisons webhook"
+                value={formatNumber(totals!.deliveriesSucceeded)}
+                context={deliveries > 0 ? `réussies sur ${formatNumber(deliveries)} terminées` : "aucune livraison terminée"}
+              />
+              <StatTile
+                label="Erreurs"
+                value={formatNumber(totals!.deliveriesFailed)}
+                context={
+                  deliveries > 0
+                    ? `${Math.round((totals!.deliveriesFailed / deliveries) * 100)} % des livraisons en échec`
+                    : "aucune livraison en échec"
+                }
+              />
+            </div>
+
+            {usage.truncated ? (
+              <Notice tone="attention" title="Totaux partiels">
+                Le volume dépasse la limite de lecture d&apos;une requête : les chiffres affichés sont des minima.
+              </Notice>
+            ) : null}
+
+            {!hasActivity ? (
+              <EmptyState
+                icon="chart"
+                title={`Aucune activité sur les ${days} derniers jours`}
+                description="Aucune connexion d'usager ni livraison de webhook n'a été enregistrée. En sandbox, connectez-vous avec un compte de test pour voir apparaître les premières données."
+              />
+            ) : (
+              <div className="grid gap-5 lg:grid-cols-2">
+                <Panel title="Connexions par jour" description="Jetons OAuth émis, à l'heure de Libreville.">
+                  <BarChart
+                    title="Connexions par jour"
+                    data={usage.daily.map((d) => ({ date: d.date, value: d.tokens }))}
+                    tone="green"
+                    unit={(v) => pluralize(v, "connexion", "connexions")}
                   />
-                </div>
-                <p className="mt-3 text-xs text-white/45">
-                  Réinitialisation automatique au début du mois.
-                </p>
+                </Panel>
+                <Panel title="Échecs de livraison par jour" description="Livraisons de webhooks abandonnées après tous les essais.">
+                  <BarChart
+                    title="Échecs de livraison par jour"
+                    data={usage.daily.map((d) => ({ date: d.date, value: d.deliveriesFailed }))}
+                    tone="red"
+                    unit={(v) => pluralize(v, "échec", "échecs")}
+                  />
+                </Panel>
               </div>
-            </div>
-          </section>
+            )}
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <StatCard
-              label={fr.usage.stats.requests.label}
-              value={
-                hasData && usage
-                  ? `${usage.requestsThisMonth.toLocaleString("fr-FR")} / ${quotaLabel}`
-                  : `— / ${quotaLabel}`
-              }
-              delta={hasData ? usage?.requestsDelta : undefined}
-              hint={fr.usage.stats.requests.hint}
-            />
-            <StatCard
-              label={fr.usage.stats.latency.label}
-              value={hasData && usage ? `${usage.latencyP95Ms}ms` : "—"}
-              hint={fr.usage.stats.latency.hint}
-            />
-            <StatCard
-              label={fr.usage.stats.errors.label}
-              value={hasData && usage ? usage.error4xxRate : "—"}
-              hint={fr.usage.stats.errors.hint}
-            />
-          </div>
+            {hasActivity ? (
+              <details className="rounded-[14px] border border-idn-border bg-idn-surface">
+                <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-idn-ink focus-visible:outline-2 focus-visible:outline-idn-green">
+                  Voir les données par jour (tableau)
+                </summary>
+                <div className="max-h-80 overflow-auto border-t border-idn-border-soft">
+                  <table className="w-full text-left text-[13px]">
+                    <thead className="sticky top-0 bg-idn-surface-2 text-xs text-idn-muted">
+                      <tr className="h-10">
+                        <th scope="col" className="px-4 font-medium">Jour</th>
+                        <th scope="col" className="px-4 text-right font-medium">Connexions</th>
+                        <th scope="col" className="px-4 text-right font-medium">Livraisons réussies</th>
+                        <th scope="col" className="px-4 text-right font-medium">Échecs</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-idn-border-soft">
+                      {[...usage.daily].reverse().map((d) => (
+                        <tr key={d.date} className="h-9">
+                          <td className="px-4">{formatDayKey(d.date)}</td>
+                          <td className="px-4 text-right tabular-nums">{formatNumber(d.tokens)}</td>
+                          <td className="px-4 text-right tabular-nums">{formatNumber(d.deliveriesSucceeded)}</td>
+                          <td className="px-4 text-right tabular-nums">{formatNumber(d.deliveriesFailed)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            ) : null}
 
-          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.45fr)_360px]">
-            <section className="portal-panel p-5">
-              <div className="flex items-center justify-between gap-4">
-                <h2 className="text-sm font-semibold text-idn-ink">
-                  {fr.usage.chart.title}
-                </h2>
-                <span className="portal-section-kicker">30 jours</span>
-              </div>
-              {hasData && series.length > 0 ? (
-                <div
-                  className="mt-4 flex h-[180px] items-end gap-2"
-                  role="img"
-                  aria-label={fr.usage.chart.title}
-                >
-                  {series.map((value, idx) => {
-                    const isLast = idx === series.length - 1
-                    const height = Math.max(4, Math.round((value / max) * 170))
-                    return (
-                      <div
-                        key={idx}
-                        className={`w-full rounded-t-sm ${
-                          isLast
-                            ? "bg-[#0E7C3A]"
-                            : "bg-[#B8DCC4] dark:bg-[#1F4A2E]"
-                        }`}
-                        style={{ height: `${height}px` }}
-                      />
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="mt-4 flex h-[180px] flex-col items-center justify-center rounded-lg border border-dashed border-idn-border bg-idn-surface-2/40 px-4 text-center">
-                  <p className="text-sm font-medium text-idn-ink">
-                    {fr.usage.empty.title}
-                  </p>
-                  <p className="mt-1 max-w-[420px] text-xs text-idn-muted">
-                    {fr.usage.empty.body}
-                  </p>
-                </div>
-              )}
-            </section>
-            <aside className="portal-panel overflow-hidden">
-              <div className="flex items-center justify-between border-b border-idn-border-soft bg-idn-surface-2/55 px-5 py-4">
-                <div>
-                  <div className="portal-section-kicker">État du service</div>
-                  <h2 className="mt-1 text-sm font-semibold text-idn-ink">
-                    Indicateurs actuels
-                  </h2>
-                </div>
-                <ActivityIcon className="size-5 text-idn-green" />
-              </div>
-              <div className="p-5">
-                <div className="flex items-center gap-3 rounded-lg border border-idn-green/20 bg-idn-green-soft/65 p-3 dark:bg-idn-green/10">
-                  <span className="size-2 rounded-full bg-idn-green shadow-[0_0_0_4px_rgba(14,124,58,0.12)]" />
-                  <div>
-                    <div className="text-xs font-semibold text-idn-ink">
-                      Services opérationnels
-                    </div>
-                    <div className="mt-0.5 text-[10px] text-idn-muted">
-                      Aucune alerte active
-                    </div>
-                  </div>
-                </div>
-                <dl className="mt-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <dt className="flex items-center gap-2 text-xs text-idn-muted">
-                      <ServerIcon className="size-3.5" /> Applications
-                    </dt>
-                    <dd className="text-sm font-semibold text-idn-ink">
-                      {groups.length}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <dt className="flex items-center gap-2 text-xs text-idn-muted">
-                      <ShieldCheckIcon className="size-3.5" /> Disponibilité
-                    </dt>
-                    <dd className="text-sm font-semibold text-idn-ink">—</dd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <dt className="flex items-center gap-2 text-xs text-idn-muted">
-                      <ActivityIcon className="size-3.5" /> Fenêtre
-                    </dt>
-                    <dd className="text-sm font-semibold text-idn-ink">
-                      30 jours
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            </aside>
-          </div>
-
-          <section>
-            <div className="mb-3 flex items-end justify-between gap-4">
-              <div>
-                <div className="portal-section-kicker">Ventilation</div>
-                <h2 className="mt-1 text-sm font-semibold text-idn-ink">
-                  Par application
-                </h2>
-              </div>
-              <span className="text-xs text-idn-muted">Période courante</span>
-            </div>
-            <div className="portal-table overflow-x-auto">
-              <table className="w-full min-w-[680px] text-left text-xs">
-                <thead>
-                  <tr className="border-b border-idn-border bg-idn-surface-2">
-                    <th className="px-4 py-3 font-semibold text-idn-muted">
-                      Application
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-idn-muted">
-                      Environnement
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-idn-muted">
-                      Requêtes
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-idn-muted">
-                      Latence p95
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-idn-muted">
-                      Erreurs
-                    </th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-idn-border-soft">
-                  {groups.length > 0 ? (
-                    groups.map((group) => {
-                      const primary = group.production ?? group.sandbox
+            <Panel title="Par application" bodyClassName="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left text-[13px]">
+                  <thead className="sticky top-0 bg-idn-surface-2 text-xs text-idn-muted">
+                    <tr className="h-10">
+                      {header("Application", "name", "left")}
+                      {header("Connexions", "tokens")}
+                      {header("Usagers autorisés", "activeConsents")}
+                      <th scope="col" className="px-4 text-right font-medium">Livraisons réussies</th>
+                      {header("Échecs", "deliveriesFailed")}
+                      {header("Dernière activité", "lastActivityAt")}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-idn-border-soft">
+                    {rows.map((row) => {
+                      const group = groups.find(
+                        (g) => g.sandbox?.clientId === row.clientId || g.production?.clientId === row.clientId,
+                      )
                       return (
-                        <tr key={group.id} className="bg-idn-surface">
-                          <td className="px-4 py-3 font-medium text-idn-ink">
-                            {group.name}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`rounded-full px-2 py-1 font-mono text-[10px] ${group.production ? "bg-idn-green-soft text-idn-green" : "bg-idn-surface-2 text-idn-muted"}`}
+                        <tr key={row.clientId} className="h-11 hover:bg-idn-surface-2/60">
+                          <td className="px-4 py-2">
+                            <Link
+                              href={group ? `/applications/${group.id}` : "/applications"}
+                              className="font-medium text-idn-ink hover:text-idn-green hover:underline focus-visible:outline-2 focus-visible:outline-idn-green"
                             >
-                              {group.production ? "production" : "sandbox"}
+                              {row.name}
+                            </Link>
+                            <span className="ml-2 align-middle">
+                              <EnvTag env={row.env} />
                             </span>
+                            <span className="block font-mono text-xs text-idn-muted">{row.clientId}</span>
                           </td>
-                          <td className="px-4 py-3 text-idn-muted">—</td>
-                          <td className="px-4 py-3 text-idn-muted">—</td>
-                          <td className="px-4 py-3 text-idn-muted">—</td>
-                          <td className="px-4 py-3 text-right">
-                            <a
-                              href={`/applications/${primary?.clientId}/keys`}
-                              className="inline-flex items-center gap-1 font-semibold text-idn-green"
-                            >
-                              Ouvrir <ArrowUpRightIcon className="size-3" />
-                            </a>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.tokens)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.activeConsents)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.deliveriesSucceeded)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.deliveriesFailed)}</td>
+                          <td className="px-4 py-2 text-right text-idn-ink-2">
+                            {row.lastActivityAt ? formatRelative(row.lastActivityAt) : <span className="text-idn-muted">Aucune</span>}
                           </td>
                         </tr>
                       )
-                    })
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-8 text-center text-idn-muted"
-                      >
-                        Les applications apparaîtront ici dès leur création.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
-      </div>
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+
+            <Notice tone="info" title="Ce qui est mesuré">
+              Une connexion correspond à un jeton OAuth émis pour l&apos;application. Identité Numérique ne
+              journalise pas encore chaque appel d&apos;API (UserInfo, iBoîte) : il n&apos;y a donc ni compteur de
+              requêtes ni quota affiché. Les erreurs comptées sont les livraisons de webhooks en échec.
+            </Notice>
+          </div>
+        )}
+      </PageBody>
     </>
   )
 }

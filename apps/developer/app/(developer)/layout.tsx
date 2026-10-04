@@ -1,58 +1,46 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useConvexAuth, useQuery } from "convex/react"
-import { useEffect } from "react"
+import { useConvexAuth } from "convex/react"
+import { useEffect, type ReactNode } from "react"
 
-import { api } from "@repo/backend/convex/_generated/api"
+import { IdnMark } from "@repo/ui/components/idn-mark"
 
-import { DeveloperBootstrap } from "../_components/developer-bootstrap"
-import { OpShell } from "../_components/op-shell"
+import { DeveloperBootstrap, useDeveloperReady } from "../_components/developer-bootstrap"
+import { Shell } from "../_components/shell"
 
-export default function DeveloperLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth()
+export default function DeveloperLayout({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useConvexAuth()
   const router = useRouter()
-
-  // listMine peut throw FORBIDDEN tant que le rôle developer n'est pas
-  // attribué — DeveloperBootstrap le pose après sign-in. On utilise donc
-  // profile.getCurrentUser (safe) pour décider de gate, et on récupère le
-  // count d'apps en best-effort via une autre query si besoin.
-  const me = useQuery(
-    api.profile.getCurrentUser,
-    isAuthenticated ? {} : "skip",
-  )
-  const apps = useQuery(
-    api.developer.apps.listMine,
-    isAuthenticated && me?.roles?.includes("developer") ? {} : "skip",
-  )
+  const ready = useDeveloperReady()
 
   useEffect(() => {
-    if (isAuthLoading) return
-    if (!isAuthenticated) {
-      router.replace("/sign-in")
-    }
-  }, [isAuthLoading, isAuthenticated, router])
+    if (!isLoading && !isAuthenticated) router.replace("/sign-in")
+  }, [isLoading, isAuthenticated, router])
 
-  if (isAuthLoading || !isAuthenticated) {
-    return <div className="min-h-svh bg-background" />
+  if (isLoading || !isAuthenticated || !ready) {
+    return (
+      <div role="status" aria-live="polite" className="grid min-h-svh place-items-center bg-idn-bg">
+        <DeveloperBootstrap />
+        <div className="flex flex-col items-center gap-3">
+          <IdnMark size={36} />
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-idn-muted">
+            Ouverture du portail…
+          </p>
+        </div>
+      </div>
+    )
   }
-
-  const appCount = Array.isArray(apps) ? apps.length : 0
 
   return (
     <>
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-idn-green focus:px-4 focus:py-2 focus:text-white"
       >
         Aller au contenu principal
       </a>
-      <DeveloperBootstrap />
-      <OpShell appCount={appCount}>{children}</OpShell>
+      <Shell>{children}</Shell>
     </>
   )
 }

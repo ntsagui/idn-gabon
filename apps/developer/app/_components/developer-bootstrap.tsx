@@ -1,39 +1,43 @@
 "use client"
 
+import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import { useEffect, useRef } from "react"
-import { useConvex, useQuery } from "convex/react"
 
 import { api } from "@repo/backend/convex/_generated/api"
 
 /**
- * Garantit (au premier accès au portail) que l'utilisateur courant a le
- * rôle "developer". Idempotent côté backend — re-call no-op.
+ * Activation libre-service du rôle « developer » au premier accès.
  *
- * Sécurité : la mutation `ensureRole` est ouverte à tout user authentifié.
- * C'est intentionnel — le portail développeur n'est pas un privilège
- * d'opérateur (admin / controller), juste une activation libre-service.
- *
- * Note technique : on gate la mutation derrière `api.developer.apps.me`
- * (une query). Convex ne sert les queries qu'une fois le JWT propagé
- * au client — ça nous donne un signal "auth ready" fiable, sans race
- * condition entre `ConvexBetterAuthProvider` qui pose le token et la
- * mutation qui part trop tôt.
+ * `ensureRole` exige un JWT Convex valide. Juste après `signIn.email`, la
+ * session Better Auth existe mais le JWT Convex n'est pas encore récupéré :
+ * appeler la mutation à ce moment échoue en UNAUTHENTICATED. On attend donc
+ * la sentinelle `developer/apps.me` (query) : Convex ne la sert avec
+ * `authenticated: true` qu'une fois le jeton propagé au client.
  */
+function useDeveloperStatus() {
+  const { isAuthenticated } = useConvexAuth()
+  return useQuery(api.developer.apps.me, isAuthenticated ? {} : "skip")
+}
+
+/** Vrai quand le jeton est prêt et que le rôle développeur est en place. */
+export function useDeveloperReady(): boolean {
+  const me = useDeveloperStatus()
+  return Boolean(me?.authenticated && me.hasDeveloperRole)
+}
+
 export function DeveloperBootstrap() {
-  const convex = useConvex()
-  const me = useQuery(api.developer.apps.me, {})
+  const me = useDeveloperStatus()
+  const ensureRole = useMutation(api.developer.apps.ensureRole)
   const triggered = useRef(false)
 
   useEffect(() => {
-    if (!me?.authenticated) return
-    if (me.hasDeveloperRole) return
-    if (triggered.current) return
+    if (!me?.authenticated || me.hasDeveloperRole || triggered.current) return
     triggered.current = true
-    void convex.mutation(api.developer.apps.ensureRole, {}).catch(() => {
-      // Permettre une nouvelle tentative au prochain render si ça a échoué.
+    ensureRole({}).catch(() => {
+      // Nouvelle tentative au prochain changement de la sentinelle.
       triggered.current = false
     })
-  }, [convex, me])
+  }, [ensureRole, me])
 
   return null
 }

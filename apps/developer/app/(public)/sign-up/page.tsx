@@ -1,11 +1,10 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { useState } from "react"
 import { useForm } from "react-hook-form"
-import { toast } from "sonner"
 import { z } from "zod"
 
 import { Button } from "@repo/ui/components/button"
@@ -14,35 +13,40 @@ import { Label } from "@repo/ui/components/label"
 
 import { authClient } from "@/lib/auth-client"
 
-import { fr } from "../../_content/fr"
-import { IdnIcons } from "../../_components/icons"
+import { Notice } from "../../_components/ui"
+import { AuthFrame, FieldError, inlineLink } from "../_components/auth-frame"
+import { PasswordInput } from "../_components/password-input"
+import { PENDING_EMAIL_KEY } from "./pending-email"
 
-const PENDING_EMAIL_KEY = "idn-dev:pending-verification-email"
-
-const schema = z.object({
-  name: z.string().trim().min(2, "Nom trop court.").max(120),
-  email: z.string().trim().email("Adresse email invalide."),
-  password: z.string().min(10, "10 caractères minimum.").max(128),
-})
+const schema = z
+  .object({
+    name: z.string().trim().min(2, "Saisissez votre nom (2 caractères minimum).").max(120),
+    email: z.string().trim().email("Saisissez une adresse e-mail valide."),
+    password: z.string().min(12, "12 caractères minimum.").max(256),
+    confirm: z.string(),
+  })
+  .refine((values) => values.password === values.confirm, {
+    path: ["confirm"],
+    message: "Les deux mots de passe ne correspondent pas.",
+  })
 
 type FormValues = z.infer<typeof schema>
 
-export default function DeveloperSignUpPage() {
+export default function SignUpPage() {
   const router = useRouter()
-  const [submitting, setSubmitting] = useState(false)
-
+  const [error, setError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", email: "", password: "" },
+    defaultValues: { name: "", email: "", password: "", confirm: "" },
     mode: "onTouched",
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    setSubmitting(true)
+    setError(null)
     try {
       const result = await authClient.signUp.email({
         name: values.name,
@@ -51,153 +55,103 @@ export default function DeveloperSignUpPage() {
       })
       if (result?.error) {
         const code = result.error.code as string | undefined
-        toast.error(
+        setError(
           code === "USER_ALREADY_EXISTS" || code === "EMAIL_ALREADY_EXISTS"
-            ? fr.signUp.errorEmailTaken
-            : (result.error.message ?? fr.signUp.errorGeneric),
+            ? "Un compte existe déjà avec cette adresse. Connectez-vous."
+            : (result.error.message ?? "Inscription impossible. Réessayez."),
         )
-        setSubmitting(false)
         return
       }
-      // Persiste l'email pour la page de vérification (un OTP a été envoyé
-      // automatiquement par Better Auth via sendVerificationOnSignUp).
+      // Le serveur n'envoie pas de code à l'inscription
+      // (emailOTP.sendVerificationOnSignUp = false) : on le demande ici.
+      await authClient.emailOtp
+        .sendVerificationOtp({ email: values.email, type: "email-verification" })
+        .catch(() => undefined)
       try {
         window.sessionStorage.setItem(PENDING_EMAIL_KEY, values.email)
       } catch {
-        /* storage indisponible — la page verify gérera le fallback */
+        // stockage indisponible : la page de vérification redemandera l'adresse
       }
       router.push("/sign-up/verify")
     } catch {
-      toast.error(fr.signUp.errorGeneric)
-      setSubmitting(false)
+      setError("Inscription impossible. Vérifiez votre connexion et réessayez.")
     }
   })
 
   return (
-    <main className="mx-auto flex min-h-[calc(100svh-64px)] w-full max-w-[460px] flex-col justify-center px-6 py-16">
-      <div className="text-center">
-        <h1 className="text-[26px] font-semibold tracking-[-0.012em] text-idn-ink">
-          {fr.signUp.title}
-        </h1>
-        <p className="mt-2 text-sm text-idn-muted">{fr.signUp.subtitle}</p>
-      </div>
-
-      <form onSubmit={onSubmit} noValidate className="mt-7 space-y-3">
+    <AuthFrame
+      kicker="Espace développeur"
+      title="Créer un compte développeur"
+      description="Gratuit. Vos applications démarrent en sandbox ; la production est ouverte après validation par l'administration."
+      footer={
+        <>
+          Déjà un compte ?{" "}
+          <Link href="/sign-in" className={inlineLink}>
+            Se connecter
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={onSubmit} noValidate className="space-y-4">
+        {error ? (
+          <Notice tone="danger">
+            <span role="alert">{error}</span>
+          </Notice>
+        ) : null}
         <div className="space-y-1.5">
-          <Label htmlFor="dev-name">{fr.signUp.nameLabel}</Label>
-          <div className="relative">
-            <span
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-idn-muted"
-              aria-hidden
-            >
-              {IdnIcons.user}
-            </span>
-            <Input
-              id="dev-name"
-              type="text"
-              autoComplete="name"
-              required
-              aria-required="true"
-              aria-invalid={Boolean(errors.name)}
-              aria-describedby={errors.name ? "dev-name-error" : undefined}
-              className="h-11 pl-11"
-              {...register("name")}
-            />
-          </div>
-          {errors.name ? (
-            <p id="dev-name-error" role="alert" className="text-xs text-destructive">
-              {errors.name.message}
-            </p>
-          ) : null}
+          <Label htmlFor="name">Nom et prénom</Label>
+          <Input
+            id="name"
+            autoComplete="name"
+            aria-invalid={Boolean(errors.name)}
+            aria-describedby={errors.name ? "name-error" : undefined}
+            className="h-11"
+            {...register("name")}
+          />
+          <FieldError id="name-error" message={errors.name?.message} />
         </div>
-
         <div className="space-y-1.5">
-          <Label htmlFor="dev-email-up">{fr.signUp.emailLabel}</Label>
-          <div className="relative">
-            <span
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-idn-muted"
-              aria-hidden
-            >
-              {IdnIcons.mail}
-            </span>
-            <Input
-              id="dev-email-up"
-              type="email"
-              autoComplete="email"
-              required
-              aria-required="true"
-              aria-invalid={Boolean(errors.email)}
-              aria-describedby={errors.email ? "dev-email-up-error" : undefined}
-              className="h-11 pl-11"
-              {...register("email")}
-            />
-          </div>
-          {errors.email ? (
-            <p
-              id="dev-email-up-error"
-              role="alert"
-              className="text-xs text-destructive"
-            >
-              {errors.email.message}
-            </p>
-          ) : null}
+          <Label htmlFor="email">Adresse e-mail professionnelle</Label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? "email-error" : undefined}
+            className="h-11"
+            {...register("email")}
+          />
+          <FieldError id="email-error" message={errors.email?.message} />
         </div>
-
         <div className="space-y-1.5">
-          <Label htmlFor="dev-password-up">{fr.signUp.passwordLabel}</Label>
-          <div className="relative">
-            <span
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-idn-muted"
-              aria-hidden
-            >
-              {IdnIcons.lock}
-            </span>
-            <Input
-              id="dev-password-up"
-              type="password"
-              autoComplete="new-password"
-              required
-              aria-required="true"
-              aria-invalid={Boolean(errors.password)}
-              aria-describedby={
-                errors.password ? "dev-password-up-error" : undefined
-              }
-              className="h-11 pl-11"
-              {...register("password")}
-            />
-          </div>
-          {errors.password ? (
-            <p
-              id="dev-password-up-error"
-              role="alert"
-              className="text-xs text-destructive"
-            >
-              {errors.password.message}
-            </p>
-          ) : null}
+          <Label htmlFor="password">Mot de passe</Label>
+          <PasswordInput
+            id="password"
+            autoComplete="new-password"
+            aria-invalid={Boolean(errors.password)}
+            aria-describedby={errors.password ? "password-error password-hint" : "password-hint"}
+            {...register("password")}
+          />
+          <p id="password-hint" className="text-xs text-idn-muted">
+            12 caractères minimum. Les mots de passe présents dans des fuites publiques sont refusés.
+          </p>
+          <FieldError id="password-error" message={errors.password?.message} />
         </div>
-
-        <Button
-          type="submit"
-          size="lg"
-          disabled={submitting}
-          className="mt-2 h-12 w-full text-base"
-        >
-          {submitting ? fr.signUp.submitting : fr.signUp.submit}
+        <div className="space-y-1.5">
+          <Label htmlFor="confirm">Confirmer le mot de passe</Label>
+          <PasswordInput
+            id="confirm"
+            autoComplete="new-password"
+            aria-invalid={Boolean(errors.confirm)}
+            aria-describedby={errors.confirm ? "confirm-error" : undefined}
+            {...register("confirm")}
+          />
+          <FieldError id="confirm-error" message={errors.confirm?.message} />
+        </div>
+        <Button type="submit" size="lg" disabled={isSubmitting} className="w-full">
+          {isSubmitting ? "Création du compte…" : "Créer mon compte"}
         </Button>
-
-        <p className="pt-2 text-center text-xs text-idn-muted">{fr.signUp.consent}</p>
       </form>
-
-      <p className="mt-6 text-center text-sm text-idn-muted">
-        {fr.signUp.haveAccount}{" "}
-        <Link
-          href="/sign-in"
-          className="font-medium text-idn-green underline-offset-2 hover:underline focus-visible:underline"
-        >
-          {fr.signUp.signInLink}
-        </Link>
-      </p>
-    </main>
+    </AuthFrame>
   )
 }

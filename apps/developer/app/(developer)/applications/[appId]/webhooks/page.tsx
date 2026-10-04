@@ -1,713 +1,595 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
-import { useMutation, useQuery } from "convex/react"
+import Link from "next/link"
+import { useAction, useMutation, useQuery } from "convex/react"
+import type { FunctionReturnType } from "convex/server"
+import { useState } from "react"
 import { toast } from "sonner"
-import {
-  ActivityIcon,
-  CheckIcon,
-  KeyRoundIcon,
-  RadioTowerIcon,
-  RotateCcwIcon,
-  WebhookIcon,
-} from "lucide-react"
 
 import { api } from "@repo/backend/convex/_generated/api"
 import type { Id } from "@repo/backend/convex/_generated/dataModel"
 import { Button } from "@repo/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@repo/ui/components/dialog"
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
+import { cn } from "@repo/ui/lib/utils"
 
-type EventType =
-  | "iboite.account.updated"
-  | "identity.verification.created"
-  | "identity.verification.updated"
-  | "identity.verification.deleted"
+import { ConfirmDialog } from "../../../../_components/confirm-dialog"
+import { errorMessage, formatDateTime, formatRelative } from "../../../../_components/format"
+import { Icon } from "../../../../_components/icons"
+import { SecretDialog, type RevealedSecret } from "../../../../_components/secret-dialog"
+import {
+  EmptyState,
+  LoadingBlock,
+  Notice,
+  PageBody,
+  Panel,
+  StatusPill,
+  type PillTone,
+} from "../../../../_components/ui"
+import { useAppWorkspace } from "../_components/app-context"
 
-const date = (value: number | null): string =>
-  value
-    ? new Intl.DateTimeFormat("fr-FR", {
-        dateStyle: "short",
-        timeStyle: "short",
-      }).format(value)
-    : "—"
+type EndpointRow = FunctionReturnType<typeof api.webhooks.endpoints.list>[number]
+type EventType = EndpointRow["subscriptions"][number]
+type TestResult = FunctionReturnType<typeof api.developer.webhookTest.sendTestEvent>
 
-const errorMessage = (error: unknown): string =>
-  error && typeof error === "object" && "data" in error
-    ? ((error as { data?: { message?: string } }).data?.message ??
-      "Opération impossible.")
-    : "Opération impossible."
+const ENDPOINT_STATUS: Record<EndpointRow["endpoint"]["status"], { label: string; tone: PillTone }> = {
+  pending: { label: "À vérifier", tone: "attention" },
+  active: { label: "Actif", tone: "success" },
+  paused: { label: "En pause", tone: "attention" },
+  disabled: { label: "Désactivé", tone: "neutral" },
+}
 
-function EndpointCard({
-  value,
-  catalog,
-}: {
-  value: {
-    endpoint: {
-      id: Id<"webhookEndpoints">
-      name: string
-      url: string
-      status: "pending" | "active" | "paused" | "disabled"
-      verifiedAt: number | null
-      consecutiveFailures: number
-      pausedReason: string | null
-    }
-    subscriptions: EventType[]
-  }
-  catalog: EventType[]
-}) {
-  const deliveries = useQuery(api.webhooks.endpoints.listDeliveries, {
-    endpointId: value.endpoint.id,
-  })
-  const challenge = useMutation(api.webhooks.endpoints.requestChallenge)
-  const update = useMutation(api.webhooks.endpoints.update)
-  const rotate = useMutation(api.webhooks.endpoints.rotateSecret)
-  const resume = useMutation(api.webhooks.endpoints.resume)
-  const disableEndpoint = useMutation(api.webhooks.endpoints.disable)
-  const remove = useMutation(api.webhooks.endpoints.remove)
-  const replay = useMutation(api.webhooks.endpoints.replay)
-  const [revealedSecret, setRevealedSecret] = useState<{
-    secret: string
-    previousValidUntil: number
-  } | null>(null)
+const DELIVERY_STATUS: Record<string, { label: string; tone: PillTone }> = {
+  pending: { label: "En attente", tone: "info" },
+  delivering: { label: "En cours", tone: "info" },
+  retrying: { label: "Nouvel essai prévu", tone: "attention" },
+  succeeded: { label: "Livré", tone: "success" },
+  failed: { label: "Échec", tone: "danger" },
+  canceled: { label: "Annulé", tone: "neutral" },
+}
 
-  const edit = async () => {
-    const name = window.prompt("Nom de l'endpoint", value.endpoint.name)
-    if (name === null) return
-    const url = window.prompt("URL HTTPS", value.endpoint.url)
-    if (url === null) return
-    const rawTypes = window.prompt(
-      "Événements exacts, séparés par des virgules",
-      value.subscriptions.join(", "),
+const REASONS: Record<string, string> = {
+  HTTP_410: "L'endpoint a répondu 410 (Gone) : modifiez son URL.",
+  TOO_MANY_FAILURES: "20 échecs consécutifs : endpoint mis en pause. Corrigez-le puis réactivez-le.",
+  MANUALLY_DISABLED: "Désactivé manuellement.",
+  CHALLENGE_MISMATCH: "La réponse au challenge ne contenait pas la valeur attendue.",
+  APP_INACTIVE: "L'application n'est pas active.",
+  TIMEOUT: "Délai de 10 s dépassé.",
+  SSRF_ADDRESS_FORBIDDEN: "L'URL pointe vers une adresse interdite (réseau privé).",
+  DNS_NO_ADDRESS: "Le nom de domaine ne résout vers aucune adresse.",
+}
+
+const describeReason = (reason: string | null) =>
+  reason ? (REASONS[reason] ?? (reason.startsWith("HTTP_") ? `Réponse HTTP ${reason.slice(5)}.` : reason)) : null
+
+export default function ApplicationWebhooksPage() {
+  const { app } = useAppWorkspace()
+  if (app.disabled) {
+    return (
+      <PageBody>
+        <Notice tone="info" title="Environnement inactif">
+          Les webhooks de production se configurent une fois l&apos;application validée par l&apos;administration.
+        </Notice>
+      </PageBody>
     )
-    if (rawTypes === null) return
-    const eventTypes = [
-      ...new Set(rawTypes.split(",").map((item) => item.trim())),
-    ].filter((item): item is EventType => catalog.includes(item as EventType))
-    try {
-      await update({ endpointId: value.endpoint.id, name, url, eventTypes })
-      toast.success("Endpoint mis à jour.")
-    } catch (error) {
-      toast.error(errorMessage(error))
-    }
   }
+  return <WebhooksWorkspace key={app.clientId} />
+}
+
+function WebhooksWorkspace() {
+  const { app } = useAppWorkspace()
+  const endpoints = useQuery(api.webhooks.endpoints.list, { clientId: app.clientId })
+  const catalog = useQuery(api.webhooks.endpoints.catalog, {})
+  const [editing, setEditing] = useState<EndpointRow | "new" | null>(null)
+  const [selected, setSelected] = useState<Id<"webhookEndpoints"> | null>(null)
+  const [secret, setSecret] = useState<RevealedSecret | null>(null)
+  const limit = app.env === "production" ? 10 : 3
+  const selectedRow = endpoints?.find((row) => row.endpoint.id === selected) ?? endpoints?.[0] ?? null
 
   return (
-    <article className="portal-panel overflow-hidden">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-idn-border-soft bg-idn-surface-2/55 px-5 py-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span
-              className={`size-2 rounded-full ${value.endpoint.status === "active" ? "bg-idn-green shadow-[0_0_0_4px_rgba(14,124,58,0.12)]" : value.endpoint.status === "paused" ? "bg-amber-500" : "bg-idn-muted-soft"}`}
+    <PageBody>
+      <div className="space-y-5">
+        <Panel
+          title="Endpoints"
+          description={`Chaque événement est signé (HMAC SHA-256) et réessayé jusqu'à 8 fois. ${endpoints?.length ?? 0} / ${limit} endpoints.`}
+          actions={
+            <Button
+              type="button"
+              size="sm"
+              disabled={endpoints === undefined || endpoints.length >= limit}
+              onClick={() => setEditing("new")}
+            >
+              <Icon name="plus" size={15} /> Ajouter un endpoint
+            </Button>
+          }
+        >
+          {endpoints === undefined ? (
+            <LoadingBlock rows={2} />
+          ) : endpoints.length === 0 ? (
+            <EmptyState
+              icon="webhook"
+              title="Aucun endpoint"
+              description="Déclarez l'URL https de votre serveur qui recevra les événements, puis vérifiez-la : IDN y envoie un challenge signé que votre serveur doit renvoyer."
+              className="border-0 py-6"
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/docs/webhooks">Lire le guide des webhooks</Link>
+                </Button>
+              }
             />
-            <h3 className="font-semibold text-idn-ink">
-              {value.endpoint.name}
-            </h3>
-            <span className="rounded-full bg-idn-surface-2 px-2 py-0.5 font-mono text-[10px] uppercase text-idn-muted">
-              {value.endpoint.status}
-            </span>
-          </div>
-          <p className="mt-1 break-all font-mono text-xs text-idn-muted">
-            {value.endpoint.url}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={edit}>
-            Modifier
-          </Button>
-          {value.endpoint.status === "pending" ? (
-            <Button
-              size="sm"
-              onClick={() =>
-                void challenge({ endpointId: value.endpoint.id })
-                  .then(() => toast.success("Challenge envoyé."))
-                  .catch((error) => toast.error(errorMessage(error)))
-              }
-            >
-              Activer
-            </Button>
-          ) : null}
-          {value.endpoint.status === "active" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                void challenge({ endpointId: value.endpoint.id })
-                  .then(() => toast.success("Événement de test envoyé."))
-                  .catch((error) => toast.error(errorMessage(error)))
-              }
-            >
-              Tester
-            </Button>
-          ) : null}
-          {value.endpoint.status === "paused" ||
-          (value.endpoint.status === "disabled" &&
-            value.endpoint.pausedReason !== "HTTP_410") ? (
-            <Button
-              size="sm"
-              onClick={() =>
-                void resume({ endpointId: value.endpoint.id })
-                  .then(() => toast.success("Endpoint réactivé."))
-                  .catch((error) => toast.error(errorMessage(error)))
-              }
-            >
-              Réactiver
-            </Button>
-          ) : null}
-          {value.endpoint.status !== "disabled" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                void disableEndpoint({ endpointId: value.endpoint.id })
-                  .then(() => toast.success("Endpoint désactivé."))
-                  .catch((error) => toast.error(errorMessage(error)))
-              }
-            >
-              Désactiver
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              void rotate({ endpointId: value.endpoint.id })
-                .then((result) => {
-                  setRevealedSecret(result)
-                  toast.success("Secret tourné. L'ancien reste valable 24 h.")
-                })
-                .catch((error) => toast.error(errorMessage(error)))
-            }
-          >
-            Tourner le secret
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              if (!window.confirm("Supprimer cet endpoint ?")) return
-              void remove({ endpointId: value.endpoint.id })
-            }}
-          >
-            Supprimer
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 border-b border-idn-border-soft bg-idn-surface/70">
-        <div className="border-r border-idn-border-soft px-5 py-3">
-          <div className="text-[10px] uppercase tracking-[0.06em] text-idn-muted">
-            Vérifié
-          </div>
-          <div className="mt-1 text-xs font-medium text-idn-ink">
-            {date(value.endpoint.verifiedAt)}
-          </div>
-        </div>
-        <div className="border-r border-idn-border-soft px-5 py-3">
-          <div className="text-[10px] uppercase tracking-[0.06em] text-idn-muted">
-            Échecs
-          </div>
-          <div className="mt-1 text-xs font-semibold text-idn-ink">
-            {value.endpoint.consecutiveFailures}
-          </div>
-        </div>
-        <div className="px-5 py-3">
-          <div className="text-[10px] uppercase tracking-[0.06em] text-idn-muted">
-            Événements
-          </div>
-          <div className="mt-1 text-xs font-semibold text-idn-ink">
-            {value.subscriptions.length}
-          </div>
-        </div>
-      </div>
-
-      <div className="p-5">
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {value.subscriptions.map((type) => (
-            <span
-              key={type}
-              className="rounded-md bg-idn-green-soft px-2 py-1 font-mono text-[10px] text-idn-green"
-            >
-              {type}
-            </span>
-          ))}
-        </div>
-
-        {revealedSecret ? (
-          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-            <div className="text-xs font-semibold text-idn-ink">
-              Nouveau secret — affiché une seule fois
-            </div>
-            <code className="mt-2 block break-all text-xs">
-              {revealedSecret.secret}
-            </code>
-            <p className="mt-2 text-xs text-idn-muted">
-              Ancien secret valable jusqu&apos;au{" "}
-              {date(revealedSecret.previousValidUntil)} · valeur Unix ms{" "}
-              <code>{revealedSecret.previousValidUntil}</code>
-            </p>
-          </div>
-        ) : null}
-
-        <div className="mt-5 border-t border-idn-border pt-4">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-idn-muted">
-            Dernières livraisons
-          </h4>
-          {deliveries === undefined ? (
-            <p className="mt-2 text-sm text-idn-muted">Chargement…</p>
-          ) : deliveries.length === 0 ? (
-            <p className="mt-2 text-sm text-idn-muted">Aucune livraison.</p>
           ) : (
-            <ul className="mt-2 divide-y divide-idn-border">
-              {deliveries.slice(0, 12).map((delivery) => (
-                <li
-                  key={delivery.id}
-                  className="flex flex-wrap items-center gap-2 py-2 text-xs"
-                >
-                  <code className="text-idn-ink">{delivery.eventId}</code>
-                  <span className="text-idn-muted">{delivery.eventType}</span>
-                  <span className="rounded bg-idn-surface-2 px-1.5 py-0.5 uppercase text-idn-muted">
-                    {delivery.status}
-                  </span>
-                  <span className="text-idn-muted">
-                    {delivery.attempts} tentative(s) · HTTP{" "}
-                    {delivery.lastHttpStatus ?? "—"}
-                  </span>
-                  {delivery.status === "failed" ||
-                  delivery.status === "canceled" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="ml-auto h-7"
-                      onClick={() =>
-                        void replay({ deliveryId: delivery.id }).catch(
-                          (error) => toast.error(errorMessage(error)),
-                        )
-                      }
-                    >
-                      Rejouer
-                    </Button>
-                  ) : null}
-                </li>
+            <ul className="space-y-3">
+              {endpoints.map((row) => (
+                <EndpointCard
+                  key={row.endpoint.id}
+                  row={row}
+                  catalog={catalog ?? []}
+                  selected={selectedRow?.endpoint.id === row.endpoint.id}
+                  onSelect={() => setSelected(row.endpoint.id)}
+                  onEdit={() => setEditing(row)}
+                  onSecret={setSecret}
+                />
               ))}
             </ul>
           )}
-        </div>
+        </Panel>
+
+        {selectedRow ? <DeliveriesPanel row={selectedRow} /> : null}
+
+        <Panel title="Vérifier la signature">
+          <p className="text-[13px] leading-5 text-idn-muted">
+            Chaque requête porte <code className="font-mono">X-IDN-Timestamp</code> et{" "}
+            <code className="font-mono">X-IDN-Signature: v1=…</code>, HMAC SHA-256 de{" "}
+            <code className="font-mono">{"`${timestamp}.${corps brut}`"}</code> avec le secret de l&apos;endpoint.
+            Pendant 24 h après une rotation, deux signatures sont envoyées, séparées par une virgule.{" "}
+            <Link href="/docs/webhooks" className="font-medium text-idn-green underline-offset-2 hover:underline dark:text-idn-green-on-dark">
+              Exemple de vérification
+            </Link>
+          </p>
+        </Panel>
       </div>
-    </article>
+
+      <EndpointDialog
+        open={editing !== null}
+        row={editing === "new" ? null : editing}
+        catalog={catalog ?? []}
+        onClose={() => setEditing(null)}
+        onCreated={(value) =>
+          setSecret({
+            title: "Secret de signature",
+            description: "Utilisez-le pour vérifier la signature X-IDN-Signature. Étape suivante : vérifier l'endpoint.",
+            label: "Secret (whsec_…)",
+            value,
+          })
+        }
+      />
+      <SecretDialog secret={secret} onClose={() => setSecret(null)} />
+    </PageBody>
   )
 }
 
-export default function WebhooksPage() {
-  const params = useParams<{ appId: string }>()
-  const clientId = String(params.appId ?? "")
-  const app = useQuery(api.developer.apps.get, { clientId })
-  const endpoints = useQuery(api.webhooks.endpoints.list, { clientId })
-  const catalog = useQuery(api.webhooks.endpoints.catalog, {})
-  const apiKeys = useQuery(api.developer.apiKeys.listKeys, {})
-  const createEndpoint = useMutation(api.webhooks.endpoints.create)
-  const setScopes = useMutation(api.developer.apps.setScopes)
-  const createKey = useMutation(api.developer.apiKeys.createKey)
-  const attachKey = useMutation(api.developer.apiKeys.attachKeyToApp)
-  const [name, setName] = useState("Webhook principal")
-  const [url, setUrl] = useState("")
-  const [selected, setSelected] = useState<EventType[]>([
-    "iboite.account.updated",
-  ])
-  const [secret, setSecret] = useState<string | null>(null)
-  const [m2mSecret, setM2mSecret] = useState<string | null>(null)
+function EndpointCard({
+  row,
+  catalog,
+  selected,
+  onSelect,
+  onEdit,
+  onSecret,
+}: {
+  row: EndpointRow
+  catalog: FunctionReturnType<typeof api.webhooks.endpoints.catalog>
+  selected: boolean
+  onSelect: () => void
+  onEdit: () => void
+  onSecret: (secret: RevealedSecret) => void
+}) {
+  const { endpoint } = row
+  const requestChallenge = useMutation(api.webhooks.endpoints.requestChallenge)
+  const rotateSecret = useMutation(api.webhooks.endpoints.rotateSecret)
+  const disable = useMutation(api.webhooks.endpoints.disable)
+  const resume = useMutation(api.webhooks.endpoints.resume)
+  const remove = useMutation(api.webhooks.endpoints.remove)
+  const sendTest = useAction(api.developer.webhookTest.sendTestEvent)
+  const [confirm, setConfirm] = useState<"rotate" | "disable" | "remove" | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [test, setTest] = useState<TestResult | null>(null)
+  const status = ENDPOINT_STATUS[endpoint.status]
+  const reason = describeReason(endpoint.pausedReason)
+  const labels = new Map(catalog.map((c) => [c.type, c.label]))
 
-  useEffect(() => {
-    setSecret(null)
-    setM2mSecret(null)
-    setUrl("")
-  }, [clientId])
-
-  if (
-    app === undefined ||
-    endpoints === undefined ||
-    catalog === undefined ||
-    apiKeys === undefined
-  ) {
-    return (
-      <div className="portal-panel p-6 text-sm text-idn-muted">
-        Chargement des webhooks…
-      </div>
-    )
-  }
-  if (!app) {
-    return (
-      <div className="portal-panel p-6 text-sm text-idn-muted">
-        Application introuvable.
-      </div>
-    )
-  }
-  const missingIboiteScopes = [
-    "idn:iboite.read",
-    "idn:iboite.manage",
-    "idn:iboite.send",
-    "offline_access",
-  ].filter((scope) => !app.scopes.includes(scope))
-
-  const create = async (event: React.FormEvent) => {
-    event.preventDefault()
+  const run = async (action: () => Promise<unknown>, success: string) => {
     try {
-      const result = await createEndpoint({
-        clientId,
-        name,
-        url,
-        eventTypes: selected,
-      })
-      setSecret(result.secret)
-      setUrl("")
-      toast.success(
-        "Endpoint créé. Enregistrez le secret puis lancez le challenge.",
-      )
+      await action()
+      toast.success(success)
     } catch (error) {
-      toast.error(errorMessage(error))
+      toast.error(errorMessage(error, "Action impossible."))
     }
   }
 
-  const enableIboiteScope = async () => {
+  const runTest = async () => {
+    setTesting(true)
+    setTest(null)
     try {
-      await setScopes({
-        clientId,
-        scopes: [
-          ...new Set([
-            ...app.scopes,
-            "idn:iboite.read",
-            "idn:iboite.manage",
-            "idn:iboite.send",
-            "offline_access",
-          ]),
-        ],
-      })
-      toast.success("Scopes iBoîte déclarés.")
+      const result = await sendTest({ endpointId: endpoint.id })
+      setTest(result)
+      if (result.ok) toast.success(`Événement de test livré (HTTP ${result.httpStatus}).`)
+      else toast.error("L'événement de test n'a pas été accepté par votre serveur.")
     } catch (error) {
-      toast.error(errorMessage(error))
+      toast.error(errorMessage(error, "Envoi impossible."))
+    } finally {
+      setTesting(false)
     }
   }
 
   return (
-    <>
-      <section className="overflow-hidden rounded-2xl border border-idn-border bg-idn-ink text-white shadow-[0_20px_50px_rgba(15,35,23,0.14)] dark:bg-idn-surface">
-        <div className="grid lg:grid-cols-[1fr_auto]">
-          <div className="relative overflow-hidden p-6 lg:p-7">
-            <div className="absolute -right-12 -top-20 size-56 rounded-full bg-idn-blue/20 blur-3xl" />
-            <div className="relative flex items-start gap-4">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-emerald-300">
-                <WebhookIcon className="size-5" />
-              </span>
-              <div>
-                <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-300">
-                  Livraison événementielle
-                </div>
-                <h2 className="mt-2 text-xl font-semibold tracking-[-0.02em]">
-                  Recevez chaque changement sans interrogation périodique.
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">
-                  Les signatures, tentatives et reprises restent visibles dans
-                  le même atelier que vos endpoints.
-                </p>
-              </div>
-            </div>
-          </div>
-          <dl className="grid min-w-[420px] grid-cols-3 border-t border-white/10 bg-white/[0.045] lg:border-l lg:border-t-0">
-            {[
-              [
-                String(
-                  endpoints.filter((item) => item.endpoint.status === "active")
-                    .length,
-                ),
-                "Actifs",
-              ],
-              [
-                String(
-                  endpoints.filter((item) => item.endpoint.status === "paused")
-                    .length,
-                ),
-                "En pause",
-              ],
-              [
-                String(
-                  endpoints.reduce(
-                    (total, item) => total + item.subscriptions.length,
-                    0,
-                  ),
-                ),
-                "Abonnements",
-              ],
-            ].map(([value, label]) => (
-              <div
-                key={label}
-                className="flex flex-col justify-center border-r border-white/10 px-5 py-5 last:border-r-0"
-              >
-                <dt className="text-[10px] uppercase tracking-[0.07em] text-white/45">
-                  {label}
-                </dt>
-                <dd className="mt-1 text-xl font-semibold">{value}</dd>
-              </div>
-            ))}
-          </dl>
+    <li
+      className={cn(
+        "rounded-[10px] border p-4",
+        selected ? "border-idn-green/60" : "border-idn-border",
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <button type="button" onClick={onSelect} className="min-w-0 text-left focus-visible:outline-2 focus-visible:outline-idn-green" aria-pressed={selected}>
+          <span className="block text-sm font-semibold text-idn-ink">{endpoint.name}</span>
+          <span className="block break-all font-mono text-xs text-idn-muted">{endpoint.url}</span>
+        </button>
+        <StatusPill tone={status.tone}>{status.label}</StatusPill>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {row.subscriptions.map((type) => (
+          <span key={type} className="inline-flex h-6 items-center rounded-md bg-idn-surface-2 px-2 font-mono text-[11px] text-idn-ink-2" title={labels.get(type)}>
+            {type}
+          </span>
+        ))}
+      </div>
+      <dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-idn-muted sm:grid-cols-3">
+        <div>
+          <dt className="inline">Dernier succès : </dt>
+          <dd className="inline text-idn-ink-2">{endpoint.lastSuccessAt ? formatRelative(endpoint.lastSuccessAt) : "aucun"}</dd>
         </div>
-      </section>
-
-      {missingIboiteScopes.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-          <p className="text-sm text-idn-ink">
-            Déclarez les scopes <code>{missingIboiteScopes.join(", ")}</code>
-            pour l&apos;intégration iBoîte complète.
-          </p>
-          <Button size="sm" onClick={enableIboiteScope}>
-            Déclarer les scopes iBoîte
-          </Button>
+        <div>
+          <dt className="inline">Dernier échec : </dt>
+          <dd className="inline text-idn-ink-2">{endpoint.lastFailureAt ? formatRelative(endpoint.lastFailureAt) : "aucun"}</dd>
         </div>
+        <div>
+          <dt className="inline">Vérifié : </dt>
+          <dd className="inline text-idn-ink-2">{endpoint.verifiedAt ? formatRelative(endpoint.verifiedAt) : "non"}</dd>
+        </div>
+      </dl>
+      {reason ? <p className="mt-2 text-xs text-[#6B5400] dark:text-[#F2D35B]">{reason}</p> : null}
+      {test ? (
+        <p
+          role="status"
+          className={cn(
+            "mt-3 rounded-md px-3 py-2 font-mono text-xs",
+            test.ok
+              ? "bg-idn-green-soft text-idn-green-dark dark:bg-[#0F2A18] dark:text-idn-green-on-dark"
+              : "bg-[#FBE9E7] text-[#B3261E] dark:bg-[#3A1614] dark:text-[#F2857E]",
+          )}
+        >
+          webhook.test · {test.eventId} · {test.httpStatus ? `HTTP ${test.httpStatus}` : (test.errorCode ?? "erreur")} ·{" "}
+          {test.durationMs} ms
+        </p>
       ) : null}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {endpoint.status === "pending" ? (
+          <Button type="button" size="sm" onClick={() => void run(() => requestChallenge({ endpointId: endpoint.id }), "Challenge envoyé : le statut se met à jour dès la réponse de votre serveur.")}>
+            <Icon name="shield" size={15} /> Vérifier l&apos;endpoint
+          </Button>
+        ) : null}
+        {endpoint.status === "active" ? (
+          <Button type="button" size="sm" variant="outline" disabled={testing} onClick={() => void runTest()}>
+            <Icon name="send" size={15} /> {testing ? "Envoi…" : "Envoyer un événement de test"}
+          </Button>
+        ) : null}
+        {endpoint.status === "paused" || endpoint.status === "disabled" ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => void run(() => resume({ endpointId: endpoint.id }), "Endpoint réactivé.")}>
+            <Icon name="play" size={15} /> Réactiver
+          </Button>
+        ) : null}
+        <Button type="button" size="sm" variant="outline" onClick={onEdit}>
+          Modifier
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => setConfirm("rotate")}>
+          <Icon name="refresh" size={15} /> Nouveau secret
+        </Button>
+        {endpoint.status === "active" || endpoint.status === "pending" ? (
+          <Button type="button" size="sm" variant="ghost" onClick={() => setConfirm("disable")}>
+            <Icon name="pause" size={15} /> Désactiver
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setConfirm("remove")}
+          className="text-[#B3261E] hover:bg-[#FBE9E7] hover:text-[#B3261E] dark:text-[#F2857E]"
+        >
+          <Icon name="trash" size={15} /> Supprimer
+        </Button>
+      </div>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_360px]">
-        <form onSubmit={create} className="portal-form overflow-hidden">
-          <div className="flex items-center justify-between border-b border-idn-border-soft bg-idn-surface-2/55 px-6 py-4">
-            <div>
-              <div className="portal-section-kicker">Configuration</div>
-              <h2 className="mt-1 font-semibold text-idn-ink">
-                Nouvel endpoint
-              </h2>
-            </div>
-            <RadioTowerIcon className="size-5 text-idn-blue" />
+      <ConfirmDialog
+        open={confirm === "rotate"}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        destructive={false}
+        title="Générer un nouveau secret de signature ?"
+        description="Pendant 24 heures, chaque événement portera deux signatures (ancien et nouveau secret) : déployez le nouveau secret dans ce délai."
+        confirmLabel="Générer"
+        onConfirm={async () => {
+          try {
+            const result = await rotateSecret({ endpointId: endpoint.id })
+            onSecret({
+              title: "Nouveau secret de signature",
+              description: `L'ancien reste accepté jusqu'au ${formatDateTime(result.previousValidUntil)}.`,
+              label: "Secret (whsec_…)",
+              value: result.secret,
+            })
+          } catch (error) {
+            toast.error(errorMessage(error, "Rotation impossible."))
+            return true
+          }
+        }}
+      />
+      <ConfirmDialog
+        open={confirm === "disable"}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title={`Désactiver « ${endpoint.name} » ?`}
+        description="Plus aucun événement ne lui sera livré tant qu'il n'est pas réactivé. Les événements émis entre-temps ne sont pas rattrapés."
+        confirmLabel="Désactiver"
+        onConfirm={async () => {
+          await run(() => disable({ endpointId: endpoint.id }), "Endpoint désactivé.")
+        }}
+      />
+      <ConfirmDialog
+        open={confirm === "remove"}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title={`Supprimer « ${endpoint.name} » ?`}
+        description="L'endpoint et son secret sont détruits ; l'historique des livraisons reste consultable par l'audit. Action irréversible."
+        confirmLabel="Supprimer"
+        onConfirm={async () => {
+          await run(() => remove({ endpointId: endpoint.id }), "Endpoint supprimé.")
+        }}
+      />
+    </li>
+  )
+}
+
+function EndpointDialog({
+  open,
+  row,
+  catalog,
+  onClose,
+  onCreated,
+}: {
+  open: boolean
+  row: EndpointRow | null
+  catalog: FunctionReturnType<typeof api.webhooks.endpoints.catalog>
+  onClose: () => void
+  onCreated: (secret: string) => void
+}) {
+  const { app } = useAppWorkspace()
+  const create = useMutation(api.webhooks.endpoints.create)
+  const update = useMutation(api.webhooks.endpoints.update)
+  const [name, setName] = useState("")
+  const [url, setUrl] = useState("")
+  const [events, setEvents] = useState<EventType[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [initialized, setInitialized] = useState<string | null>(null)
+
+  const key = open ? (row?.endpoint.id ?? "new") : null
+  if (key !== initialized) {
+    setInitialized(key)
+    setName(row?.endpoint.name ?? "")
+    setUrl(row?.endpoint.url ?? "")
+    setEvents(row?.subscriptions ?? [])
+    setError(null)
+  }
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      if (row) {
+        await update({ endpointId: row.endpoint.id, name: name.trim(), url: url.trim(), eventTypes: events })
+        toast.success(url.trim() !== row.endpoint.url ? "Endpoint modifié : vérifiez la nouvelle URL." : "Endpoint modifié.")
+      } else {
+        const result = await create({ clientId: app.clientId, name: name.trim(), url: url.trim(), eventTypes: events })
+        onCreated(result.secret)
+        toast.success("Endpoint ajouté.")
+      }
+      onClose()
+    } catch (err) {
+      setError(errorMessage(err, "Enregistrement impossible."))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && !busy && onClose()}>
+      <DialogContent className="rounded-[14px] border-idn-border bg-idn-surface shadow-none sm:max-w-lg">
+        <form onSubmit={submit} className="grid gap-4">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-idn-ink">
+              {row ? "Modifier l'endpoint" : "Ajouter un endpoint"}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-idn-muted">
+              URL https publique. Les adresses de réseaux privés sont refusées.
+            </DialogDescription>
+          </DialogHeader>
+          {error ? (
+            <p role="alert" className="rounded-[10px] border border-[#B3261E]/30 bg-[#FBE9E7] px-3 py-2 text-[13px] text-[#B3261E] dark:bg-[#3A1614] dark:text-[#F2857E]">
+              {error}
+            </p>
+          ) : null}
+          <div className="space-y-1.5">
+            <Label htmlFor="wh-name">Nom</Label>
+            <Input id="wh-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} className="h-10" />
           </div>
-          <div className="p-6">
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="webhook-name">Nom</Label>
-                <Input
-                  id="webhook-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="webhook-url">URL HTTPS, port 443</Label>
-                <Input
-                  id="webhook-url"
-                  type="url"
-                  placeholder="https://app.ga/api/integrations/idn/webhooks"
-                  value={url}
-                  onChange={(event) => setUrl(event.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <fieldset className="mt-4">
-              <legend className="text-sm font-medium text-idn-ink">
-                Événements exacts
-              </legend>
-              <div className="mt-2 grid gap-2 md:grid-cols-2">
-                {catalog.map((item) => (
+          <div className="space-y-1.5">
+            <Label htmlFor="wh-url">URL</Label>
+            <Input
+              id="wh-url"
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://votre-service.ga/webhooks/idn"
+              className="h-10 font-mono text-[13px]"
+            />
+          </div>
+          <fieldset>
+            <legend className="text-sm font-medium text-idn-ink">Événements</legend>
+            <div className="mt-2 space-y-1.5">
+              {catalog.map((entry) => {
+                const missingScope = entry.authorization === "oauth_user" && !app.scopes.includes(entry.requiredScope)
+                return (
                   <label
-                    key={item.type}
-                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors ${selected.includes(item.type) ? "border-idn-green bg-idn-green-soft/60 dark:bg-idn-green/10" : "border-idn-border hover:bg-idn-surface-2"}`}
+                    key={entry.type}
+                    className={cn(
+                      "flex items-start gap-2.5 rounded-[10px] border border-idn-border px-3 py-2",
+                      missingScope ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-idn-surface-2",
+                    )}
                   >
                     <input
-                      className="mt-1"
                       type="checkbox"
-                      checked={selected.includes(item.type)}
-                      onChange={(event) =>
-                        setSelected((current) =>
-                          event.target.checked
-                            ? [...current, item.type]
-                            : current.filter((type) => type !== item.type),
-                        )
+                      disabled={missingScope}
+                      checked={events.includes(entry.type)}
+                      onChange={(e) =>
+                        setEvents((list) => (e.target.checked ? [...list, entry.type] : list.filter((t) => t !== entry.type)))
                       }
+                      className="mt-0.5 size-4 accent-[#0E7C3A]"
                     />
-                    <span>
-                      <span className="block font-mono text-xs text-idn-ink">
-                        {item.type}
-                      </span>
-                      <span className="text-xs text-idn-muted">
-                        {item.label} · {item.authorization} ·{" "}
-                        {item.requiredScope}
+                    <span className="min-w-0">
+                      <span className="block font-mono text-[13px] text-idn-ink">{entry.type}</span>
+                      <span className="block text-xs text-idn-muted">
+                        {entry.label} ·{" "}
+                        {entry.authorization === "oauth_user"
+                          ? missingScope
+                            ? `déclarez le scope ${entry.requiredScope} pour l'activer`
+                            : `usagers ayant consenti à ${entry.requiredScope}`
+                          : `livré si une clé API active porte ${entry.requiredScope}`}
                       </span>
                     </span>
                   </label>
-                ))}
-              </div>
-            </fieldset>
-            <Button
-              className="mt-4"
-              size="sm"
-              type="submit"
-              disabled={!url || selected.length === 0}
-            >
-              Créer l&apos;endpoint
+                )
+              })}
+            </div>
+          </fieldset>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
+              Annuler
             </Button>
-            {secret ? (
-              <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950/30">
-                <strong>Secret affiché une seule fois :</strong>
-                <code className="mt-2 block break-all">{secret}</code>
-              </div>
-            ) : null}
-          </div>
+            <Button type="submit" disabled={busy || !name.trim() || !url.trim() || events.length === 0}>
+              {busy ? "Enregistrement…" : row ? "Enregistrer" : "Ajouter"}
+            </Button>
+          </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
-        <aside className="portal-panel h-fit overflow-hidden">
-          <div className="flex items-center gap-2 border-b border-idn-border-soft bg-idn-surface-2/55 px-5 py-4 text-sm font-semibold text-idn-ink">
-            <KeyRoundIcon className="size-4 text-idn-green" /> Sécurité de
-            livraison
-          </div>
-          <div className="p-5">
-            <ul className="space-y-4">
-              {[
-                [
-                  "Signature HMAC",
-                  "Chaque requête porte une signature vérifiable.",
-                ],
-                [
-                  "Reprises automatiques",
-                  "Les erreurs transitoires sont rejouées.",
-                ],
-                [
-                  "Secret rotatif",
-                  "L’ancien secret reste valide pendant 24 h.",
-                ],
-              ].map(([title, detail]) => (
-                <li key={title} className="flex gap-3">
-                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-idn-green-soft text-idn-green dark:bg-idn-green/10 dark:text-idn-green-on-dark">
-                    <CheckIcon className="size-3" />
-                  </span>
-                  <div>
-                    <div className="text-xs font-semibold text-idn-ink">
-                      {title}
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-idn-muted">
-                      {detail}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-5 rounded-lg bg-idn-surface-2 p-3 text-xs leading-5 text-idn-muted">
-              Acceptez uniquement HTTPS sur le port 443 et répondez en moins de
-              10 secondes.
-            </div>
-          </div>
-        </aside>
-      </div>
+function DeliveriesPanel({ row }: { row: EndpointRow }) {
+  const deliveries = useQuery(api.webhooks.endpoints.listDeliveries, { endpointId: row.endpoint.id })
+  const replay = useMutation(api.webhooks.endpoints.replay)
+  const [filter, setFilter] = useState<"all" | "failed">("all")
+  const rows = (deliveries ?? []).filter((d) => filter === "all" || d.status === "failed" || d.status === "canceled")
 
-      <section className="space-y-3">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <div className="portal-section-kicker">Supervision</div>
-            <h2 className="mt-1 font-semibold text-idn-ink">
-              Endpoints ({endpoints.length})
-            </h2>
-          </div>
-          <span className="inline-flex items-center gap-1.5 text-xs text-idn-muted">
-            <ActivityIcon className="size-3.5" /> état en temps réel
-          </span>
+  return (
+    <Panel
+      title={`Livraisons · ${row.endpoint.name}`}
+      description="100 dernières livraisons d'événements réels (les événements de test n'y figurent pas)."
+      actions={
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as typeof filter)}
+          aria-label="Filtrer les livraisons"
+          className="h-8 rounded-[10px] border border-idn-border bg-idn-surface px-2 text-[13px] text-idn-ink"
+        >
+          <option value="all">Toutes</option>
+          <option value="failed">Échecs</option>
+        </select>
+      }
+      bodyClassName="p-0"
+    >
+      {deliveries === undefined ? (
+        <div className="p-4">
+          <LoadingBlock rows={2} />
         </div>
-        {endpoints.length === 0 ? (
-          <p className="rounded-xl border border-idn-border bg-idn-surface p-5 text-sm text-idn-muted">
-            Aucun endpoint enregistré.
-          </p>
-        ) : (
-          endpoints.map((endpoint) => (
-            <EndpointCard
-              key={endpoint.endpoint.id}
-              value={endpoint}
-              catalog={catalog.map((item) => item.type)}
-            />
-          ))
-        )}
-      </section>
-
-      <section className="portal-panel overflow-hidden">
-        <div className="flex items-center justify-between border-b border-idn-border-soft bg-idn-surface-2/55 px-6 py-4">
-          <div>
-            <div className="portal-section-kicker">
-              Authentification serveur
-            </div>
-            <h2 className="mt-1 font-semibold text-idn-ink">
-              Clé M2M liée à cette application
-            </h2>
-          </div>
-          <RotateCcwIcon className="size-5 text-idn-green" />
+      ) : rows.length === 0 ? (
+        <p className="px-5 py-6 text-center text-[13px] text-idn-muted">
+          {deliveries.length === 0
+            ? "Aucun événement livré pour l'instant. Les livraisons apparaîtront dès qu'un événement souscrit sera émis."
+            : "Aucun échec."}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] text-left text-[13px]">
+            <thead className="bg-idn-surface-2 text-xs text-idn-muted">
+              <tr className="h-10">
+                <th scope="col" className="px-4 font-medium">Événement</th>
+                <th scope="col" className="px-4 font-medium">Statut</th>
+                <th scope="col" className="px-4 font-medium">Tentatives</th>
+                <th scope="col" className="px-4 font-medium">Dernière réponse</th>
+                <th scope="col" className="px-4 font-medium">Émis</th>
+                <th scope="col" className="px-4 font-medium"><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-idn-border-soft">
+              {rows.map((delivery) => {
+                const status = DELIVERY_STATUS[delivery.status] ?? { label: delivery.status, tone: "neutral" as const }
+                return (
+                  <tr key={delivery.id} className="h-11 hover:bg-idn-surface-2/60">
+                    <td className="px-4 py-2">
+                      <span className="block font-mono text-xs text-idn-ink">{delivery.eventType}</span>
+                      <span className="block font-mono text-[11px] text-idn-muted">{delivery.eventId}</span>
+                    </td>
+                    <td className="px-4 py-2"><StatusPill tone={status.tone}>{status.label}</StatusPill></td>
+                    <td className="px-4 py-2 tabular-nums text-idn-ink-2">{delivery.attempts}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-idn-ink-2">
+                      {delivery.lastHttpStatus ? `HTTP ${delivery.lastHttpStatus}` : (delivery.lastErrorCode ?? "Aucune")}
+                    </td>
+                    <td className="px-4 py-2 text-idn-ink-2" title={formatDateTime(delivery.createdAt)}>
+                      {formatRelative(delivery.createdAt)}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      {delivery.status === "failed" || delivery.status === "canceled" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={row.endpoint.status !== "active"}
+                          onClick={async () => {
+                            try {
+                              await replay({ deliveryId: delivery.id })
+                              toast.success("Livraison relancée.")
+                            } catch (error) {
+                              toast.error(errorMessage(error, "Rejeu impossible."))
+                            }
+                          }}
+                        >
+                          Rejouer
+                        </Button>
+                      ) : null}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
-        <div className="p-6">
-          <p className="mt-1 text-sm text-idn-muted">
-            Requise pour les événements de vérification et le dépôt de courriers
-            officiels.
-          </p>
-          {apiKeys.some((key) => key.appClientId === clientId) ? (
-            <ul className="mt-3 space-y-2 text-sm">
-              {apiKeys
-                .filter((key) => key.appClientId === clientId)
-                .map((key) => (
-                  <li key={key.id} className="font-mono text-idn-muted">
-                    {key.name} · {key.tokenPrefix} · {key.status}
-                  </li>
-                ))}
-            </ul>
-          ) : null}
-          {apiKeys.some(
-            (key) => key.appClientId === null && key.status === "active",
-          ) ? (
-            <div className="mt-4 rounded-lg border border-idn-border p-3">
-              <p className="text-xs font-semibold text-idn-ink">
-                Rattacher une clé historique sans changer ses scopes
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {apiKeys
-                  .filter(
-                    (key) =>
-                      key.appClientId === null && key.status === "active",
-                  )
-                  .map((key) => (
-                    <Button
-                      key={key.id}
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        void attachKey({
-                          keyId: key.id,
-                          appClientId: clientId,
-                        })
-                          .then(() => toast.success(`${key.name} rattachée.`))
-                          .catch((error) => toast.error(errorMessage(error)))
-                      }
-                    >
-                      {key.name} · {key.tokenPrefix}
-                    </Button>
-                  ))}
-              </div>
-            </div>
-          ) : null}
-          <Button
-            className="mt-4"
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              void createKey({
-                appClientId: clientId,
-                name: `${app.name} — intégration M2M`,
-                scopes: ["idn:verification:list", "idn:iboite:letters:create"],
-                expiresInDays: 365,
-              })
-                .then((result) => setM2mSecret(result.token))
-                .catch((error) => toast.error(errorMessage(error)))
-            }
-          >
-            Créer la clé M2M
-          </Button>
-          {m2mSecret ? (
-            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950/30">
-              <strong>Clé affichée une seule fois :</strong>
-              <code className="mt-2 block break-all">{m2mSecret}</code>
-            </div>
-          ) : null}
-        </div>
-      </section>
-    </>
+      )}
+    </Panel>
   )
 }

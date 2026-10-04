@@ -1,539 +1,624 @@
 "use client"
 
-import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useConvex } from "convex/react"
-import { useForm } from "react-hook-form"
+import { useMutation, useQuery } from "convex/react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { z } from "zod"
-import {
-  ArrowRightIcon,
-  CheckIcon,
-  CircleCheckBigIcon,
-  Code2Icon,
-  DatabaseIcon,
-  KeyRoundIcon,
-  ShieldCheckIcon,
-} from "lucide-react"
 
 import { api } from "@repo/backend/convex/_generated/api"
+import type { Id } from "@repo/backend/convex/_generated/dataModel"
 import { Button } from "@repo/ui/components/button"
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
+import { LoABadge } from "@repo/ui/components/loa-badge"
 import { Textarea } from "@repo/ui/components/textarea"
+import { cn } from "@repo/ui/lib/utils"
 
-import { fr } from "../../../_content/fr"
-import { OpHeader } from "../../../_components/op-header"
+import { AppLogo } from "../../../_components/app-logo"
+import { CopyButton } from "../../../_components/copy"
+import { useScopeCatalog } from "../../../_components/data"
+import { errorMessage } from "../../../_components/format"
+import { Icon } from "../../../_components/icons"
+import { LOA_INFO, OAUTH_SCOPE_INFO } from "../../../_components/scopes"
+import { Kicker, Notice, PageBody, PageHeader, Panel } from "../../../_components/ui"
 
-const AVAILABLE_SCOPES = [
-  "openid",
-  "profile",
-  "email",
-  "offline_access",
-  "idn:civil_status",
-  "idn:iboite.read",
-  "idn:iboite.manage",
-  "idn:iboite.send",
-] as const
-const LOA_OPTIONS = [1, 2, 3] as const
+const STEPS = ["Identité", "Redirections", "Accès", "Environnement"] as const
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"]
+const MAX_LOGO_BYTES = 512 * 1024
 
-const schema = z.object({
-  name: z.string().trim().min(2, "2 caractères minimum.").max(80),
-  description: z.string().max(280).optional(),
-  redirectUris: z
-    .string()
-    .trim()
-    .min(1, "Au moins une URI requise.")
-    .refine(
-      (val) =>
-        val
-          .split(/\n/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .every((uri) => {
-            try {
-              new URL(uri)
-              return true
-            } catch {
-              return false
-            }
-          }),
-      "Une des URIs n'est pas valide.",
-    ),
-  loa: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-  scopes: z.array(z.string()).min(1, "Au moins un scope requis."),
-})
+type Created = {
+  name: string
+  sandbox: { clientId: string; clientSecret: string }
+  production?: { clientId: string; clientSecret: string }
+  productionError?: string
+}
 
-type FormValues = z.infer<typeof schema>
+function validateUri(uri: string): string | null {
+  try {
+    const url = new URL(uri)
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return "Utilisez une URL http(s)."
+    }
+    if (url.hash) return "Une URL de redirection ne contient pas de fragment (#)."
+    return null
+  } catch {
+    return "URL invalide."
+  }
+}
 
 export default function NewApplicationPage() {
   const router = useRouter()
-  const convex = useConvex()
+  const catalog = useScopeCatalog()
+  const account = useQuery(api.developer.catalog.accountStatus, {})
+  const create = useMutation(api.developer.apps.create)
+  const generateUploadUrl = useMutation(api.developer.appProfile.generateLogoUploadUrl)
+  const setLogo = useMutation(api.developer.appProfile.setLogo)
+  const requestProduction = useMutation(api.developer.apps.requestProduction)
+
+  const [step, setStep] = useState(0)
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [logo, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [uris, setUris] = useState<string[]>([""])
+  const [scopes, setScopes] = useState<string[]>(["openid", "profile", "email"])
+  const [loa, setLoa] = useState<1 | 2 | 3>(1)
+  const [environment, setEnvironment] = useState<"sandbox" | "production">("sandbox")
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
-  const [created, setCreated] = useState<null | {
-    clientId: string
-    clientSecret: string
-  }>(null)
+  const [created, setCreated] = useState<Created | null>(null)
+  const [saved, setSaved] = useState(false)
+  const headingRef = useRef<HTMLHeadingElement>(null)
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      name: "",
-      description: "",
-      redirectUris: "",
-      loa: 1,
-      scopes: ["openid", "profile", "email"],
-    },
-    mode: "onTouched",
-  })
+  useEffect(() => {
+    headingRef.current?.focus()
+  }, [step])
 
-  const selectedScopes = watch("scopes")
-  const selectedLoa = watch("loa")
-  const applicationName = watch("name")
-  const redirectUris = watch("redirectUris")
+  useEffect(() => {
+    if (!logo) {
+      setLogoPreview(null)
+      return
+    }
+    const url = URL.createObjectURL(logo)
+    setLogoPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [logo])
 
-  const onSubmit = handleSubmit(async (values) => {
+  const cleanUris = uris.map((u) => u.trim()).filter(Boolean)
+
+  const validateStep = (index: number): boolean => {
+    const next: Record<string, string> = {}
+    if (index === 0) {
+      if (!name.trim()) next.name = "Le nom est obligatoire."
+      else if (name.trim().length > 80) next.name = "80 caractères maximum."
+      if (description.length > 500) next.description = "500 caractères maximum."
+    }
+    if (index === 1) {
+      if (cleanUris.length === 0) next.uris = "Ajoutez au moins une URL de redirection."
+      uris.forEach((uri, i) => {
+        if (!uri.trim()) return
+        const problem = validateUri(uri.trim())
+        if (problem) next[`uri-${i}`] = problem
+      })
+    }
+    if (index === 3 && environment === "production") {
+      const insecure = cleanUris.find((u) => !u.startsWith("https://"))
+      if (insecure) next.environment = `La production exige des URL en https : ${insecure}`
+    }
+    setErrors(next)
+    return Object.keys(next).length === 0
+  }
+
+  const goNext = () => {
+    if (validateStep(step)) setStep((s) => Math.min(s + 1, STEPS.length - 1))
+  }
+
+  const onLogo = (file: File | null) => {
+    setErrors((e) => ({ ...e, logo: "" }))
+    if (!file) {
+      setLogoFile(null)
+      return
+    }
+    if (!LOGO_TYPES.includes(file.type)) {
+      setErrors((e) => ({ ...e, logo: "Format accepté : PNG, JPEG ou WebP." }))
+      return
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      setErrors((e) => ({ ...e, logo: "Le logo ne doit pas dépasser 512 Ko." }))
+      return
+    }
+    setLogoFile(file)
+  }
+
+  const submit = async () => {
+    if (![0, 1, 3].every((i) => validateStep(i))) return
     setSubmitting(true)
     try {
-      const redirectUris = values.redirectUris
-        .split(/\n/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-      const res = (await convex.mutation(api.developer.apps.create, {
-        name: values.name,
-        description: values.description ?? "",
-        redirectUris,
-        scopes: values.scopes,
-        loa: values.loa,
-      })) as { id: string; clientId: string; clientSecret: string }
-      setCreated({ clientId: res.clientId, clientSecret: res.clientSecret })
-    } catch (err) {
-      const msg =
-        err && typeof err === "object" && "data" in err
-          ? ((err as { data?: { message?: string } }).data?.message ??
-            fr.newApp.errorGeneric)
-          : fr.newApp.errorGeneric
-      toast.error(msg)
+      const sandbox = await create({
+        name: name.trim(),
+        description: description.trim(),
+        redirectUris: cleanUris,
+        scopes,
+        loa,
+      })
+      if (logo) {
+        try {
+          const uploadUrl = await generateUploadUrl({})
+          const response = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": logo.type },
+            body: logo,
+          })
+          const { storageId } = (await response.json()) as { storageId: Id<"_storage"> }
+          const result = await setLogo({ clientId: sandbox.clientId, storageId })
+          if (!result.ok) toast.error(`Logo non enregistré : ${result.message}`)
+        } catch {
+          toast.error("Application créée, mais le logo n'a pas pu être envoyé. Réessayez depuis sa fiche.")
+        }
+      }
+      const result: Created = {
+        name: name.trim(),
+        sandbox: { clientId: sandbox.clientId, clientSecret: sandbox.clientSecret },
+      }
+      if (environment === "production") {
+        try {
+          const production = await requestProduction({ clientId: sandbox.clientId })
+          result.production = {
+            clientId: production.clientId,
+            clientSecret: production.clientSecret,
+          }
+        } catch (error) {
+          result.productionError = errorMessage(error, "La demande de production n'a pas abouti.")
+        }
+      }
+      setCreated(result)
+      toast.success("Application créée.")
+    } catch (error) {
+      toast.error(errorMessage(error, "Création impossible."))
+    } finally {
       setSubmitting(false)
     }
-  })
+  }
 
   if (created) {
     return (
       <>
-        <OpHeader sub={fr.appCreated.sub} title={fr.appCreated.title} />
-        <div className="portal-canvas flex-1 overflow-auto">
-          <div className="portal-limit grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_360px]">
-            <section className="portal-panel overflow-hidden">
-              <div className="border-b border-idn-border-soft bg-idn-green-soft/65 p-7 dark:bg-idn-green/10">
-                <div className="flex size-12 items-center justify-center rounded-full bg-idn-green text-white shadow-lg shadow-idn-green/20">
-                  <CircleCheckBigIcon className="size-6" />
-                </div>
-                <h2 className="mt-5 text-2xl font-semibold tracking-[-0.02em] text-idn-ink">
-                  Votre sandbox est prête.
-                </h2>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-idn-muted">
-                  Conservez ces identifiants maintenant, puis ouvrez l’atelier
-                  pour brancher votre premier parcours OAuth.
-                </p>
-              </div>
-              <div className="p-7">
-                <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-idn-ink dark:border-amber-800 dark:bg-amber-950/30">
-                  <div className="flex gap-3">
-                    <KeyRoundIcon className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" />
-                    <span>{fr.appCreated.warning}</span>
-                  </div>
-                </div>
-                <dl className="mt-6 space-y-4">
-                  <div>
-                    <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-idn-muted">
-                      Client ID
-                    </dt>
-                    <dd className="mt-2 rounded-lg border border-idn-border bg-idn-surface-2 px-4 py-3 font-mono text-xs text-idn-ink">
-                      {created.clientId}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-idn-muted">
-                      Client secret · affiché une seule fois
-                    </dt>
-                    <dd className="mt-2 break-all rounded-lg border border-idn-green/25 bg-idn-green-soft px-4 py-3 font-mono text-xs text-idn-green dark:bg-idn-green/10 dark:text-idn-green-on-dark">
-                      {created.clientSecret}
-                    </dd>
-                  </div>
-                </dl>
-                <div className="mt-7 flex flex-wrap justify-end gap-2">
-                  <Button variant="outline" type="button">
-                    <Code2Icon className="size-4" /> Lire le guide OAuth
-                  </Button>
-                  <Button
-                    onClick={() =>
-                      router.push(`/applications/${created.clientId}/keys`)
-                    }
-                  >
-                    {fr.appCreated.continue}
-                    <ArrowRightIcon className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            </section>
-
-            <aside className="portal-panel h-fit p-6">
-              <div className="portal-section-kicker">Prochaines étapes</div>
-              <h2 className="mt-2 text-lg font-semibold text-idn-ink">
-                Votre première connexion
-              </h2>
-              <ol className="mt-6 space-y-5">
-                {[
-                  [
-                    "1",
-                    "Ajouter les testeurs",
-                    "Autorisez les comptes de votre équipe.",
-                  ],
-                  [
-                    "2",
-                    "Brancher le callback",
-                    "Utilisez le client ID et le secret.",
-                  ],
-                  [
-                    "3",
-                    "Vérifier le consentement",
-                    "Contrôlez les scopes présentés.",
-                  ],
-                ].map(([number, title, detail], index) => (
-                  <li key={number} className="flex gap-3">
-                    <span
-                      className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${index === 0 ? "bg-idn-green text-white" : "bg-idn-surface-2 text-idn-muted"}`}
-                    >
-                      {number}
-                    </span>
-                    <div>
-                      <div className="text-sm font-semibold text-idn-ink">
-                        {title}
-                      </div>
-                      <p className="mt-1 text-xs leading-5 text-idn-muted">
-                        {detail}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </aside>
+        <PageHeader
+          kicker="Application créée"
+          title={created.name}
+          description="Voici vos identifiants. Les secrets ne seront plus jamais affichés."
+          crumbs={[{ label: "Applications", href: "/applications" }, { label: created.name }]}
+        />
+        <PageBody className="max-w-[820px]">
+          <div className="space-y-4">
+            <CredentialsBlock title="Sandbox" credentials={created.sandbox} />
+            {created.production ? (
+              <CredentialsBlock
+                title="Production (en revue)"
+                credentials={created.production}
+                note="Ce client_id restera inactif jusqu'à la validation par l'administration."
+              />
+            ) : null}
+            {created.productionError ? (
+              <Notice tone="attention" title="Demande de production non envoyée">
+                {created.productionError} Vous pourrez la renouveler depuis la fiche de l&apos;application.
+              </Notice>
+            ) : null}
+            <Notice tone="attention" title="Affichés une seule fois">
+              Identité Numérique ne conserve qu&apos;une empreinte des secrets. Enregistrez-les maintenant
+              dans votre gestionnaire de secrets.
+            </Notice>
+            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-idn-ink">
+              <input
+                type="checkbox"
+                checked={saved}
+                onChange={(e) => setSaved(e.target.checked)}
+                className="size-4 accent-[#0E7C3A]"
+              />
+              J&apos;ai enregistré les secrets en lieu sûr.
+            </label>
+            <div className="flex gap-3">
+              <Button
+                disabled={!saved}
+                onClick={() => router.push(`/applications/${created.sandbox.clientId}`)}
+              >
+                Ouvrir l&apos;application
+              </Button>
+            </div>
           </div>
-        </div>
+        </PageBody>
       </>
     )
   }
 
+  const oauthScopes = catalog?.oauthScopes ?? []
+
   return (
     <>
-      <OpHeader sub={fr.newApp.sub} title={fr.newApp.title} />
-      <div className="portal-canvas flex-1 overflow-auto">
-        <form onSubmit={onSubmit} noValidate className="portal-limit">
-          <div className="mb-6 flex items-center gap-3 overflow-x-auto rounded-xl border border-idn-border bg-idn-surface px-5 py-3">
-            {[
-              ["1", "Identité", true],
-              ["2", "Accès demandés", true],
-              ["3", "Secret", false],
-            ].map(([number, label, active], index) => (
-              <div key={String(number)} className="contents">
-                {index > 0 ? (
-                  <span className="h-px min-w-8 flex-1 bg-idn-border" />
-                ) : null}
-                <div
-                  className={`flex shrink-0 items-center gap-2 text-xs font-semibold ${active ? "text-idn-ink" : "text-idn-muted"}`}
-                >
-                  <span
-                    className={`flex size-6 items-center justify-center rounded-full ${active ? "bg-idn-green text-white" : "bg-idn-surface-2"}`}
-                  >
-                    {number}
-                  </span>
-                  {label}
-                </div>
+      <PageHeader
+        kicker="Nouvelle application"
+        title="Enregistrer une application"
+        description="Quatre étapes. L'application naît en sandbox : seuls vous et vos comptes de test pourront s'y connecter."
+        crumbs={[{ label: "Applications", href: "/applications" }, { label: "Nouvelle application" }]}
+      />
+      <PageBody className="max-w-[880px]">
+        <ol aria-label="Étapes" className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {STEPS.map((label, index) => (
+            <li key={label}>
+              <div
+                aria-current={index === step ? "step" : undefined}
+                className={cn(
+                  "flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[13px]",
+                  index === step
+                    ? "border-idn-green bg-idn-green-soft text-idn-green dark:bg-[#0F2A18] dark:text-idn-green-on-dark"
+                    : index < step
+                      ? "border-idn-border bg-idn-surface text-idn-ink"
+                      : "border-idn-border bg-idn-surface text-idn-muted",
+                )}
+              >
+                <span className="font-mono text-[11px] font-medium">
+                  {index < step ? <Icon name="check" size={14} /> : `0${index + 1}`}
+                </span>
+                <span className="font-medium">{label}</span>
               </div>
-            ))}
-          </div>
+            </li>
+          ))}
+        </ol>
 
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.45fr)_360px]">
-            <div className="space-y-6">
-              <section className="portal-form p-6 lg:p-7">
-                <div className="flex items-start gap-4 border-b border-idn-border-soft pb-5">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-idn-green-soft text-sm font-semibold text-idn-green dark:bg-idn-green/10 dark:text-idn-green-on-dark">
-                    1
-                  </span>
-                  <div>
-                    <h2 className="font-semibold text-idn-ink">
-                      Identité de l’application
-                    </h2>
-                    <p className="mt-1 text-xs leading-5 text-idn-muted">
-                      Ces informations seront visibles par les citoyens pendant
-                      le consentement.
+        <Panel bodyClassName="px-6 py-6">
+          <Kicker>
+            Étape {step + 1} sur {STEPS.length}
+          </Kicker>
+          <h2 ref={headingRef} tabIndex={-1} className="mt-1 text-lg font-semibold text-idn-ink outline-none">
+            {STEPS[step]}
+          </h2>
+
+          {step === 0 ? (
+            <div className="mt-5 space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="app-name">Nom de l&apos;application</Label>
+                <Input
+                  id="app-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={80}
+                  aria-invalid={Boolean(errors.name)}
+                  aria-describedby="app-name-hint"
+                  className="h-10"
+                />
+                <p id="app-name-hint" className={cn("text-xs", errors.name ? "text-destructive" : "text-idn-muted")}>
+                  {errors.name || "Affiché aux usagers sur l'écran de consentement."}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="app-description">Description (facultative)</Label>
+                <Textarea
+                  id="app-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  aria-describedby="app-description-hint"
+                />
+                <p id="app-description-hint" className="text-xs text-idn-muted">
+                  {errors.description || `${description.length} / 500 caractères.`}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="app-logo">Logo (facultatif)</Label>
+                <div className="flex items-center gap-4">
+                  <AppLogo name={name || "Application"} icon={logoPreview} size={56} />
+                  <div className="space-y-1">
+                    <input
+                      id="app-logo"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={(e) => onLogo(e.target.files?.[0] ?? null)}
+                      aria-describedby="app-logo-hint"
+                      className="block text-sm text-idn-ink file:mr-3 file:h-9 file:rounded-[10px] file:border file:border-idn-border file:bg-idn-surface file:px-3 file:text-sm file:font-medium file:text-idn-ink hover:file:bg-idn-surface-2"
+                    />
+                    <p id="app-logo-hint" className={cn("text-xs", errors.logo ? "text-destructive" : "text-idn-muted")}>
+                      {errors.logo || "PNG, JPEG ou WebP, 512 Ko maximum, carré de préférence."}
                     </p>
                   </div>
                 </div>
-
-                <div className="mt-6 space-y-5">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="app-name">{fr.newApp.nameLabel}</Label>
-                    <Input
-                      id="app-name"
-                      type="text"
-                      placeholder={fr.newApp.namePlaceholder}
-                      required
-                      aria-invalid={Boolean(errors.name)}
-                      aria-describedby={
-                        errors.name ? "app-name-error" : undefined
-                      }
-                      {...register("name")}
-                    />
-                    {errors.name ? (
-                      <p
-                        id="app-name-error"
-                        role="alert"
-                        className="text-xs text-destructive"
-                      >
-                        {errors.name.message}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="app-desc">{fr.newApp.descLabel}</Label>
-                    <Textarea
-                      id="app-desc"
-                      rows={2}
-                      placeholder={fr.newApp.descPlaceholder}
-                      {...register("description")}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="app-redirect">
-                      {fr.newApp.redirectLabel}
-                    </Label>
-                    <Textarea
-                      id="app-redirect"
-                      rows={3}
-                      placeholder={fr.newApp.redirectPlaceholder}
-                      required
-                      aria-invalid={Boolean(errors.redirectUris)}
-                      aria-describedby={
-                        errors.redirectUris
-                          ? "app-redirect-error"
-                          : "app-redirect-hint"
-                      }
-                      className="font-mono text-xs"
-                      {...register("redirectUris")}
-                    />
-                    <p
-                      id="app-redirect-hint"
-                      className="text-xs text-idn-muted"
-                    >
-                      {fr.newApp.redirectHint}
-                    </p>
-                    {errors.redirectUris ? (
-                      <p
-                        id="app-redirect-error"
-                        role="alert"
-                        className="text-xs text-destructive"
-                      >
-                        {errors.redirectUris.message}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </section>
-
-              <section className="portal-form p-6 lg:p-7">
-                <div className="flex items-start gap-4 border-b border-idn-border-soft pb-5">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-idn-blue-soft text-sm font-semibold text-idn-blue dark:bg-idn-blue/10 dark:text-idn-blue-on-dark">
-                    2
-                  </span>
-                  <div>
-                    <h2 className="font-semibold text-idn-ink">
-                      Accès et niveau requis
-                    </h2>
-                    <p className="mt-1 text-xs leading-5 text-idn-muted">
-                      Demandez uniquement les données nécessaires au service
-                      rendu.
-                    </p>
-                  </div>
-                </div>
-
-                <fieldset className="mt-6 space-y-2">
-                  <legend className="text-sm font-medium text-idn-ink">
-                    {fr.newApp.scopesLabel}
-                  </legend>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {AVAILABLE_SCOPES.map((scope) => {
-                      const checked = selectedScopes.includes(scope)
-                      return (
-                        <button
-                          key={scope}
-                          type="button"
-                          onClick={() =>
-                            setValue(
-                              "scopes",
-                              checked
-                                ? selectedScopes.filter((s) => s !== scope)
-                                : [...selectedScopes, scope],
-                              { shouldValidate: true },
-                            )
-                          }
-                          className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-left font-mono text-xs transition-colors ${
-                            checked
-                              ? "border-idn-green bg-idn-green-soft text-idn-green dark:bg-[#0F2A18]"
-                              : "border-idn-border bg-idn-surface text-idn-muted hover:bg-idn-surface-2"
-                          }`}
-                        >
-                          <span>{scope}</span>
-                          {checked ? <CheckIcon className="size-3.5" /> : null}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {errors.scopes ? (
-                    <p role="alert" className="text-xs text-destructive">
-                      {errors.scopes.message as string}
-                    </p>
-                  ) : null}
-                </fieldset>
-
-                <fieldset className="mt-6 space-y-2 border-t border-idn-border-soft pt-5">
-                  <legend className="text-sm font-medium text-idn-ink">
-                    {fr.newApp.loaLabel}
-                  </legend>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {LOA_OPTIONS.map((level) => {
-                      const checked = selectedLoa === level
-                      return (
-                        <button
-                          key={level}
-                          type="button"
-                          onClick={() =>
-                            setValue("loa", level, { shouldValidate: true })
-                          }
-                          className={`rounded-lg border px-4 py-3 text-left text-sm transition-colors ${
-                            checked
-                              ? "border-idn-green bg-idn-green-soft text-idn-green dark:bg-[#0F2A18]"
-                              : "border-idn-border bg-idn-surface text-idn-ink hover:bg-idn-surface-2"
-                          }`}
-                        >
-                          <span className="block font-semibold">
-                            Niveau {level}
-                          </span>
-                          <span className="mt-1 block text-[10px] opacity-70">
-                            {level === 1
-                              ? "Déclaré"
-                              : level === 2
-                                ? "Vérifié"
-                                : "Présentiel"}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </fieldset>
-              </section>
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.push("/applications")}
-                  disabled={submitting}
-                >
-                  {fr.newApp.cancel}
-                </Button>
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? fr.newApp.submitting : fr.newApp.submit}
-                  {!submitting ? <ArrowRightIcon className="size-4" /> : null}
-                </Button>
               </div>
             </div>
+          ) : null}
 
-            <aside className="space-y-4 lg:sticky lg:top-6">
-              <section className="portal-panel overflow-hidden">
-                <div className="border-b border-idn-border-soft bg-idn-surface-2/70 px-5 py-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-idn-ink">
-                    <DatabaseIcon className="size-4 text-idn-green" /> Créée en
-                    sandbox
-                  </div>
+          {step === 1 ? (
+            <div className="mt-5 space-y-4">
+              <p className="text-sm text-idn-muted">
+                Adresses vers lesquelles IDN renvoie l&apos;usager après connexion. Elles doivent
+                correspondre exactement au paramètre <code className="font-mono">redirect_uri</code>.
+                En sandbox, <code className="font-mono">http://localhost</code> est accepté ; la
+                production exige https.
+              </p>
+              <ul className="space-y-2">
+                {uris.map((uri, index) => (
+                  <li key={index} className="space-y-1">
+                    <div className="flex gap-2">
+                      <Input
+                        value={uri}
+                        onChange={(e) =>
+                          setUris((list) => list.map((u, i) => (i === index ? e.target.value : u)))
+                        }
+                        placeholder="https://votre-service.ga/callback"
+                        aria-label={`URL de redirection ${index + 1}`}
+                        aria-invalid={Boolean(errors[`uri-${index}`])}
+                        className="h-10 font-mono text-[13px]"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        disabled={uris.length === 1}
+                        onClick={() => setUris((list) => list.filter((_, i) => i !== index))}
+                        aria-label={`Retirer l'URL ${index + 1}`}
+                      >
+                        <Icon name="x" size={16} />
+                      </Button>
+                    </div>
+                    {errors[`uri-${index}`] ? (
+                      <p role="alert" className="text-xs text-destructive">
+                        {errors[`uri-${index}`]}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {errors.uris ? (
+                <p role="alert" className="text-xs text-destructive">
+                  {errors.uris}
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uris.length >= 10}
+                onClick={() => setUris((list) => [...list, ""])}
+              >
+                <Icon name="plus" size={15} /> Ajouter une URL
+              </Button>
+            </div>
+          ) : null}
+
+          {step === 2 ? (
+            <div className="mt-5 space-y-6">
+              <fieldset>
+                <legend className="text-sm font-medium text-idn-ink">Scopes demandés</legend>
+                <p className="mt-0.5 text-[13px] text-idn-muted">
+                  Ne demandez que ce dont votre service a besoin : l&apos;usager voit chaque scope sur
+                  l&apos;écran de consentement.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {oauthScopes.map((scope) => {
+                    const info = OAUTH_SCOPE_INFO[scope]
+                    const checked = scopes.includes(scope)
+                    const locked = info?.required === true
+                    return (
+                      <label
+                        key={scope}
+                        className={cn(
+                          "flex cursor-pointer gap-3 rounded-[10px] border p-3",
+                          checked ? "border-idn-green bg-idn-green-soft/50 dark:bg-[#0F2A18]" : "border-idn-border",
+                          locked && "cursor-default",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={locked}
+                          onChange={(e) =>
+                            setScopes((list) =>
+                              e.target.checked ? [...list, scope] : list.filter((s) => s !== scope),
+                            )
+                          }
+                          className="mt-0.5 size-4 accent-[#0E7C3A]"
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-mono text-[13px] text-idn-ink">{scope}</span>
+                          <span className="block text-xs leading-5 text-idn-muted">
+                            {info?.description ?? "Scope accepté par le serveur."}
+                          </span>
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
-                <div className="p-5">
-                  <p className="text-xs leading-5 text-idn-muted">
-                    {fr.newApp.sandboxNote}
+              </fieldset>
+              <fieldset>
+                <legend className="text-sm font-medium text-idn-ink">Niveau de garantie exigé</legend>
+                <p className="mt-0.5 text-[13px] text-idn-muted">
+                  Un usager sous ce niveau sera invité à vérifier son identité avant de consentir.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {([1, 2, 3] as const).map((level) => (
+                    <label
+                      key={level}
+                      className={cn(
+                        "flex cursor-pointer flex-col gap-2 rounded-[10px] border p-3",
+                        loa === level ? "border-idn-green bg-idn-green-soft/50 dark:bg-[#0F2A18]" : "border-idn-border",
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="loa"
+                          checked={loa === level}
+                          onChange={() => setLoa(level)}
+                          className="size-4 accent-[#0E7C3A]"
+                        />
+                        <LoABadge level={level} compact />
+                      </span>
+                      <span className="font-mono text-xs text-idn-ink-2">acr = {LOA_INFO[level].acr}</span>
+                      <span className="text-xs leading-5 text-idn-muted">{LOA_INFO[level].description}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+          ) : null}
+
+          {step === 3 ? (
+            <div className="mt-5 space-y-5">
+              <fieldset>
+                <legend className="text-sm font-medium text-idn-ink">Environnement</legend>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <label
+                    className={cn(
+                      "flex cursor-pointer gap-3 rounded-[10px] border p-3",
+                      environment === "sandbox" ? "border-idn-green bg-idn-green-soft/50 dark:bg-[#0F2A18]" : "border-idn-border",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="env"
+                      checked={environment === "sandbox"}
+                      onChange={() => setEnvironment("sandbox")}
+                      className="mt-0.5 size-4 accent-[#0E7C3A]"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-idn-ink">Sandbox</span>
+                      <span className="block text-xs leading-5 text-idn-muted">
+                        Active immédiatement. Connexion réservée à vous et à vos comptes de test.
+                      </span>
+                    </span>
+                  </label>
+                  <label
+                    className={cn(
+                      "flex gap-3 rounded-[10px] border p-3",
+                      account?.verified ? "cursor-pointer" : "cursor-not-allowed opacity-70",
+                      environment === "production" ? "border-idn-green bg-idn-green-soft/50 dark:bg-[#0F2A18]" : "border-idn-border",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="env"
+                      disabled={!account?.verified}
+                      checked={environment === "production"}
+                      onChange={() => setEnvironment("production")}
+                      aria-describedby="env-prod-hint"
+                      className="mt-0.5 size-4 accent-[#0E7C3A]"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-idn-ink">Sandbox et demande de production</span>
+                      <span id="env-prod-hint" className="block text-xs leading-5 text-idn-muted">
+                        {account?.verified
+                          ? "Un client_id de production est créé, inactif jusqu'à la validation par l'administration."
+                          : "Réservé aux comptes développeur validés par l'administration. Vous pourrez la demander plus tard."}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+                {errors.environment ? (
+                  <p role="alert" className="mt-2 text-xs text-destructive">
+                    {errors.environment}
                   </p>
-                  <ul className="mt-5 space-y-3 text-xs text-idn-ink">
-                    {[
-                      "Aucun citoyen réel exposé",
-                      "Secret propre à cet environnement",
-                      "Callbacks locaux autorisés",
-                    ].map((item) => (
-                      <li key={item} className="flex items-center gap-2">
-                        <CheckIcon className="size-3.5 text-idn-green" /> {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
+                ) : null}
+              </fieldset>
 
-              <section className="portal-panel p-5">
-                <div className="flex items-center gap-2 text-sm font-semibold text-idn-ink">
-                  <ShieldCheckIcon className="size-4 text-idn-blue" />{" "}
+              <div className="rounded-[10px] border border-idn-border">
+                <p className="border-b border-idn-border-soft px-4 py-2.5 text-sm font-semibold text-idn-ink">
                   Récapitulatif
-                </div>
-                <dl className="mt-5 space-y-4">
-                  <div>
-                    <dt className="text-[10px] uppercase tracking-[0.07em] text-idn-muted">
-                      Application
-                    </dt>
-                    <dd className="mt-1 truncate text-sm font-medium text-idn-ink">
-                      {applicationName.trim() || "Sans nom"}
-                    </dd>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-[0.07em] text-idn-muted">
-                        Scopes
-                      </dt>
-                      <dd className="mt-1 text-sm font-semibold text-idn-ink">
-                        {selectedScopes.length}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-[0.07em] text-idn-muted">
-                        Garantie
-                      </dt>
-                      <dd className="mt-1 text-sm font-semibold text-idn-ink">
-                        LoA {selectedLoa}
-                      </dd>
-                    </div>
-                  </div>
-                  <div>
-                    <dt className="text-[10px] uppercase tracking-[0.07em] text-idn-muted">
-                      Callbacks
-                    </dt>
-                    <dd className="mt-1 text-sm font-semibold text-idn-ink">
-                      {
-                        redirectUris.split(/\n/).filter((value) => value.trim())
-                          .length
-                      }
-                    </dd>
-                  </div>
+                </p>
+                <dl className="divide-y divide-idn-border-soft text-[13px]">
+                  <Row label="Nom">
+                    <span className="flex items-center gap-2">
+                      <AppLogo name={name} icon={logoPreview} size={24} />
+                      {name}
+                    </span>
+                  </Row>
+                  {description ? <Row label="Description">{description}</Row> : null}
+                  <Row label="Redirections">
+                    <ul className="space-y-0.5 font-mono">
+                      {cleanUris.map((u) => (
+                        <li key={u} className="break-all">{u}</li>
+                      ))}
+                    </ul>
+                  </Row>
+                  <Row label="Scopes">
+                    <span className="font-mono">{scopes.join(" ")}</span>
+                  </Row>
+                  <Row label="Niveau exigé">
+                    <LoABadge level={loa} compact />
+                  </Row>
                 </dl>
-              </section>
-            </aside>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-idn-border-soft pt-5">
+            {step > 0 ? (
+              <Button type="button" variant="outline" onClick={() => setStep((s) => s - 1)}>
+                <Icon name="arrowLeft" size={16} /> Précédent
+              </Button>
+            ) : (
+              <Button asChild variant="ghost">
+                <Link href="/applications">Annuler</Link>
+              </Button>
+            )}
+            {step < STEPS.length - 1 ? (
+              <Button type="button" onClick={goNext}>
+                Suivant <Icon name="arrowRight" size={16} />
+              </Button>
+            ) : (
+              <Button type="button" onClick={() => void submit()} disabled={submitting}>
+                {submitting ? "Création…" : "Créer l'application"}
+              </Button>
+            )}
           </div>
-        </form>
-      </div>
+        </Panel>
+      </PageBody>
     </>
+  )
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid gap-1 px-4 py-2.5 sm:grid-cols-[140px_1fr]">
+      <dt className="text-idn-muted">{label}</dt>
+      <dd className="min-w-0 text-idn-ink">{children}</dd>
+    </div>
+  )
+}
+
+function CredentialsBlock({
+  title,
+  credentials,
+  note,
+}: {
+  title: string
+  credentials: { clientId: string; clientSecret: string }
+  note?: string
+}) {
+  return (
+    <Panel title={title} description={note}>
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-[13px] font-medium text-idn-ink">client_id</p>
+          <div className="flex items-center gap-2">
+            <code className="block min-w-0 flex-1 break-all rounded-[10px] border border-idn-border bg-idn-surface-2 px-3 py-2 font-mono text-[13px] text-idn-ink">
+              {credentials.clientId}
+            </code>
+            <CopyButton value={credentials.clientId} label="Copier le client_id" />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[13px] font-medium text-idn-ink">client_secret</p>
+          <div className="flex items-center gap-2">
+            <code
+              data-testid="revealed-secret"
+              className="block min-w-0 flex-1 break-all rounded-[10px] border border-idn-green/40 bg-idn-green-soft px-3 py-2 font-mono text-[13px] text-idn-ink dark:bg-[#0F2A18]"
+            >
+              {credentials.clientSecret}
+            </code>
+            <CopyButton value={credentials.clientSecret} label="Copier le client_secret" />
+          </div>
+        </div>
+      </div>
+    </Panel>
   )
 }

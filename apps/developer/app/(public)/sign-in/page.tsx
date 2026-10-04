@@ -1,16 +1,12 @@
 "use client"
 
-import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { Suspense, useState } from "react"
 import { useForm } from "react-hook-form"
-import { toast } from "sonner"
 import { z } from "zod"
 
-import { useConvex } from "convex/react"
-
-import { api } from "@repo/backend/convex/_generated/api"
 import { Button } from "@repo/ui/components/button"
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
@@ -18,177 +14,126 @@ import { Label } from "@repo/ui/components/label"
 import { authClient } from "@/lib/auth-client"
 import { PUBLIC_SITE_URL } from "@/lib/seo"
 
-import { fr } from "../../_content/fr"
-import { IdnIcons } from "../../_components/icons"
+import { Notice } from "../../_components/ui"
+import { AuthFrame, FieldError, inlineLink } from "../_components/auth-frame"
+import { PasswordInput } from "../_components/password-input"
+import { RedirectIfSignedIn } from "../redirect-if-signed-in"
 
 const schema = z.object({
-  email: z.string().trim().email("Adresse email invalide."),
-  password: z.string().min(1, "Mot de passe requis."),
+  email: z.string().trim().email("Saisissez une adresse e-mail valide."),
+  password: z.string().min(1, "Saisissez votre mot de passe."),
 })
 
 type FormValues = z.infer<typeof schema>
 
-export default function DeveloperSignInPage() {
+export default function SignInPage() {
   return (
     <Suspense fallback={null}>
-      <DeveloperSignInPageInner />
+      <SignInForm />
     </Suspense>
   )
 }
 
-function DeveloperSignInPageInner() {
+function SignInForm() {
   const router = useRouter()
   const params = useSearchParams()
-  const convex = useConvex()
-  const errorFromQuery = params.get("error")
-  const [submitting, setSubmitting] = useState(false)
-
-  useEffect(() => {
-    if (errorFromQuery === "forbidden") {
-      toast.error(fr.signIn.errorForbidden)
-    }
-  }, [errorFromQuery])
-
+  const [error, setError] = useState<string | null>(
+    params.get("error") === "forbidden"
+      ? "Ce compte n'a pas accès au portail développeur."
+      : null,
+  )
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { email: "", password: "" },
     mode: "onTouched",
   })
 
+  // Le rôle développeur n'est PAS attribué ici : le JWT Convex n'est pas
+  // encore disponible juste après signIn. Le layout du portail s'en charge
+  // dès que la sentinelle d'authentification répond (DeveloperBootstrap).
   const onSubmit = handleSubmit(async (values) => {
-    setSubmitting(true)
+    setError(null)
     try {
       const result = await authClient.signIn.email({
         email: values.email,
         password: values.password,
       })
       if (result?.error) {
-        const code = result.error.code as string | undefined
-        toast.error(
-          code === "INVALID_EMAIL_OR_PASSWORD"
-            ? fr.signIn.errorInvalid
-            : (result.error.message ?? fr.signIn.errorGeneric),
+        setError(
+          result.error.code === "INVALID_EMAIL_OR_PASSWORD"
+            ? "Adresse e-mail ou mot de passe incorrect."
+            : (result.error.message ?? "Connexion impossible. Réessayez."),
         )
-        setSubmitting(false)
         return
-      }
-      try {
-        await convex.mutation(api.developer.apps.ensureRole, {})
-      } catch {
-        // idempotent — si déjà attribué, no-op
       }
       router.push("/applications")
     } catch {
-      toast.error(fr.signIn.errorGeneric)
-      setSubmitting(false)
+      setError("Connexion impossible. Vérifiez votre connexion et réessayez.")
     }
   })
 
   return (
-    <main className="mx-auto flex min-h-[calc(100svh-64px)] w-full max-w-[460px] flex-col justify-center px-6 py-16">
-      <div className="text-center">
-        <h1 className="text-[26px] font-semibold tracking-[-0.012em] text-idn-ink">
-          {fr.signIn.title}
-        </h1>
-        <p className="mt-2 text-sm text-idn-muted">{fr.signIn.subtitle}</p>
-      </div>
-
-      <form onSubmit={onSubmit} noValidate className="mt-7 space-y-3">
+    <AuthFrame
+      kicker="Espace développeur"
+      title="Se connecter"
+      description="Accédez à vos applications, à vos clés et à votre usage."
+      footer={
+        <>
+          Pas encore de compte ?{" "}
+          <Link href="/sign-up" className={inlineLink}>
+            Créer un compte développeur
+          </Link>
+        </>
+      }
+    >
+      <RedirectIfSignedIn />
+      <form onSubmit={onSubmit} noValidate className="space-y-4">
+        {error ? (
+          <Notice tone="danger">
+            <span role="alert">{error}</span>
+          </Notice>
+        ) : null}
         <div className="space-y-1.5">
-          <Label htmlFor="dev-email">{fr.signIn.emailLabel}</Label>
-          <div className="relative">
-            <span
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-idn-muted"
-              aria-hidden
-            >
-              {IdnIcons.mail}
-            </span>
-            <Input
-              id="dev-email"
-              type="email"
-              autoComplete="email"
-              required
-              aria-required="true"
-              aria-invalid={Boolean(errors.email)}
-              aria-describedby={errors.email ? "dev-email-error" : undefined}
-              className="h-11 pl-11"
-              {...register("email")}
-            />
-          </div>
-          {errors.email ? (
-            <p id="dev-email-error" role="alert" className="text-xs text-destructive">
-              {errors.email.message}
-            </p>
-          ) : null}
+          <Label htmlFor="email">Adresse e-mail</Label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? "email-error" : undefined}
+            className="h-11"
+            {...register("email")}
+          />
+          <FieldError id="email-error" message={errors.email?.message} />
         </div>
-
         <div className="space-y-1.5">
-          <Label htmlFor="dev-password">{fr.signIn.passwordLabel}</Label>
-          <div className="relative">
-            <span
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-idn-muted"
-              aria-hidden
-            >
-              {IdnIcons.lock}
-            </span>
-            <Input
-              id="dev-password"
-              type="password"
-              autoComplete="current-password"
-              required
-              aria-required="true"
-              aria-invalid={Boolean(errors.password)}
-              aria-describedby={
-                errors.password ? "dev-password-error" : undefined
-              }
-              className="h-11 pl-11"
-              {...register("password")}
-            />
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Mot de passe</Label>
+            <a href={`${PUBLIC_SITE_URL}/forgot-password`} className={`text-xs ${inlineLink}`}>
+              Mot de passe oublié ?
+            </a>
           </div>
-          {errors.password ? (
-            <p
-              id="dev-password-error"
-              role="alert"
-              className="text-xs text-destructive"
-            >
-              {errors.password.message}
-            </p>
-          ) : null}
+          <PasswordInput
+            id="password"
+            autoComplete="current-password"
+            aria-invalid={Boolean(errors.password)}
+            aria-describedby={errors.password ? "password-error" : undefined}
+            {...register("password")}
+          />
+          <FieldError id="password-error" message={errors.password?.message} />
         </div>
-
-        <div className="pt-1 text-right text-xs">
-          {/* Pas de parcours propre : comptes partagés avec le portail citoyen. */}
-          <a
-            href={`${PUBLIC_SITE_URL}/forgot-password`}
-            className="font-medium text-idn-green underline-offset-2 hover:underline focus-visible:underline"
-          >
-            {fr.signIn.forgotPassword}
-          </a>
-        </div>
-
-        <Button
-          type="submit"
-          size="lg"
-          disabled={submitting}
-          className="h-12 w-full text-base"
-        >
-          {submitting ? fr.signIn.submitting : fr.signIn.submit}
+        <Button type="submit" size="lg" disabled={isSubmitting} className="w-full">
+          {isSubmitting ? "Connexion…" : "Se connecter"}
         </Button>
+        <p className="text-xs leading-5 text-idn-muted">
+          Le compte est celui de l&apos;Identité Numérique : les mêmes identifiants servent sur
+          identite.ga.
+        </p>
       </form>
-
-      <p className="mt-6 text-center text-sm text-idn-muted">
-        {fr.signIn.noAccount}{" "}
-        <Link
-          href="/sign-up"
-          className="font-medium text-idn-green underline-offset-2 hover:underline focus-visible:underline"
-        >
-          {fr.signIn.createAccount}
-        </Link>
-      </p>
-    </main>
+    </AuthFrame>
   )
 }

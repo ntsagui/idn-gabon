@@ -1,337 +1,277 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
-import { useConvex, useQuery } from "convex/react"
-import {
-  ExternalLinkIcon,
-  LayoutTemplateIcon,
-  PlusIcon,
-  SaveIcon,
-  TrashIcon,
-} from "lucide-react"
+import { useMutation } from "convex/react"
+import { useState } from "react"
 import { toast } from "sonner"
 
 import { api } from "@repo/backend/convex/_generated/api"
 import { Button } from "@repo/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@repo/ui/components/dialog"
 import { Input } from "@repo/ui/components/input"
 import { Label } from "@repo/ui/components/label"
 import { Textarea } from "@repo/ui/components/textarea"
 
-import { fr } from "../../../../_content/fr"
+import type { DeveloperApplication } from "../../../../_components/application-groups"
+import { ConfirmDialog } from "../../../../_components/confirm-dialog"
+import { errorMessage } from "../../../../_components/format"
+import { Icon } from "../../../../_components/icons"
+import { EmptyState, Notice, PageBody, Panel } from "../../../../_components/ui"
+import { useAppWorkspace } from "../_components/app-context"
 
-type Category =
-  | "administrative"
-  | "civilStatus"
-  | "fiscal"
-  | "education"
-  | "health"
-  | "transport"
-  | "social"
-  | "other"
+type Service = DeveloperApplication["services"][number]
 
-const CATEGORIES: Category[] = [
-  "administrative",
-  "civilStatus",
-  "fiscal",
-  "education",
-  "health",
-  "transport",
-  "social",
-  "other",
-]
-
-type Service = {
-  id: string
-  label: string
-  description: string
-  category: Category
-  link: string
+const CATEGORIES: Record<Service["category"], string> = {
+  administrative: "Administratif",
+  civilStatus: "État civil",
+  fiscal: "Fiscalité",
+  education: "Éducation",
+  health: "Santé",
+  transport: "Transport",
+  social: "Social",
+  other: "Autre",
 }
 
-function emptyService(): Service {
-  return {
-    id: "",
-    label: "",
-    description: "",
-    category: "administrative",
-    link: "https://",
-  }
-}
+const EMPTY: Service = { id: "", label: "", description: "", category: "administrative", link: "" }
 
-export default function AppServicesPage() {
-  const params = useParams<{ appId: string }>()
-  const clientId = String(params?.appId ?? "")
-  const convex = useConvex()
-  const app = useQuery(api.developer.apps.get, { clientId })
-  const [services, setServices] = useState<Service[] | null>(null)
-  const [saving, setSaving] = useState(false)
+export default function ApplicationServicesPage() {
+  const { app } = useAppWorkspace()
+  const setServices = useMutation(api.developer.apps.setServices)
+  const [editing, setEditing] = useState<{ index: number | null; value: Service } | null>(null)
+  const [removing, setRemoving] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    setServices(null)
-  }, [clientId])
-
-  useEffect(() => {
-    if (app && services === null) {
-      setServices(app.services.map((s) => ({ ...s })))
-    }
-  }, [app, services])
-
-  const update = (idx: number, patch: Partial<Service>) => {
-    setServices((prev) =>
-      prev ? prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)) : prev,
-    )
-  }
-  const remove = (idx: number) => {
-    setServices((prev) => (prev ? prev.filter((_, i) => i !== idx) : prev))
-  }
-  const add = () => {
-    setServices((prev) => (prev ? [...prev, emptyService()] : [emptyService()]))
-  }
-
-  const save = async () => {
-    if (!services) return
-    setSaving(true)
+  const persist = async (next: Service[], success: string): Promise<boolean> => {
     try {
-      await convex.mutation(api.developer.apps.setServices, {
-        clientId,
-        services,
-      })
-      toast.success(fr.services.savedToast)
+      await setServices({ clientId: app.clientId, services: next })
+      toast.success(success)
+      return true
     } catch (err) {
-      const msg =
-        err && typeof err === "object" && "data" in err
-          ? ((err as { data?: { message?: string } }).data?.message ??
-            fr.services.errorGeneric)
-          : fr.services.errorGeneric
-      toast.error(msg)
-    } finally {
-      setSaving(false)
+      const message = errorMessage(err, "Enregistrement impossible.")
+      setError(message)
+      toast.error(message)
+      return false
     }
   }
 
-  if (app === undefined) {
-    return (
-      <div className="portal-panel p-6 text-sm text-idn-muted">
-        Chargement des services…
-      </div>
-    )
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!editing) return
+    const value = {
+      ...editing.value,
+      id: editing.value.id.trim(),
+      label: editing.value.label.trim(),
+      description: editing.value.description.trim(),
+      link: editing.value.link.trim(),
+    }
+    if (!value.id || !value.label || !value.link) {
+      setError("Identifiant, intitulé et lien sont obligatoires.")
+      return
+    }
+    const next =
+      editing.index === null
+        ? [...app.services, value]
+        : app.services.map((s, i) => (i === editing.index ? value : s))
+    setBusy(true)
+    setError(null)
+    const ok = await persist(next, editing.index === null ? "Service ajouté." : "Service modifié.")
+    setBusy(false)
+    if (ok) setEditing(null)
   }
-  if (app === null) {
-    return (
-      <div className="portal-panel p-6 text-sm text-idn-muted">
-        Application introuvable.
-      </div>
-    )
-  }
-
-  const list = services ?? []
 
   return (
-    <>
-      <section className="portal-panel overflow-hidden">
-        <div className="grid md:grid-cols-[1fr_auto]">
-          <div className="p-6 lg:p-7">
-            <div className="portal-section-kicker">Catalogue citoyen</div>
-            <h2 className="mt-2 text-xl font-semibold tracking-[-0.02em] text-idn-ink">
-              Rendez vos démarches faciles à trouver.
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-idn-muted">
-              {fr.services.description}
-            </p>
-          </div>
-          <dl className="grid min-w-[300px] grid-cols-2 border-t border-idn-border-soft bg-idn-surface-2/60 md:border-l md:border-t-0">
-            <div className="flex flex-col justify-center border-r border-idn-border-soft px-6 py-5">
-              <dt className="text-[10px] uppercase tracking-[0.07em] text-idn-muted">
-                Publiés
-              </dt>
-              <dd className="mt-1 text-2xl font-semibold text-idn-ink">
-                {list.length}
-              </dd>
-            </div>
-            <div className="flex flex-col justify-center px-6 py-5">
-              <dt className="text-[10px] uppercase tracking-[0.07em] text-idn-muted">
-                Environnement
-              </dt>
-              <dd className="mt-1 text-sm font-semibold capitalize text-idn-ink">
-                {app.env}
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_360px]">
-        <div className="space-y-4">
-          {list.length === 0 ? (
-            <div className="portal-panel border-dashed p-10 text-center">
-              <div className="mx-auto flex size-11 items-center justify-center rounded-xl bg-idn-green-soft text-idn-green dark:bg-idn-green/10 dark:text-idn-green-on-dark">
-                <LayoutTemplateIcon className="size-5" />
-              </div>
-              <p className="mt-4 text-sm font-semibold text-idn-ink">
-                {fr.services.emptyTitle}
-              </p>
-              <p className="mt-1.5 text-xs text-idn-muted">
-                {fr.services.emptyDesc}
-              </p>
-              <Button onClick={add} className="mt-5">
-                <PlusIcon className="size-4" /> {fr.services.addService}
-              </Button>
-            </div>
-          ) : null}
-
-          {list.map((service, idx) => (
-            <section key={idx} className="portal-form overflow-hidden">
-              <div className="flex items-center justify-between border-b border-idn-border-soft bg-idn-surface-2/55 px-6 py-4">
-                <div>
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-idn-green">
-                    Service #{idx + 1}
-                  </span>
-                  <h3 className="mt-1 text-sm font-semibold text-idn-ink">
-                    {service.label || "Nouvelle démarche"}
-                  </h3>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => remove(idx)}
-                  className="text-destructive hover:bg-destructive/10"
-                >
-                  <TrashIcon className="size-3" aria-hidden />
-                  {fr.services.remove}
-                </Button>
-              </div>
-              <div className="space-y-4 p-6">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label>{fr.services.serviceId}</Label>
-                    <Input
-                      value={service.id}
-                      onChange={(e) =>
-                        update(idx, { id: e.target.value.toLowerCase() })
-                      }
-                      placeholder="decl-fiscale-2025"
-                      className="font-mono text-xs"
-                    />
-                    <p className="text-[11px] text-idn-muted">
-                      {fr.services.serviceIdHint}
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>{fr.services.category}</Label>
-                    <select
-                      value={service.category}
-                      onChange={(e) =>
-                        update(idx, {
-                          category: e.target.value as Category,
-                        })
-                      }
-                      className="h-10 w-full rounded-md border border-idn-border bg-idn-surface px-3 text-sm"
-                    >
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {fr.services.categories[c]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{fr.services.label}</Label>
-                  <Input
-                    value={service.label}
-                    onChange={(e) => update(idx, { label: e.target.value })}
-                    placeholder={fr.services.labelPlaceholder}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{fr.services.descriptionLabel}</Label>
-                  <Textarea
-                    value={service.description}
-                    onChange={(e) =>
-                      update(idx, { description: e.target.value })
-                    }
-                    placeholder={fr.services.descriptionPlaceholder}
-                    rows={2}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{fr.services.link}</Label>
-                  <Input
-                    type="url"
-                    value={service.link}
-                    onChange={(e) => update(idx, { link: e.target.value })}
-                    placeholder="https://impots.ga/decl"
-                    className="font-mono text-xs"
-                  />
-                  <p className="text-[11px] text-idn-muted">
-                    {fr.services.linkHint}
-                  </p>
-                </div>
-              </div>
-            </section>
-          ))}
-
-          {list.length > 0 ? (
+    <PageBody>
+      <div className="space-y-5">
+        <Notice tone="info">
+          Les services publiés apparaissent dans le catalogue de l&apos;application mobile Identité Numérique, pour
+          les usagers qui ont autorisé votre application.
+        </Notice>
+        <Panel
+          title="Services publiés"
+          description={`${app.services.length} / 50 services.`}
+          actions={
             <Button
               type="button"
-              variant="outline"
-              onClick={add}
-              className="w-full"
+              size="sm"
+              disabled={app.services.length >= 50}
+              onClick={() => {
+                setError(null)
+                setEditing({ index: null, value: EMPTY })
+              }}
             >
-              <PlusIcon className="size-4" /> {fr.services.addService}
+              <Icon name="plus" size={15} /> Ajouter un service
             </Button>
-          ) : null}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button onClick={save} disabled={saving || services === null}>
-              <SaveIcon className="size-4" />
-              {saving ? fr.services.saving : fr.services.save}
-            </Button>
-          </div>
-        </div>
-
-        <aside className="portal-panel overflow-hidden xl:sticky xl:top-6">
-          <div className="flex items-center justify-between border-b border-idn-border-soft bg-idn-surface-2/60 px-5 py-4">
-            <div>
-              <div className="portal-section-kicker">Aperçu citoyen</div>
-              <h2 className="mt-1 text-sm font-semibold text-idn-ink">
-                Informations affichées
-              </h2>
-            </div>
-            <LayoutTemplateIcon className="size-5 text-idn-blue" />
-          </div>
-          <div className="space-y-3 p-5">
-            {list.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-idn-border bg-idn-surface-2/40 p-6 text-center text-xs leading-5 text-idn-muted">
-                Ajoutez une démarche pour voir son aperçu ici.
-              </div>
-            ) : (
-              list.map((service, idx) => (
-                <article
-                  key={idx}
-                  className="rounded-xl border border-idn-border bg-idn-surface p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="rounded-full bg-idn-green-soft px-2 py-1 text-[10px] font-semibold text-idn-green dark:bg-idn-green/10 dark:text-idn-green-on-dark">
-                      {fr.services.categories[service.category]}
-                    </span>
-                    <ExternalLinkIcon className="size-3.5 text-idn-muted" />
+          }
+          bodyClassName={app.services.length ? "p-0" : undefined}
+        >
+          {app.services.length === 0 ? (
+            <EmptyState
+              icon="layers"
+              title="Aucun service publié"
+              description="Décrivez les démarches accessibles depuis votre service (intitulé, catégorie, lien https) pour qu'elles soient proposées aux usagers."
+              className="border-0 py-6"
+            />
+          ) : (
+            <ul className="divide-y divide-idn-border-soft">
+              {app.services.map((service, index) => (
+                <li key={service.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-idn-ink">{service.label}</p>
+                    <p className="text-xs text-idn-muted">
+                      {CATEGORIES[service.category]} · <span className="font-mono">{service.id}</span>
+                    </p>
+                    {service.description ? (
+                      <p className="mt-0.5 text-[13px] text-idn-ink-2">{service.description}</p>
+                    ) : null}
+                    <a
+                      href={service.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-0.5 inline-flex items-center gap-1 break-all font-mono text-xs text-idn-green underline-offset-2 hover:underline dark:text-idn-green-on-dark"
+                    >
+                      {service.link} <Icon name="external" size={12} />
+                      <span className="sr-only">(nouvel onglet)</span>
+                    </a>
                   </div>
-                  <h3 className="mt-3 text-sm font-semibold text-idn-ink">
-                    {service.label || "Nom de la démarche"}
-                  </h3>
-                  <p className="mt-1 line-clamp-3 text-xs leading-5 text-idn-muted">
-                    {service.description ||
-                      "La description courte sera présentée au citoyen dans son catalogue de services."}
-                  </p>
-                </article>
-              ))
-            )}
-          </div>
-        </aside>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setError(null)
+                        setEditing({ index, value: service })
+                      }}
+                    >
+                      Modifier
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setRemoving(index)}
+                      className="text-[#B3261E] hover:bg-[#FBE9E7] hover:text-[#B3261E] dark:text-[#F2857E]"
+                    >
+                      Retirer
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
-    </>
+
+      <Dialog open={editing !== null} onOpenChange={(open) => !open && !busy && setEditing(null)}>
+        <DialogContent className="rounded-[14px] border-idn-border bg-idn-surface shadow-none sm:max-w-lg">
+          {editing ? (
+            <form onSubmit={save} className="grid gap-4">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-semibold text-idn-ink">
+                  {editing.index === null ? "Ajouter un service" : "Modifier le service"}
+                </DialogTitle>
+                <DialogDescription className="text-sm text-idn-muted">
+                  Visible des usagers dans le catalogue des services.
+                </DialogDescription>
+              </DialogHeader>
+              {error ? (
+                <p role="alert" className="rounded-[10px] border border-[#B3261E]/30 bg-[#FBE9E7] px-3 py-2 text-[13px] text-[#B3261E] dark:bg-[#3A1614] dark:text-[#F2857E]">
+                  {error}
+                </p>
+              ) : null}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="svc-id">Identifiant</Label>
+                  <Input
+                    id="svc-id"
+                    value={editing.value.id}
+                    maxLength={64}
+                    onChange={(e) => setEditing({ ...editing, value: { ...editing.value, id: e.target.value } })}
+                    placeholder="acte-naissance"
+                    className="h-10 font-mono text-[13px]"
+                    aria-describedby="svc-id-hint"
+                  />
+                  <p id="svc-id-hint" className="text-xs text-idn-muted">a-z, 0-9, tiret, souligné.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="svc-category">Catégorie</Label>
+                  <select
+                    id="svc-category"
+                    value={editing.value.category}
+                    onChange={(e) =>
+                      setEditing({ ...editing, value: { ...editing.value, category: e.target.value as Service["category"] } })
+                    }
+                    className="h-10 w-full rounded-md border border-idn-border bg-idn-surface px-3 text-sm text-idn-ink focus-visible:outline-2 focus-visible:outline-idn-green"
+                  >
+                    {Object.entries(CATEGORIES).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="svc-label">Intitulé</Label>
+                <Input
+                  id="svc-label"
+                  value={editing.value.label}
+                  onChange={(e) => setEditing({ ...editing, value: { ...editing.value, label: e.target.value } })}
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="svc-description">Description</Label>
+                <Textarea
+                  id="svc-description"
+                  rows={2}
+                  value={editing.value.description}
+                  onChange={(e) => setEditing({ ...editing, value: { ...editing.value, description: e.target.value } })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="svc-link">Lien</Label>
+                <Input
+                  id="svc-link"
+                  type="url"
+                  value={editing.value.link}
+                  onChange={(e) => setEditing({ ...editing, value: { ...editing.value, link: e.target.value } })}
+                  placeholder="https://votre-service.ga/demarche"
+                  className="h-10 font-mono text-[13px]"
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" disabled={busy} onClick={() => setEditing(null)}>
+                  Annuler
+                </Button>
+                <Button type="submit" disabled={busy}>
+                  {busy ? "Enregistrement…" : "Enregistrer"}
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title={`Retirer « ${removing !== null ? (app.services[removing]?.label ?? "") : ""} » ?`}
+        description="Le service disparaît du catalogue des usagers dès l'enregistrement."
+        confirmLabel="Retirer"
+        onConfirm={async () => {
+          if (removing === null) return
+          const ok = await persist(app.services.filter((_, i) => i !== removing), "Service retiré.")
+          if (!ok) return true
+        }}
+      />
+    </PageBody>
   )
 }

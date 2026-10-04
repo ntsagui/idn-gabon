@@ -68,7 +68,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-background text-foreground antialiased">
         <Providers>
           {children}
-          <Toaster />
+          <Toaster toastOptions={{ style: { boxShadow: "none" } }} />
         </Providers>
       </body>
     </html>

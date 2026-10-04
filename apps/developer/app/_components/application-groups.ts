@@ -1,16 +1,15 @@
-export type DeveloperApplication = {
-  id: string
-  clientId: string
-  name: string
-  env: "production" | "sandbox"
-  loa: 1 | 2 | 3
-  scopes: string[]
-  services: unknown[]
-  disabled: boolean
-  linkedClientId: string | null
-  productionStatus: "none" | "pending" | "approved" | "rejected"
-}
+import type { FunctionReturnType } from "convex/server"
 
+import type { api } from "@repo/backend/convex/_generated/api"
+
+export type DeveloperApplication = FunctionReturnType<
+  typeof api.developer.apps.listMine
+>[number]
+
+/**
+ * Une application du portail = un enregistrement sandbox et, après demande
+ * de mise en production, son jumeau production (deux client_id distincts).
+ */
 export type ApplicationGroup = {
   id: string
   name: string
@@ -45,5 +44,27 @@ export function groupApplications(
     groups.set(groupId, existing)
   }
 
-  return [...groups.values()]
+  return [...groups.values()].sort(
+    (a, b) => primaryOf(b).createdAt - primaryOf(a).createdAt,
+  )
+}
+
+/** Enregistrement de référence : la production si elle est active, sinon la sandbox. */
+export function primaryOf(group: ApplicationGroup): DeveloperApplication {
+  if (group.production && !group.production.disabled) return group.production
+  return (group.sandbox ?? group.production)!
+}
+
+/** Statut affiché d'une application, aligné sur les pastilles de la charte. */
+export function applicationStatus(group: ApplicationGroup): {
+  label: string
+  tone: "info" | "attention" | "success" | "danger" | "neutral"
+} {
+  const production = group.production
+  if (production && !production.disabled) return { label: "En production", tone: "success" }
+  const status = group.sandbox?.productionStatus ?? "none"
+  if (status === "pending") return { label: "Production en revue", tone: "info" }
+  if (status === "rejected") return { label: "Production refusée", tone: "danger" }
+  if (group.sandbox?.disabled) return { label: "Désactivée", tone: "neutral" }
+  return { label: "Sandbox active", tone: "neutral" }
 }
