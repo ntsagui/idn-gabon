@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authClient } from '@/lib/auth-client';
 import { BIOMETRIC } from './biometric-label';
 
@@ -20,6 +21,26 @@ import { BIOMETRIC } from './biometric-label';
  * Signing) : sans elles, Credential Manager refuse l'enrôlement.
  */
 export const PASSKEYS_ON_DEVICE = Platform.OS !== 'android';
+
+/**
+ * Adresse du compte dont Face ID est activé sur cet appareil. La connexion
+ * et le verrou ne lancent Face ID que pour ce compte ; les autres passent
+ * directement au PIN, sans bouton biométrique voué à l'échec.
+ */
+const BIOMETRIC_ACCOUNT_KEY = 'idn.biometricAccount';
+
+export async function biometricEnabledFor(email: string | null | undefined): Promise<boolean> {
+  if (!PASSKEYS_ON_DEVICE || !email) return false;
+  return (await AsyncStorage.getItem(BIOMETRIC_ACCOUNT_KEY)) === email.toLowerCase();
+}
+
+/** Mémorise (ou oublie) Face ID pour le compte de la session ouverte. */
+export async function setBiometricForSession(enabled: boolean): Promise<void> {
+  if (!enabled) return AsyncStorage.removeItem(BIOMETRIC_ACCOUNT_KEY);
+  const session = await authClient.getSession();
+  const email = session?.data?.user?.email as string | undefined;
+  if (email) await AsyncStorage.setItem(BIOMETRIC_ACCOUNT_KEY, email.toLowerCase());
+}
 
 export type Passkey = { id: string; name?: string | null; createdAt: string | number | Date; deviceType?: string };
 

@@ -59,13 +59,19 @@ const isDev = process.env.NODE_ENV !== "production"
  * dynamiquement n'importe quel `localhost` / `127.0.0.1` / `*.local`
  * venant du header Origin.
  *
+ * Le scheme de l'app mobile (`idn://`, transmis par le plugin expo via
+ * `expo-origin`) est toujours ajouté : sans lui, toute requête mobile
+ * authentifiée (cookie de session) est refusée « Invalid origin » — dont
+ * l'enrôlement Face ID (`/passkey/generate-register-options`).
+ *
  * Set via : `bunx convex env set TRUSTED_ORIGINS "https://...,https://..."`
  */
-function parseTrustedOrigins(): string[] {
-  return (process.env.TRUSTED_ORIGINS ?? "")
+export function parseTrustedOrigins(): string[] {
+  const fromEnv = (process.env.TRUSTED_ORIGINS ?? "")
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean)
+  return [...fromEnv, "idn://"]
 }
 
 /**

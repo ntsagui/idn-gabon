@@ -15,6 +15,7 @@ import {
   listPasskeys,
   passkeyErrorMessage,
   PasskeyUnavailableError,
+  setBiometricForSession,
 } from "@/lib/citizen/passkeys"
 
 import { SignupScreen } from "../auth-screen"
@@ -60,6 +61,7 @@ export function BioStep() {
         setActivating(false)
         return
       }
+      await setBiometricForSession(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l’activation.")
       setActivating(false)

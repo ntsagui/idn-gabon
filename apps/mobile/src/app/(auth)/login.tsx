@@ -8,11 +8,10 @@ import { IdnInput } from '@/design/components/idn-input';
 import { AppBar } from '@/design/components/app-bar';
 import { Screen } from '@/design/components/screen';
 import { ErrorNote, ScreenTitle } from '@/design/components/list';
-import { Icon } from '@/design/icons';
 import { PinLogin } from '@/components/auth/pin-login';
 import { authClient } from '@/lib/auth-client';
-import { listPasskeys, passkeyErrorMessage, PASSKEYS_ON_DEVICE } from '@/lib/passkeys';
-import { BIOMETRIC } from '@/lib/biometric-label';
+import { biometricEnabledFor, listPasskeys, passkeyErrorMessage } from '@/lib/passkeys';
+import { BIOMETRIC, BIOMETRIC_TITLE } from '@/lib/biometric-label';
 import { getLastAccount, initialsOf, type LastAccount } from '@/lib/last-account';
 import { setOnboardingDone } from '@/hooks/use-app-state';
 
@@ -34,7 +33,10 @@ function normalizeIdnIdentifier(input: string): { handle: string; email: string 
   return { handle, email: `${handle}${IDN_DOMAIN}` };
 }
 
-/** Connexion : adresse @idn.ga (mémorisée), puis PIN 6 chiffres ou Face ID (passkey). */
+/**
+ * Connexion : adresse @idn.ga (mémorisée), puis Face ID lancé d'office si
+ * ce compte l'a activé sur cet appareil, sinon PIN 6 chiffres seul.
+ */
 export default function Login() {
   const t = useIdnTheme();
   const router = useRouter();
@@ -46,22 +48,35 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinSetupRequired, setPinSetupRequired] = useState(false);
+  const [faceId, setFaceId] = useState(false);
 
   const normalized = normalizeIdnIdentifier(identifier);
 
   useEffect(() => {
     void getLastAccount().then((account) => {
       setLast(account);
+      const fromParam = paramIdentifier ? normalizeIdnIdentifier(paramIdentifier) : null;
       if (paramIdentifier) {
-        setPhase(normalizeIdnIdentifier(paramIdentifier) ? 'pin' : 'handle');
+        if (fromParam) void enterPin(fromParam.email);
+        else setPhase('handle');
       } else if (account) {
         setIdentifier(account.email);
-        setPhase('pin');
+        void enterPin(account.email);
       } else {
         setPhase('handle');
       }
     });
+    // Une seule fois par adresse reçue : relancer Face ID à chaque rendu
+    // rouvrirait la fenêtre système.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramIdentifier]);
+
+  async function enterPin(email: string) {
+    setPhase('pin');
+    const enabled = await biometricEnabledFor(email);
+    setFaceId(enabled);
+    if (enabled) void signInWithPasskey(email);
+  }
 
   function goToPin() {
     if (!normalized) {
@@ -70,7 +85,7 @@ export default function Login() {
     }
     setError(null);
     setPinSetupRequired(false);
-    setPhase('pin');
+    void enterPin(normalized.email);
   }
 
   function backToHandle() {
@@ -131,14 +146,21 @@ export default function Login() {
     }
   }
 
-  async function signInWithPasskey() {
+  async function signInWithPasskey(email: string) {
     if (submitting) return;
     setSubmitting(true);
     setError(null);
     try {
       const res = await authClient.signIn.passkey();
       if (res?.error) {
-        setError(passkeyErrorMessage(res.error, 'Aucune clé d’accès utilisable sur cet appareil.'));
+        setError(passkeyErrorMessage(res.error, `${BIOMETRIC_TITLE} n’a pas abouti. Saisis ton code PIN.`));
+        setSubmitting(false);
+        return;
+      }
+      // La clé choisie par iOS peut appartenir à un autre compte de l'appareil.
+      if ((res?.data as { user?: { email?: string } } | undefined)?.user?.email?.toLowerCase() !== email) {
+        try { await authClient.signOut(); } catch { /* ignore */ }
+        setError('Cette clé d’accès appartient à un autre compte. Saisis ton code PIN.');
         setSubmitting(false);
         return;
       }
@@ -177,7 +199,7 @@ export default function Login() {
           busy={submitting}
           error={error}
           onClearError={() => setError(null)}
-          onFaceId={PASSKEYS_ON_DEVICE ? signInWithPasskey : undefined}
+          onFaceId={faceId ? () => void signInWithPasskey(normalized.email) : undefined}
           links={[
             { label: pinSetupRequired ? 'Configurer mon PIN' : 'Code PIN oublié ?', onPress: forgotPin },
             { label: 'Autre compte', onPress: backToHandle },
@@ -191,18 +213,9 @@ export default function Login() {
     <Screen
       keyboard
       header={<AppBar title="Connexion" onBack={() => router.back()} />}
-      footer={
-        <>
-          <IdnButton t={t} full onPress={goToPin} disabled={!normalized}>Continuer</IdnButton>
-          {PASSKEYS_ON_DEVICE ? (
-            <IdnButton t={t} variant="ghost" full onPress={signInWithPasskey} loading={submitting} leadIcon={<Icon name="scanFace" size={18} color={t.ink} />}>
-              {`Se connecter avec ${BIOMETRIC}`}
-            </IdnButton>
-          ) : null}
-        </>
-      }
+      footer={<IdnButton t={t} full onPress={goToPin} disabled={!normalized}>Continuer</IdnButton>}
     >
-      <ScreenTitle title="Ton adresse IDN" lead="Saisis ton adresse @idn.ga pour te connecter avec ton code PIN." />
+      <ScreenTitle title="Ton adresse IDN" lead="Saisis ton adresse @idn.ga pour te connecter." />
       <View style={{ marginTop: 24 }}>
         <IdnInput
           t={t}

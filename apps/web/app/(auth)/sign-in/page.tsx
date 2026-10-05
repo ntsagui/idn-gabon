@@ -14,7 +14,7 @@ import { authClient } from "@/lib/auth-client"
 import { syncCrossDomainCookiesForProxy } from "@/lib/auth-cookie"
 import { normalizeIdnIdentifier } from "@/lib/citizen/idn-identifier"
 import { getLastAccount, initialsOf, type LastAccount } from "@/lib/citizen/last-account"
-import { BIOMETRIC, isServerFailure, passkeyErrorMessage, passkeysSupported } from "@/lib/citizen/passkeys"
+import { BIOMETRIC, biometricEnabledFor, isServerFailure, passkeyErrorMessage, passkeysSupported } from "@/lib/citizen/passkeys"
 import {
   authorizeFederatedSignIn,
   getProviderRedirect,
@@ -106,6 +106,7 @@ function SignIn() {
   const [qrOpen, setQrOpen] = React.useState(false)
   const [tfMode, setTfMode] = React.useState<"totp" | "backup">("totp")
   const [tfCode, setTfCode] = React.useState("")
+  const [faceId, setFaceId] = React.useState(false)
 
   const normalized = normalizeIdnIdentifier(identifier)
 
@@ -113,15 +114,28 @@ function SignIn() {
   React.useEffect(() => {
     const account = getLastAccount()
     setLast(account)
+    const fromParam = paramIdentifier ? normalizeIdnIdentifier(paramIdentifier) : null
     if (paramIdentifier) {
-      setPhase(normalizeIdnIdentifier(paramIdentifier) ? "pin" : "handle")
+      if (fromParam) enterPin(fromParam.email)
+      else setPhase("handle")
     } else if (account) {
       setIdentifier(account.email)
-      setPhase("pin")
+      enterPin(account.email)
     } else {
       setPhase("handle")
     }
+    // Une seule fois par adresse reçue : relancer la biométrie à chaque rendu
+    // rouvrirait la fenêtre du navigateur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramIdentifier])
+
+  /** PIN, précédé de la biométrie si ce compte l'a activée dans ce navigateur. */
+  function enterPin(email: string) {
+    setPhase("pin")
+    const enabled = biometricEnabledFor(email)
+    setFaceId(enabled)
+    if (enabled) void signInWithPasskey(email)
+  }
 
   function goToPin(e?: React.FormEvent) {
     e?.preventDefault()
@@ -131,7 +145,7 @@ function SignIn() {
     }
     setError(null)
     setPinSetupRequired(false)
-    setPhase("pin")
+    enterPin(normalized.email)
   }
 
   function backToHandle() {
@@ -240,7 +254,7 @@ function SignIn() {
     }
   }
 
-  async function signInWithPasskey() {
+  async function signInWithPasskey(email: string) {
     if (submitting) return
     setSubmitting(true)
     setError(null)
@@ -255,7 +269,14 @@ function SignIn() {
       if (res?.error) {
         // Le client WebAuthn renvoie des messages anglais (« Auth cancelled ») :
         // hors panne du service, on garde le message du mobile.
-        setError(passkeyErrorMessage(isServerFailure(res.error) ? res.error : null, "Aucune clé d’accès utilisable sur cet appareil."))
+        setError(passkeyErrorMessage(isServerFailure(res.error) ? res.error : null, `La connexion par ${BIOMETRIC} n’a pas abouti. Saisis ton code PIN.`))
+        setSubmitting(false)
+        return
+      }
+      // La clé choisie par le navigateur peut appartenir à un autre compte.
+      if ((res?.data as { user?: { email?: string } } | undefined)?.user?.email?.toLowerCase() !== email) {
+        try { await authClient.signOut() } catch { /* ignore */ }
+        setError("Cette clé d’accès appartient à un autre compte. Saisis ton code PIN.")
         setSubmitting(false)
         return
       }
@@ -460,7 +481,7 @@ function SignIn() {
           busy={submitting}
           error={error}
           onClearError={() => setError(null)}
-          onFaceId={() => void signInWithPasskey()}
+          onFaceId={faceId ? () => void signInWithPasskey(normalized.email) : undefined}
           links={[
             { label: pinSetupRequired ? "Configurer mon PIN" : "Code PIN oublié ?", href: forgotPinHref() },
             ...(pinSetupRequired
@@ -491,15 +512,6 @@ function SignIn() {
           <IdnButton
             variant="ghost"
             full
-            onClick={() => void signInWithPasskey()}
-            loading={submitting}
-            leadIcon={<Icon name="scanFace" size={18} />}
-          >
-            {`Se connecter avec ${BIOMETRIC}`}
-          </IdnButton>
-          <IdnButton
-            variant="ghost"
-            full
             className="hidden md:inline-flex"
             onClick={() => setQrOpen(true)}
             leadIcon={<Icon name="qr" size={18} />}
@@ -510,7 +522,7 @@ function SignIn() {
         </>
       }
     >
-      <ScreenTitle title="Ton adresse IDN" lead="Saisis ton adresse @idn.ga pour te connecter avec ton code PIN." />
+      <ScreenTitle title="Ton adresse IDN" lead="Saisis ton adresse @idn.ga pour te connecter." />
       <form id="signin-handle" onSubmit={goToPin} className="mt-6">
         <IdnInput
           label="Adresse IDN"

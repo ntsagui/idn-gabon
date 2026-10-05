@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Screen } from '@/design/components/screen';
 import { PinLogin } from '@/components/auth/pin-login';
 import { api } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
-import { passkeyErrorMessage } from '@/lib/passkeys';
+import { biometricEnabledFor, passkeyErrorMessage } from '@/lib/passkeys';
 import { BIOMETRIC_TITLE } from '@/lib/biometric-label';
 import { clearLastAccount, getLastAccount, initialsOf, type LastAccount } from '@/lib/last-account';
-import { BIOMETRIC_KEY } from '@/app/(auth)/signup/bio';
 
 /**
  * Verrou applicatif au démarrage à froid : la session Better Auth est déjà
@@ -18,8 +16,9 @@ import { BIOMETRIC_KEY } from '@/app/(auth)/signup/bio';
  *
  *   - PIN : vérifié contre le pinHash via api.onboarding.verifyPin (la
  *     session courante reste intacte).
- *   - Face ID : si une clé d'accès a été enrôlée, elle est proposée
- *     d'emblée et reste accessible par la touche du clavier.
+ *   - Face ID : s'il est activé sur cet appareil pour ce compte, il est
+ *     lancé d'emblée et reste accessible par la touche du clavier ; sinon
+ *     seul le PIN est proposé.
  *
  * « Changer de compte » ferme la session et revient à la bienvenue.
  */
@@ -54,9 +53,9 @@ export default function Launcher() {
 
   useEffect(() => {
     void (async () => {
-      const [flag, last] = await Promise.all([AsyncStorage.getItem(BIOMETRIC_KEY), getLastAccount()]);
+      const last = await getLastAccount();
       setAccount(last);
-      const enabled = flag === '1';
+      const enabled = await biometricEnabledFor(last?.email);
       setBioEnabled(enabled);
       if (enabled) void tryPasskey();
     })();

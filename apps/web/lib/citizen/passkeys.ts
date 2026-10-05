@@ -40,6 +40,33 @@ export const BIOMETRIC = "la biométrie"
 /** Variante en début de phrase ou en titre. */
 export const BIOMETRIC_TITLE = "Biométrie"
 
+/**
+ * Adresse du compte dont la biométrie est activée dans ce navigateur. La
+ * connexion ne lance la clé d'accès que pour ce compte ; les autres passent
+ * directement au PIN, sans bouton biométrique voué à l'échec.
+ */
+const BIOMETRIC_ACCOUNT_KEY = "idn.biometricAccount"
+
+export function biometricEnabledFor(email: string | null | undefined): boolean {
+  try {
+    return !!email && window.localStorage.getItem(BIOMETRIC_ACCOUNT_KEY) === email.toLowerCase()
+  } catch {
+    return false
+  }
+}
+
+/** Mémorise (ou oublie) la biométrie pour le compte de la session ouverte. */
+export async function setBiometricForSession(enabled: boolean): Promise<void> {
+  try {
+    if (!enabled) return window.localStorage.removeItem(BIOMETRIC_ACCOUNT_KEY)
+    const session = await authClient.getSession()
+    const email = session?.data?.user?.email
+    if (email) window.localStorage.setItem(BIOMETRIC_ACCOUNT_KEY, email.toLowerCase())
+  } catch {
+    /* stockage indisponible : la connexion reste au PIN */
+  }
+}
+
 export type Passkey = { id: string; name?: string | null; createdAt: string | number | Date; deviceType?: string }
 
 export class PasskeyUnavailableError extends Error {

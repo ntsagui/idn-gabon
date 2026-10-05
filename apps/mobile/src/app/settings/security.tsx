@@ -4,7 +4,6 @@ import { Text } from "@/design/text";
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as LocalAuth from "expo-local-authentication"
 import { useIdnTheme } from "@/design/theme"
 import { IdnButton } from "@/design/components/idn-button"
@@ -17,9 +16,8 @@ import { maskNip } from "@/lib/nip-format"
 import { BIOMETRIC, BIOMETRIC_TITLE } from "@/lib/biometric-label"
 import { api } from "@/lib/api"
 import { authClient } from "@/lib/auth-client"
-import { BIOMETRIC_KEY } from "@/app/(auth)/signup/bio"
 
-import { deletePasskey, listPasskeys, passkeyErrorMessage, PasskeyUnavailableError, type Passkey } from "@/lib/passkeys"
+import { biometricEnabledFor, deletePasskey, listPasskeys, passkeyErrorMessage, PasskeyUnavailableError, setBiometricForSession, type Passkey } from "@/lib/passkeys"
 
 function fmtDate(value: string | number | Date): string {
   return new Date(value).toLocaleDateString("fr-FR", {
@@ -245,10 +243,8 @@ export default function SettingsSecurity() {
   }, [])
 
   React.useEffect(() => {
-    void AsyncStorage.getItem(BIOMETRIC_KEY).then((flag) =>
-      setFaceUnlock(flag === "1"),
-    )
-  }, [])
+    void biometricEnabledFor(user?.email).then(setFaceUnlock)
+  }, [user?.email])
 
   React.useEffect(() => {
     if (isAuthenticated) void loadPasskeys()
@@ -256,7 +252,7 @@ export default function SettingsSecurity() {
 
   async function toggleBiometrics(enabled: boolean) {
     if (!enabled) {
-      await AsyncStorage.setItem(BIOMETRIC_KEY, "0")
+      await setBiometricForSession(false)
       setFaceUnlock(false)
       return
     }
@@ -284,11 +280,11 @@ export default function SettingsSecurity() {
         if (result?.error)
           throw new Error(passkeyErrorMessage(result.error, "Activation impossible."))
       }
-      await AsyncStorage.setItem(BIOMETRIC_KEY, "1")
+      await setBiometricForSession(true)
       setFaceUnlock(true)
       await loadPasskeys()
     } catch (caught) {
-      await AsyncStorage.setItem(BIOMETRIC_KEY, "0")
+      await setBiometricForSession(false)
       setFaceUnlock(false)
       Alert.alert(
         "Activation impossible",

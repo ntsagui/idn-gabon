@@ -13,7 +13,7 @@ import { Card, ErrorNote, Note, Row, RowAction, SectionTitle } from "@/app/_comp
 import { Screen } from "@/app/_components/idn/screen"
 import { maskNip } from "@/lib/citizen/nip-format"
 import { authClient } from "@/lib/auth-client"
-import { deletePasskey, passkeyErrorMessage, PasskeyUnavailableError, type Passkey } from "@/lib/citizen/passkeys"
+import { deletePasskey, passkeyErrorMessage, PasskeyUnavailableError, setBiometricForSession, type Passkey } from "@/lib/citizen/passkeys"
 
 import { useNotice } from "../../_components/account/notice"
 import { loadPasskeys as fetchPasskeys } from "../../_components/account/passkey-list"
@@ -191,6 +191,7 @@ export function SecurityScreen({ initialAction }: { initialAction?: string }) {
     try {
       const result = await authClient.passkey.addPasskey({ name, authenticatorAttachment: attachment })
       if (result?.error) throw new Error(passkeyErrorMessage(result.error, "Ajout impossible."))
+      if (attachment === "platform") await setBiometricForSession(true)
       await loadPasskeys()
     } catch (caught) {
       setErr(caught instanceof Error ? caught.message : "Ajout impossible.")
@@ -319,6 +320,7 @@ export function SecurityScreen({ initialAction }: { initialAction?: string }) {
         onConfirm={async () => {
           if (!toDelete) return
           await deletePasskey(toDelete.id)
+          if (toDelete.name === BIO_NAME) await setBiometricForSession(false)
           await loadPasskeys()
         }}
       />

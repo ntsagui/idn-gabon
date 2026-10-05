@@ -3,7 +3,6 @@ import { Platform, View } from 'react-native';
 import { Text } from '@/design/text';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import * as LocalAuth from 'expo-local-authentication';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIdnTheme } from '@/design/theme';
 import { IdnButton } from '@/design/components/idn-button';
 import { AppBar } from '@/design/components/app-bar';
@@ -13,13 +12,8 @@ import { IdnLottie } from '@/design/components/lottie';
 import { Icon } from '@/design/icons';
 import { SignupScreen } from '@/components/auth/signup-screen';
 import { authClient } from '@/lib/auth-client';
-import { passkeyErrorMessage, PASSKEYS_ON_DEVICE } from '@/lib/passkeys';
+import { passkeyErrorMessage, PASSKEYS_ON_DEVICE, setBiometricForSession } from '@/lib/passkeys';
 import { BIOMETRIC, BIOMETRIC_TITLE } from '@/lib/biometric-label';
-
-// Conservé pour compat des composants existants qui lisent ce flag
-// (ex: launcher.tsx, profile.tsx). À terme, on bascule entièrement sur
-// l'existence d'un passkey côté serveur (passkey.listUserPasskeys).
-export const BIOMETRIC_KEY = 'idn.biometricEnabled';
 
 export default function SignupBio() {
   const t = useIdnTheme();
@@ -55,14 +49,14 @@ export default function SignupBio() {
     try {
       const res = await authClient.passkey.addPasskey({ name: BIOMETRIC_TITLE });
       if (res?.error) {
-        await AsyncStorage.setItem(BIOMETRIC_KEY, '0');
+        await setBiometricForSession(false);
         setError(passkeyErrorMessage(res.error, 'Impossible de créer la clé d’accès. Réessaie ou continue avec ton PIN.'));
         setActivating(false);
         return;
       }
-      await AsyncStorage.setItem(BIOMETRIC_KEY, '1');
+      await setBiometricForSession(true);
     } catch (err) {
-      await AsyncStorage.setItem(BIOMETRIC_KEY, '0');
+      await setBiometricForSession(false);
       setError(err instanceof Error ? err.message : 'Erreur lors de l\'activation.');
       setActivating(false);
       return;
@@ -71,7 +65,7 @@ export default function SignupBio() {
   }
 
   async function skip() {
-    await AsyncStorage.setItem(BIOMETRIC_KEY, '0');
+    await setBiometricForSession(false);
     router.replace(nextHref);
   }
 
