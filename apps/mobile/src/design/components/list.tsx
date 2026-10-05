@@ -61,6 +61,9 @@ type RowProps = {
 /** Ligne de liste (`.row`) : icône 36, titre 14/500, sous-titre 13 muted, chevron. */
 export function Row({ icon, tone = 'neutral', title, sub, right, onPress, chevron, unread, mono, accessibilityLabel, disabled }: RowProps) {
   const t = useIdnTheme();
+  // Les badges s'alignent en haut par défaut (`alignSelf: 'flex-start'`) :
+  // l'enveloppe les recentre verticalement dans la ligne.
+  const side = right ? <View style={{ alignSelf: 'center' }}>{right}</View> : null;
   const main = (
     <>
       {icon ? <IconTile icon={icon} tone={tone} /> : null}
@@ -87,7 +90,7 @@ export function Row({ icon, tone = 'neutral', title, sub, right, onPress, chevro
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingVertical: 10 }}>
         {main}
-        {right}
+        {side}
         {chevron ? <Icon name="arrow" size={18} color={t.muted} /> : null}
       </View>
     );
@@ -106,7 +109,7 @@ export function Row({ icon, tone = 'neutral', title, sub, right, onPress, chevro
         {main}
         {chevron && !right ? <Icon name="arrow" size={18} color={t.muted} /> : null}
       </Pressable>
-      {right}
+      {side}
       {chevron && right ? <Icon name="arrow" size={18} color={t.muted} /> : null}
     </View>
   );
