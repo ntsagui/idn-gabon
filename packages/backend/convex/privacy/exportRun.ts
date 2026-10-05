@@ -125,8 +125,13 @@ export const collectExportPayload = internalQuery({
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .collect()
 
+    // L'empreinte du PIN ne quitte jamais le serveur : l'archive circule par
+    // un lien non authentifié, et un PIN à 6 chiffres se retrouve hors ligne
+    // en essayant le million de combinaisons contre son empreinte.
+    const exportedProfile = profile ? (({ pinHash: _pinHash, ...rest }) => rest)(profile) : null
+
     return {
-      profile,
+      profile: exportedProfile,
       kycRequests,
       walletCards: cards,
       iboite: { accounts, letters, messages },

@@ -18,6 +18,7 @@ import {
   ADMIN_PIN_CODE_MAX_ATTEMPTS,
   hashAdminPinCode,
 } from "./lib/pinRecoveryCode"
+import { isProductionDeployment } from "./lib/deployment"
 import { assessAutomaticSmsRecovery } from "./lib/pinRecoveryEligibility"
 import { rateLimiter } from "./rateLimiter"
 
@@ -35,6 +36,7 @@ type PreparedReset = {
 
 type VerificationAttempt = {
   phone: string
+  testCodeHash?: string
 }
 
 /**
@@ -105,11 +107,18 @@ export const verifyCode = action({
 
     try {
       const codeFingerprint = await hashOpaqueSecret(args.code)
-      const result = await checkBirdSmsCode(
-        attempt.phone,
-        args.code,
-        `idn-pin-check-${args.requestId}-${codeFingerprint.slice(0, 16)}`,
-      )
+      // Code de recette posé sur le dev (`_dev/pinRecoveryTestCode`) : il
+      // remplace Bird, qui seul connaît le vrai code SMS. Jamais en production.
+      const testCodeHash = isProductionDeployment()
+        ? undefined
+        : attempt.testCodeHash
+      const result = testCodeHash
+        ? { success: constantTimeEqual(codeFingerprint, testCodeHash) }
+        : await checkBirdSmsCode(
+            attempt.phone,
+            args.code,
+            `idn-pin-check-${args.requestId}-${codeFingerprint.slice(0, 16)}`,
+          )
       if (!result.success) {
         return { verified: false, resetToken: null }
       }
@@ -310,7 +319,10 @@ export const markSent = internalMutation({
 
 export const takeVerificationAttempt = internalMutation({
   args: { requestId: v.string() },
-  returns: v.union(v.object({ phone: v.string() }), v.null()),
+  returns: v.union(
+    v.object({ phone: v.string(), testCodeHash: v.optional(v.string()) }),
+    v.null(),
+  ),
   handler: async (ctx, args) => {
     const limiterKey = await hashOpaqueSecret(args.requestId)
     await rateLimiter.limit(ctx, "pinRecoveryVerify", {
@@ -336,7 +348,9 @@ export const takeVerificationAttempt = internalMutation({
       attempts: challenge.attempts + 1,
       updatedAt: Date.now(),
     })
-    return { phone: challenge.phone }
+    return challenge.testCodeHash
+      ? { phone: challenge.phone, testCodeHash: challenge.testCodeHash }
+      : { phone: challenge.phone }
   },
 })
 

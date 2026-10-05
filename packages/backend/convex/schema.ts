@@ -1398,6 +1398,10 @@ export default defineSchema({
     channel: v.optional(v.union(v.literal("sms"), v.literal("admin_code"))),
     codeHash: v.optional(v.string()),
     issuedBy: v.optional(v.string()),
+    // Recette sur le déploiement de dev uniquement : empreinte d'un code posé
+    // par `_dev/pinRecoveryTestCode:arm` à la place du code SMS de Bird.
+    // Ignorée en production (cf. `verifyCode`).
+    testCodeHash: v.optional(v.string()),
     attempts: v.number(),
     resetTokenHash: v.optional(v.string()),
     resetTokenExpiresAt: v.optional(v.number()),

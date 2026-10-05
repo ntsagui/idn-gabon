@@ -28,7 +28,8 @@ const SCORE_OUT = v.object({
   suggestions: v.array(SUGGESTION),
 })
 
-function buildSuggestions(cv: Doc<"citizenCv">) {
+/** Suggestions au tutoiement, comme toute l'interface citoyenne (web et mobile). */
+export function buildSuggestions(cv: Doc<"citizenCv">) {
   const out: Array<{ id: string; title: string; impact: "high" | "medium" | "low" }> = []
 
   const hasCoords =
@@ -39,7 +40,7 @@ function buildSuggestions(cv: Doc<"citizenCv">) {
   if (!hasCoords) {
     out.push({
       id: "complete_contact",
-      title: "Complétez vos coordonnées",
+      title: "Complète tes coordonnées",
       impact: "high",
     })
   }
@@ -47,7 +48,7 @@ function buildSuggestions(cv: Doc<"citizenCv">) {
   if (cv.summary.trim().length < 50) {
     out.push({
       id: "write_summary",
-      title: "Rédigez un résumé professionnel (50 caractères minimum)",
+      title: "Rédige un résumé professionnel (50 caractères minimum)",
       impact: "high",
     })
   }
@@ -55,13 +56,13 @@ function buildSuggestions(cv: Doc<"citizenCv">) {
   if (cv.experiences.length === 0) {
     out.push({
       id: "add_experience",
-      title: "Ajoutez votre première expérience",
+      title: "Ajoute ta première expérience",
       impact: "high",
     })
   } else if (cv.experiences.length === 1) {
     out.push({
       id: "add_more_experience",
-      title: "Ajoutez une seconde expérience pour étoffer votre parcours",
+      title: "Ajoute une seconde expérience pour étoffer ton parcours",
       impact: "medium",
     })
   }
@@ -69,7 +70,7 @@ function buildSuggestions(cv: Doc<"citizenCv">) {
   if (cv.education.length === 0) {
     out.push({
       id: "add_education",
-      title: "Ajoutez une formation",
+      title: "Ajoute une formation",
       impact: "high",
     })
   }
@@ -79,8 +80,8 @@ function buildSuggestions(cv: Doc<"citizenCv">) {
       id: "add_skills",
       title:
         cv.skills.length === 0
-          ? "Ajoutez vos compétences principales (3 minimum)"
-          : "Complétez à au moins 3 compétences",
+          ? "Ajoute tes compétences principales (3 minimum)"
+          : "Complète à au moins 3 compétences",
       impact: "medium",
     })
   }
@@ -88,7 +89,7 @@ function buildSuggestions(cv: Doc<"citizenCv">) {
   if (cv.languages.length === 0) {
     out.push({
       id: "add_languages",
-      title: "Ajoutez les langues que vous parlez",
+      title: "Ajoute les langues que tu parles",
       impact: "medium",
     })
   }
@@ -99,7 +100,7 @@ function buildSuggestions(cv: Doc<"citizenCv">) {
   ) {
     out.push({
       id: "add_links",
-      title: "Ajoutez un lien LinkedIn ou portfolio",
+      title: "Ajoute un lien LinkedIn ou portfolio",
       impact: "low",
     })
   }

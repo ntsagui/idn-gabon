@@ -67,6 +67,24 @@ function authCorsHeaders(origin: string | null): Record<string, string> {
   }
 }
 
+type HttpHandler = Parameters<typeof httpAction>[0]
+
+/**
+ * Ajoute à la réponse les en-têtes CORS des origines de confiance. Le parcours
+ * « Récupérer mon compte » (/claim) du site web appelle les routes
+ * /api/claim/* depuis sa propre origine : sans ces en-têtes le navigateur
+ * bloque la réponse et la recherche échoue en « Failed to fetch ».
+ */
+function withTrustedCors(handler: HttpHandler): HttpHandler {
+  return async (ctx, request) => {
+    const response = await handler(ctx, request)
+    for (const [key, value] of Object.entries(authCorsHeaders(request.headers.get("origin")))) {
+      response.headers.set(key, value)
+    }
+    return response
+  }
+}
+
 const authRequestHandler = httpAction(async (ctx, request) => {
   const origin = request.headers.get("origin")
   const auth = createAuth(ctx, origin)
@@ -713,7 +731,7 @@ http.route({
 // POST /api/claim/lookup — recherche publique d'une identité déléguée réclamable.
 // Pas d'auth M2M — appelé par le wizard citoyen.
 // ---------------------------------------------------------------------------
-const claimLookupHandler = httpAction(async (ctx, request) => {
+const claimLookupHandler = httpAction(withTrustedCors(async (ctx, request) => {
   let body: unknown
   try {
     body = await request.json()
@@ -776,7 +794,7 @@ const claimLookupHandler = httpAction(async (ctx, request) => {
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   )
-})
+}))
 
 http.route({
   path: "/api/claim/lookup",
@@ -787,7 +805,7 @@ http.route({
 // ---------------------------------------------------------------------------
 // POST /api/claim/complete — finalise la réclamation (password + PIN).
 // ---------------------------------------------------------------------------
-const claimCompleteHandler = httpAction(async (ctx, request) => {
+const claimCompleteHandler = httpAction(withTrustedCors(async (ctx, request) => {
   let body: unknown
   try {
     body = await request.json()
@@ -848,12 +866,24 @@ const claimCompleteHandler = httpAction(async (ctx, request) => {
       headers: { "Content-Type": "application/json" },
     })
   }
-})
+}))
 
 http.route({
   path: "/api/claim/complete",
   method: "POST",
   handler: claimCompleteHandler,
+})
+
+// Préflight du parcours /claim (requêtes JSON depuis l'origine du site web).
+http.route({
+  path: "/api/claim/lookup",
+  method: "OPTIONS",
+  handler: authPreflightHandler,
+})
+http.route({
+  path: "/api/claim/complete",
+  method: "OPTIONS",
+  handler: authPreflightHandler,
 })
 
 // GET /.well-known/document-signing-jwks.json — clé publique RS256 dédiée
