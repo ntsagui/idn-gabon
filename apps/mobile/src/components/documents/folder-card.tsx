@@ -1,45 +1,31 @@
 import React from 'react';
-import { Pressable, View, Text } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import type { IdnTheme } from '@/design/tokens';
-import { Icon } from '@/design/icons';
+import { Pressable } from 'react-native';
+import { Text } from '@/design/text';
+import { useIdnTheme } from '@/design/theme';
+import { IconTile, useToneColors } from '@/design/components/list';
 import type { DocFolder } from '@/data/documents';
+import { plural } from './doc-format';
 
-export function FolderCard({ f, t, opened, onPress }: { f: DocFolder; t: IdnTheme; opened?: boolean; onPress?: () => void }) {
-  const empty = f.count === 0;
+/** Tuile de dossier de la grille iDocument (prototype `.folder`). */
+export function FolderCard({ f, count, hasExpiring, onPress }: { f: DocFolder; count: number; hasExpiring?: boolean; onPress?: () => void }) {
+  const t = useIdnTheme();
+  const yellow = useToneColors('yellow');
+  const sub = plural(count, 'document', 'documents');
   return (
     <Pressable
       onPress={onPress}
-      style={{
-        backgroundColor: t.surface,
-        borderWidth: 1,
-        borderColor: t.border,
-        borderRadius: 14,
-        paddingHorizontal: 12,
-        paddingVertical: 14,
-        alignItems: 'center',
-        gap: 10,
-      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${f.label}, ${sub}${hasExpiring ? ', une expiration approche' : ''}`}
+      style={({ pressed }) => ({
+        flex: 1, alignItems: 'center', gap: 6, paddingVertical: 16, paddingHorizontal: 8,
+        borderRadius: 14, borderWidth: 1, borderColor: t.border, backgroundColor: pressed ? t.surface2 : t.surface,
+      })}
     >
-      <View style={{ position: 'relative', width: 60, height: 50 }}>
-        {/* Onglet arrière */}
-        <View style={{ position: 'absolute', top: 4, left: 4, width: 24, height: 8, borderTopLeftRadius: 4, borderTopRightRadius: 4, overflow: 'hidden', opacity: empty ? 0.3 : 1 }}>
-          <LinearGradient colors={f.grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1 }} />
-        </View>
-        {/* Corps du dossier */}
-        <View style={{ position: 'absolute', top: 8, left: 0, right: 0, bottom: 0, borderRadius: 6, overflow: 'hidden', opacity: empty ? 0.3 : 1 }}>
-          <LinearGradient colors={f.grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name={f.icon} size={22} color="#fff" />
-          </LinearGradient>
-        </View>
-        {opened ? (
-          <View style={{ position: 'absolute', top: 12, right: -3, width: 14, height: 18, backgroundColor: '#fff', borderTopLeftRadius: 2, borderBottomLeftRadius: 2 }} />
-        ) : null}
-      </View>
-      <View style={{ alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: t.ink }}>{f.label}</Text>
-        <Text style={{ fontSize: 10, color: t.muted, marginTop: 2 }}>{f.count} document{f.count > 1 ? 's' : ''}</Text>
-      </View>
+      <IconTile icon={f.icon} tone={count > 0 ? 'green' : 'neutral'} size={40} />
+      <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{f.label}</Text>
+      <Text numberOfLines={1} style={{ fontSize: 12, color: hasExpiring ? yellow.fg : t.muted, fontWeight: hasExpiring ? '600' : '400' }}>
+        {hasExpiring ? 'Expiration proche' : sub}
+      </Text>
     </Pressable>
   );
 }

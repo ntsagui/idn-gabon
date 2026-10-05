@@ -2,7 +2,7 @@ import React from "react"
 import { useConvexAuth } from "convex/react"
 import { useRouter, useSegments } from "expo-router"
 
-const PUBLIC_ROOTS = new Set(["(auth)", "onboarding", "index", "launcher"])
+const PUBLIC_ROOTS = new Set(["(auth)", "index", "launcher"])
 
 export function AuthRouteGuard() {
   const { isAuthenticated, isLoading } = useConvexAuth()

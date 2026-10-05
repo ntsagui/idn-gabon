@@ -1,11 +1,13 @@
 import React from "react"
-import { ScrollView, Text, View } from "react-native"
+import { Pressable, View } from "react-native"
+import { Text } from "@/design/text"
 import { useRouter } from "expo-router"
 import { useConvexAuth, useMutation, useQuery } from "convex/react"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { NLargeHeader } from "@/components/chrome/large-header"
-import { Toggle } from "@/design/components/toggle"
+import { AppBar } from "@/design/components/app-bar"
+import { Screen } from "@/design/components/screen"
+import { Card, ErrorNote, Note, Row, SectionTitle } from "@/design/components/list"
+import type { IconName } from "@/design/icons"
 import { useIdnTheme } from "@/design/theme"
 import { api } from "@/lib/api"
 
@@ -19,33 +21,39 @@ const FALLBACK: Preferences = {
   inApp: { security: true, kyc: true, consent: true, comms: true },
 }
 
-const CATEGORIES: { id: Category; label: string; help: string }[] = [
-  {
-    id: "security",
-    label: "Sécurité",
-    help: "Connexions, code PIN et alertes sensibles",
-  },
-  {
-    id: "kyc",
-    label: "Vérification d’identité",
-    help: "Avancement et décisions de vérification",
-  },
-  {
-    id: "consent",
-    label: "Consentements",
-    help: "Nouveaux accès et révocations",
-  },
-  {
-    id: "comms",
-    label: "Informations IDN",
-    help: "Actualités et communications de service",
-  },
+const CATEGORIES: { id: Category; label: string; help: string; icon: IconName }[] = [
+  { id: "security", label: "Sécurité", help: "Connexions, code PIN et alertes sensibles", icon: "shield" },
+  { id: "kyc", label: "Vérification d’identité", help: "Avancement et décisions de vérification", icon: "idCard" },
+  { id: "consent", label: "Consentements", help: "Nouveaux accès et révocations", icon: "keyRound" },
+  { id: "comms", label: "Informations IDN", help: "Actualités et communications de service", icon: "bell" },
 ]
+
+const CHANNELS: { id: Channel; title: string; note: string }[] = [
+  { id: "inApp", title: "Dans l’application", note: "Couvre aussi les notifications push sur ton téléphone." },
+  { id: "email", title: "Par e-mail", note: "Envoyés à l’adresse e-mail de ton compte."},
+]
+
+/** Interrupteur de la charte (52 × 32), accessible comme un switch natif. */
+function Switch({ value, onChange, label, disabled }: { value: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  const t = useIdnTheme()
+  return (
+    <Pressable
+      onPress={() => onChange(!value)}
+      disabled={disabled}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled: !!disabled }}
+      accessibilityLabel={label}
+      hitSlop={6}
+      style={{ width: 52, height: 32, borderRadius: 9999, padding: 3, backgroundColor: value ? t.green : t.border, justifyContent: "center", opacity: disabled ? 0.5 : 1 }}
+    >
+      <View style={{ width: 26, height: 26, borderRadius: 9999, backgroundColor: "#fff", alignSelf: value ? "flex-end" : "flex-start" }} />
+    </Pressable>
+  )
+}
 
 export default function NotificationPreferences() {
   const t = useIdnTheme()
   const router = useRouter()
-  const insets = useSafeAreaInsets()
   const { isAuthenticated } = useConvexAuth()
   const remote = useQuery(
     api.preferences.getMyNotificationPreferences,
@@ -84,84 +92,35 @@ export default function NotificationPreferences() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader
-        t={t}
-        title="Préférences de notification"
-        sub="Choisissez les catégories reçues par email et dans l’application."
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 22,
-          paddingBottom: 24,
-          gap: 12,
-        }}
-      >
-        {CATEGORIES.map((category) => (
-          <View
-            key={category.id}
-            style={{
-              backgroundColor: t.surface,
-              borderWidth: 1,
-              borderColor: t.border,
-              borderRadius: 14,
-              padding: 15,
-              gap: 13,
-            }}
-          >
-            <View>
-              <Text style={{ color: t.ink, fontSize: 14, fontWeight: "600" }}>
-                {category.label}
-              </Text>
-              <Text style={{ color: t.muted, fontSize: 11, marginTop: 3 }}>
-                {category.help}
-              </Text>
-            </View>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: t.ink2, fontSize: 12 }}>Email</Text>
-              <Toggle
-                t={t}
-                on={local?.email[category.id] ?? false}
-                onChange={(value) => void toggle("email", category.id, value)}
+    <Screen header={<AppBar title="Notifications" onBack={() => router.back()} />}>
+      <Text style={{ marginTop: 16, fontSize: 14, lineHeight: 20, color: t.muted }}>
+        {local === null ? "Chargement…" : "Choisis les catégories que tu reçois dans l’application et par e-mail."}
+      </Text>
+      {CHANNELS.map((channel) => (
+        <React.Fragment key={channel.id}>
+          <SectionTitle>{channel.title}</SectionTitle>
+          <Card>
+            {CATEGORIES.map((category) => (
+              <Row
+                key={category.id}
+                icon={category.icon}
+                title={category.label}
+                sub={category.help}
+                right={
+                  <Switch
+                    value={local?.[channel.id][category.id] ?? false}
+                    onChange={(value) => void toggle(channel.id, category.id, value)}
+                    label={`${category.label}, ${channel.title.toLowerCase()}`}
+                    disabled={local === null}
+                  />
+                }
               />
-            </View>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: t.ink2, fontSize: 12 }}>
-                Dans l’application
-              </Text>
-              <Toggle
-                t={t}
-                on={local?.inApp[category.id] ?? false}
-                onChange={(value) => void toggle("inApp", category.id, value)}
-              />
-            </View>
-          </View>
-        ))}
-        {error ? (
-          <View
-            style={{
-              backgroundColor: t.dark ? "#3A1212" : "#FBE5E5",
-              padding: 12,
-              borderRadius: 10,
-            }}
-          >
-            <Text style={{ color: "#B83A3A", fontSize: 12 }}>{error}</Text>
-          </View>
-        ) : null}
-      </ScrollView>
-    </View>
+            ))}
+          </Card>
+          <Note style={{ marginTop: 8 }}>{channel.note}</Note>
+        </React.Fragment>
+      ))}
+      <ErrorNote>{error}</ErrorNote>
+    </Screen>
   )
 }

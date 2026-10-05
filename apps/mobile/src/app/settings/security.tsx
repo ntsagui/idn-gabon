@@ -1,31 +1,25 @@
 import React, { useState } from "react"
-import {
-  Alert,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native"
-import { useRouter } from "expo-router"
+import { Alert, Modal, Platform, Pressable, View } from "react-native";
+import { Text } from "@/design/text";
+import { useLocalSearchParams, useRouter } from "expo-router"
 import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as LocalAuth from "expo-local-authentication"
 import { useIdnTheme } from "@/design/theme"
-import { idnTokens } from "@/design/tokens"
-import { NLargeHeader } from "@/components/chrome/large-header"
-import { SetMobileRow } from "@/components/rows/setting-row"
 import { IdnButton } from "@/design/components/idn-button"
 import { IdnInput } from "@/design/components/idn-input"
-import { Toggle } from "@/design/components/toggle"
-import { Icon } from "@/design/icons"
+import { AppBar } from "@/design/components/app-bar"
+import { Screen } from "@/design/components/screen"
+import { Card, ErrorNote, Note, Row, SectionTitle } from "@/design/components/list"
+import { Keypad, PinDots } from "@/design/components/pin-pad"
+import { maskNip } from "@/lib/nip-format"
+import { BIOMETRIC, BIOMETRIC_TITLE } from "@/lib/biometric-label"
 import { api } from "@/lib/api"
 import { authClient } from "@/lib/auth-client"
 import { BIOMETRIC_KEY } from "@/app/(auth)/signup/bio"
 
-type Passkey = { id: string; name?: string; createdAt: string | number | Date }
+import { deletePasskey, listPasskeys, passkeyErrorMessage, PasskeyUnavailableError, type Passkey } from "@/lib/passkeys"
 
 function fmtDate(value: string | number | Date): string {
   return new Date(value).toLocaleDateString("fr-FR", {
@@ -84,7 +78,7 @@ function PinChangeModal({
       return
     }
     if (value !== newPin) {
-      setError("Les deux codes PIN ne correspondent pas.")
+      setError("Les deux codes sont différents.")
       setPhase("new")
       setPin("")
       setNewPin("")
@@ -95,7 +89,7 @@ function PinChangeModal({
       if (configured) await changePin({ currentPin, newPin: value })
       else await createPin({ pin: value })
       close()
-      Alert.alert("Code PIN modifié", "Votre nouveau code PIN est actif.")
+      Alert.alert("Code PIN modifié", "Ton nouveau code PIN est actif.")
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Modification impossible.",
@@ -117,136 +111,29 @@ function PinChangeModal({
     if (value.length === 6) void complete(value)
   }
 
-  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"]
   const title =
     phase === "check"
-      ? "Code PIN actuel"
+      ? "Ton code PIN actuel"
       : phase === "new"
-        ? "Nouveau code PIN"
-        : "Confirmez le code PIN"
-
+        ? "Ton nouveau code PIN"
+        : "Confirme le nouveau code"
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onShow={reset}
-      onRequestClose={close}
-    >
-      <View
-        style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 8 }}
-      >
-        <View
-          style={{
-            minHeight: 52,
-            paddingHorizontal: 16,
-            flexDirection: "row",
-            alignItems: "center",
-            borderBottomWidth: 1,
-            borderBottomColor: t.borderSoft,
-          }}
-        >
-          <Pressable onPress={close}>
-            <Text style={{ color: idnTokens.green, fontSize: 14 }}>
-              Annuler
-            </Text>
-          </Pressable>
-          <Text
-            style={{
-              flex: 1,
-              textAlign: "center",
-              fontSize: 15,
-              fontWeight: "600",
-              color: t.ink,
-            }}
-          >
-            {title}
-          </Text>
-          <View style={{ width: 52 }} />
-        </View>
-        <View style={{ flex: 1, padding: 22 }}>
-          <Text
-            style={{
-              textAlign: "center",
-              color: t.muted,
-              fontSize: 13,
-              marginTop: 8,
-            }}
-          >
-            Saisissez les 6 chiffres.
-          </Text>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "center",
-              gap: 16,
-              paddingVertical: 24,
-            }}
-          >
-            {[0, 1, 2, 3, 4, 5].map((index) => (
-              <View
-                key={index}
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 9999,
-                  backgroundColor:
-                    index < pin.length ? idnTokens.green : "transparent",
-                  borderWidth: 2,
-                  borderColor: index < pin.length ? idnTokens.green : t.border,
-                }}
-              />
-            ))}
-          </View>
-          {error ? (
-            <Text
-              style={{
-                textAlign: "center",
-                color: idnTokens.danger,
-                fontSize: 12,
-                marginBottom: 10,
-              }}
-            >
-              {error}
-            </Text>
-          ) : null}
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              marginHorizontal: -5,
-            }}
-          >
-            {keys.map((key, index) => (
-              <View key={index} style={{ width: "33.3333%", padding: 5 }}>
-                <Pressable
-                  disabled={!key || submitting}
-                  onPress={() => press(key)}
-                  style={{
-                    height: 56,
-                    borderRadius: 14,
-                    backgroundColor: key ? t.surface : "transparent",
-                    borderWidth: key ? 1 : 0,
-                    borderColor: t.borderSoft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    opacity: submitting ? 0.6 : 1,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 22,
-                      color: t.ink,
-                      fontFamily: idnTokens.mono,
-                    }}
-                  >
-                    {key}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onShow={reset} onRequestClose={close}>
+      <View style={{ flex: 1, backgroundColor: t.bg, paddingBottom: Math.max(insets.bottom, 12) }}>
+        <AppBar title={configured ? "Changer le code PIN" : "Créer un code PIN"} onBack={close} backIcon="close" />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
+          <Text accessibilityRole="header" style={{ fontSize: 20, fontWeight: "600", color: t.ink }}>{title}</Text>
+          <Text style={{ marginTop: 6, fontSize: 14, color: t.muted, textAlign: "center" }}>6 chiffres. Évite ta date de naissance.</Text>
+          <PinDots filled={pin.length} error={!!error} />
+          <View style={{ alignSelf: "stretch" }}>
+            <ErrorNote>{error}</ErrorNote>
           </View>
         </View>
+        <Keypad
+          onDigit={(d) => press(d)}
+          onDelete={() => press("⌫")}
+          disabled={submitting}
+        />
       </View>
     </Modal>
   )
@@ -287,7 +174,7 @@ function NipChangeModal({
       close()
       Alert.alert(
         "NIP enregistré",
-        "Votre numéro d’identification personnelle a été mis à jour.",
+        "Ton numéro d’identification personnel est à jour.",
       )
     } catch (caught) {
       setError(
@@ -298,75 +185,28 @@ function NipChangeModal({
   }
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={close}
-    >
-      <View
-        style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 8 }}
-      >
-        <View
-          style={{
-            minHeight: 52,
-            paddingHorizontal: 16,
-            flexDirection: "row",
-            alignItems: "center",
-            borderBottomWidth: 1,
-            borderBottomColor: t.borderSoft,
-          }}
-        >
-          <Pressable onPress={close}>
-            <Text style={{ color: idnTokens.green, fontSize: 14 }}>
-              Annuler
-            </Text>
-          </Pressable>
-          <Text
-            style={{
-              flex: 1,
-              textAlign: "center",
-              color: t.ink,
-              fontSize: 15,
-              fontWeight: "600",
-            }}
-          >
-            {currentNip ? "Modifier le NIP" : "Définir le NIP"}
-          </Text>
-          <View style={{ width: 52 }} />
-        </View>
-        <ScrollView
-          contentContainerStyle={{ padding: 22, gap: 14 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={{ color: t.muted, fontSize: 12, lineHeight: 18 }}>
-            Le NIP RBPP comporte exactement 14 caractères.
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
+      <View style={{ flex: 1, backgroundColor: t.bg, paddingBottom: Math.max(insets.bottom, 12) }}>
+        <AppBar title="Numéro d’identification (NIP)" onBack={close} backIcon="close" />
+        <View style={{ padding: 20, gap: 16 }}>
+          <Text style={{ fontSize: 14, lineHeight: 20, color: t.muted }}>
+            {currentNip
+              ? "Ton NIP figure sur ta carte d’identité. Corrige-le seulement s’il est erroné."
+              : "Saisis le NIP de 14 caractères inscrit sur ta carte d’identité."}
           </Text>
           <IdnInput
             t={t}
-            label="NIP (RBPP)"
+            label="NIP"
             value={nip}
-            onChangeText={(value) =>
-              setNip(value.replace(/[^A-Za-z0-9]/g, "").slice(0, 14))
-            }
-            placeholder="14 caractères"
-            autoFocus
+            onChangeText={(v) => setNip(v.replace(/\s+/g, "").toUpperCase())}
+            placeholder={currentNip ?? "14 lettres ou chiffres"}
+            autoCapitalize="characters"
+            maxLength={14}
+            mono
+            error={error ?? undefined}
           />
-          {error ? (
-            <Text style={{ color: idnTokens.danger, fontSize: 12 }}>
-              {error}
-            </Text>
-          ) : null}
-          <IdnButton
-            t={t}
-            size="lg"
-            full
-            onPress={submit}
-            disabled={submitting || nip.length !== 14}
-          >
-            {submitting ? "Enregistrement…" : "Enregistrer le NIP"}
-          </IdnButton>
-        </ScrollView>
+          <IdnButton t={t} full onPress={submit} loading={submitting} disabled={nip.length !== 14}>Enregistrer</IdnButton>
+        </View>
       </View>
     </Modal>
   )
@@ -375,29 +215,29 @@ function NipChangeModal({
 export default function SettingsSecurity() {
   const t = useIdnTheme()
   const router = useRouter()
-  const insets = useSafeAreaInsets()
   const { isAuthenticated } = useConvexAuth()
   const user = useQuery(
     api.profile.getCurrentUser,
     isAuthenticated ? {} : "skip",
   )
-  const [pinOpen, setPinOpen] = useState(false)
+  // « Changer le code PIN » depuis le Profil ouvre directement la saisie.
+  const { action } = useLocalSearchParams<{ action?: string }>()
+  const [pinOpen, setPinOpen] = useState(action === "pin")
   const [nipOpen, setNipOpen] = useState(false)
   const [faceUnlock, setFaceUnlock] = useState(false)
   const [passkeys, setPasskeys] = useState<Passkey[] | undefined>()
   const [pkError, setPkError] = useState<string | null>(null)
+  const [pkUnavailable, setPkUnavailable] = useState(false)
   const [adding, setAdding] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const loadPasskeys = React.useCallback(async () => {
     try {
-      const result = await authClient.passkey.listUserPasskeys()
-      if (result?.error)
-        throw new Error(result.error.message ?? "Chargement impossible.")
-      setPasskeys((result?.data ?? []) as Passkey[])
+      setPasskeys(await listPasskeys())
       setPkError(null)
     } catch (caught) {
       setPasskeys([])
+      setPkUnavailable(caught instanceof PasskeyUnavailableError)
       setPkError(
         caught instanceof Error ? caught.message : "Chargement impossible.",
       )
@@ -429,7 +269,7 @@ export default function SettingsSecurity() {
         if (!hardware || !enrolled) {
           Alert.alert(
             "Biométrie indisponible",
-            "Configurez Face ID, Touch ID ou la biométrie Android dans les réglages de l’appareil.",
+            "Configure Face ID, Touch ID ou la biométrie Android dans les réglages du téléphone.",
           )
           return
         }
@@ -442,7 +282,7 @@ export default function SettingsSecurity() {
           name: "Biométrie de cet appareil",
         })
         if (result?.error)
-          throw new Error(result.error.message ?? "Activation impossible.")
+          throw new Error(passkeyErrorMessage(result.error, "Activation impossible."))
       }
       await AsyncStorage.setItem(BIOMETRIC_KEY, "1")
       setFaceUnlock(true)
@@ -452,7 +292,7 @@ export default function SettingsSecurity() {
       setFaceUnlock(false)
       Alert.alert(
         "Activation impossible",
-        caught instanceof Error ? caught.message : "Réessayez plus tard.",
+        caught instanceof Error ? caught.message : "Réessaie plus tard.",
       )
     }
   }
@@ -467,7 +307,7 @@ export default function SettingsSecurity() {
         authenticatorAttachment: "cross-platform",
       })
       if (result?.error)
-        throw new Error(result.error.message ?? "Ajout impossible.")
+        throw new Error(passkeyErrorMessage(result.error, "Ajout impossible."))
       await loadPasskeys()
     } catch (caught) {
       setPkError(caught instanceof Error ? caught.message : "Ajout impossible.")
@@ -479,7 +319,7 @@ export default function SettingsSecurity() {
   function removePasskey(passkey: Passkey) {
     Alert.alert(
       "Supprimer cette clé ?",
-      `${passkey.name || "Clé sans nom"} ne pourra plus servir à vous connecter.`,
+      `${passkey.name || "Clé sans nom"} ne pourra plus servir à te connecter.`,
       [
         { text: "Annuler", style: "cancel" },
         {
@@ -488,13 +328,7 @@ export default function SettingsSecurity() {
           onPress: async () => {
             setDeleting(passkey.id)
             try {
-              const result = await authClient.passkey.deletePasskey({
-                id: passkey.id,
-              })
-              if (result?.error)
-                throw new Error(
-                  result.error.message ?? "Suppression impossible.",
-                )
+              await deletePasskey(passkey.id)
               await loadPasskeys()
             } catch (caught) {
               setPkError(
@@ -520,175 +354,61 @@ export default function SettingsSecurity() {
       : `${passkeys.length} clé${passkeys.length > 1 ? "s" : ""} enregistrée${passkeys.length > 1 ? "s" : ""}`
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader
-        t={t}
-        title="Sécurité"
-        sub="Code PIN, biométrie et clés de sécurité."
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 22,
-          paddingTop: 4,
-          paddingBottom: 22,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 10,
-            color: t.muted,
-            letterSpacing: 1.2,
-            fontWeight: "600",
-            paddingHorizontal: 4,
-            paddingVertical: 6,
-          }}
-        >
-          IDENTIFIANTS
-        </Text>
-        <View
-          style={{
-            backgroundColor: t.surface,
-            borderWidth: 1,
-            borderColor: t.border,
-            borderRadius: 14,
-            overflow: "hidden",
-          }}
-        >
-          <SetMobileRow
-            t={t}
-            label="Code PIN"
-            value={pinConfigured ? "6 chiffres · configuré" : "Non configuré"}
-            onPress={() => setPinOpen(true)}
-          />
-          <SetMobileRow
-            t={t}
-            label="NIP (RBPP)"
-            value={
-              currentNip
-                ? `Configuré · ${currentNip.slice(0, 4)}••••••${currentNip.slice(-4)}`
-                : "Non configuré"
-            }
-            onPress={() => setNipOpen(true)}
-          />
-        </View>
-        <Text
-          style={{
-            fontSize: 10,
-            color: t.muted,
-            letterSpacing: 1.2,
-            fontWeight: "600",
-            paddingHorizontal: 4,
-            paddingTop: 14,
-            paddingBottom: 6,
-          }}
-        >
-          BIOMÉTRIE
-        </Text>
-        <View
-          style={{
-            backgroundColor: t.surface,
-            borderWidth: 1,
-            borderColor: t.border,
-            borderRadius: 14,
-            overflow: "hidden",
-          }}
-        >
-          <SetMobileRow
-            t={t}
-            label="Déverrouiller l’app"
-            value="Face ID, Touch ID ou équivalent"
-            right={<Toggle on={faceUnlock} onChange={toggleBiometrics} t={t} />}
-          />
-        </View>
-        <Text
-          style={{
-            fontSize: 10,
-            color: t.muted,
-            letterSpacing: 1.2,
-            fontWeight: "600",
-            paddingHorizontal: 4,
-            paddingTop: 14,
-            paddingBottom: 6,
-          }}
-        >
-          CLÉS DE SÉCURITÉ
-        </Text>
-        <View
-          style={{
-            backgroundColor: t.surface,
-            borderWidth: 1,
-            borderColor: t.border,
-            borderRadius: 14,
-            overflow: "hidden",
-          }}
-        >
-          <SetMobileRow
-            t={t}
-            label="Passkeys et clés FIDO2"
-            value={keySummary}
+    <Screen header={<AppBar title="Sécurité" onBack={() => router.back()} />}>
+      <SectionTitle>Identifiants</SectionTitle>
+      <Card>
+        <Row icon="lock" title={pinConfigured ? "Changer le code PIN" : "Créer un code PIN"} sub="6 chiffres pour te connecter et valider tes actions" chevron onPress={() => setPinOpen(true)} />
+        <Row icon="pin" title="NIP" sub={currentNip ? maskNip(currentNip) : "Non renseigné"} mono={!!currentNip} chevron onPress={() => setNipOpen(true)} />
+        <Row icon="keyRound" title="Code PIN oublié" sub="Réinitialisation par SMS" chevron onPress={() => router.push(user?.email ? (`/(auth)/forgot-pin?identifier=${encodeURIComponent(user.email)}` as never) : ("/(auth)/forgot-pin" as never))} />
+      </Card>
+
+      <SectionTitle>Biométrie</SectionTitle>
+      {pkUnavailable ? (
+        <Note style={{ marginTop: 0, marginBottom: 10 }}>{`${BIOMETRIC_TITLE} et les clés d’accès ne sont pas encore activés sur le service IDN. Connecte-toi avec ton code PIN en attendant.`}</Note>
+      ) : null}
+      <Card>
+        <Row
+          icon="scanFace"
+          title={BIOMETRIC_TITLE}
+          sub={faceUnlock ? `Déverrouillage par ${BIOMETRIC} activé sur cet appareil` : "Déverrouille l’app sans saisir ton PIN"}
+          right={
+            <Pressable
+              onPress={() => void toggleBiometrics(!faceUnlock)}
+              disabled={pkUnavailable}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: faceUnlock, disabled: pkUnavailable }}
+              accessibilityLabel={BIOMETRIC_TITLE}
+              style={{ width: 52, height: 32, borderRadius: 9999, padding: 3, backgroundColor: faceUnlock ? t.green : t.border, justifyContent: "center", opacity: pkUnavailable ? 0.45 : 1 }}
+            >
+              <View style={{ width: 26, height: 26, borderRadius: 9999, backgroundColor: "#fff", alignSelf: faceUnlock ? "flex-end" : "flex-start" }} />
+            </Pressable>
+          }
+        />
+      </Card>
+
+      <SectionTitle>Clés d’accès</SectionTitle>
+      {pkUnavailable ? null : <Text style={{ fontSize: 13, lineHeight: 19, color: pkError ? t.redText : t.muted, marginBottom: 8 }}>{keySummary}</Text>}
+      <Card>
+        {(passkeys ?? []).map((pk) => (
+          <Row
+            key={pk.id}
+            icon="keyRound"
+            tone="green"
+            title={pk.name || "Clé sans nom"}
+            sub={`Ajoutée le ${fmtDate(pk.createdAt)}`}
             right={
-              <IdnButton
-                t={t}
-                variant="ghost"
-                size="sm"
-                onPress={addSecurityKey}
-                disabled={adding}
-              >
-                {adding ? "Ajout…" : "Ajouter"}
-              </IdnButton>
+              <Pressable onPress={() => removePasskey(pk)} disabled={deleting !== null} accessibilityRole="button" accessibilityLabel={`Supprimer ${pk.name || "la clé"}`} hitSlop={8}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: t.redText }}>{deleting === pk.id ? "…" : "Supprimer"}</Text>
+              </Pressable>
             }
           />
-          {(passkeys ?? []).map((passkey) => (
-            <SetMobileRow
-              key={passkey.id}
-              t={t}
-              label={passkey.name || "Clé sans nom"}
-              value={`Ajoutée le ${fmtDate(passkey.createdAt)}`}
-              right={
-                <IdnButton
-                  t={t}
-                  variant="danger"
-                  size="sm"
-                  onPress={() => removePasskey(passkey)}
-                  disabled={deleting !== null}
-                >
-                  {deleting === passkey.id ? "Suppression…" : "Supprimer"}
-                </IdnButton>
-              }
-            />
-          ))}
-        </View>
-        <View
-          style={{
-            marginTop: 18,
-            padding: 16,
-            borderRadius: 14,
-            backgroundColor: t.dark ? "#10243A" : idnTokens.blueSoft,
-            flexDirection: "row",
-            gap: 10,
-            alignItems: "flex-start",
-          }}
-        >
-          <Icon name="shield" size={18} color={idnTokens.blue} />
-          <Text
-            style={{ flex: 1, fontSize: 12, color: t.ink2, lineHeight: 18 }}
-          >
-            Le code PIN reste disponible si la biométrie échoue ou si vous
-            changez d’appareil.
-          </Text>
-        </View>
-      </ScrollView>
-      <PinChangeModal
-        visible={pinOpen}
-        configured={pinConfigured}
-        onClose={() => setPinOpen(false)}
-      />
-      <NipChangeModal
-        visible={nipOpen}
-        currentNip={currentNip}
-        onClose={() => setNipOpen(false)}
-      />
-    </View>
+        ))}
+        <Row icon="plus" title="Ajouter une clé de sécurité" sub={pkUnavailable ? "Pas encore disponible" : "Clé physique ou autre appareil"} chevron={!pkUnavailable} onPress={pkUnavailable ? undefined : addSecurityKey} disabled={adding} />
+      </Card>
+      <Note>Les clés d’accès (passkeys) remplacent le mot de passe : elles restent sur ton appareil et ne sont jamais envoyées à IDN.</Note>
+
+      <PinChangeModal visible={pinOpen} configured={pinConfigured} onClose={() => setPinOpen(false)} />
+      <NipChangeModal visible={nipOpen} currentNip={currentNip} onClose={() => setNipOpen(false)} />
+    </Screen>
   )
 }

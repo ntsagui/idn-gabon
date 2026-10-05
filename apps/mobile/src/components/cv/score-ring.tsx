@@ -1,89 +1,55 @@
 import React from 'react';
-import { Text, View } from 'react-native';
-import Svg, { Circle, Text as SvgText } from 'react-native-svg';
+import { View } from 'react-native';
+import { Text } from '@/design/text';
+import Svg, { Circle } from 'react-native-svg';
 
-import { ICV_ACCENT, icvStrings } from '@/data/cv';
 import { useIdnTheme } from '@/design/theme';
+import { Badge } from '@/design/components/badge';
 
-/**
- * Anneau SVG du dashboard iCV (score 0..100).
- */
-export function ScoreRing({
-  score,
-  level,
-}: {
-  score: number;
-  level: 'Débutant' | 'Bon' | 'Expert';
-}) {
+const LEVELS = {
+  Expert: { label: 'Niveau expert', desc: 'Ton profil est attractif pour les recruteurs.', tone: 'green' },
+  Bon: { label: 'Bon niveau', desc: 'Bon profil : quelques améliorations sont possibles.', tone: 'blue' },
+  Débutant: { label: 'À compléter', desc: 'Complète ton CV pour gagner en visibilité.', tone: 'yellow' },
+} as const;
+
+/** Anneau de complétude du CV (`cv.score.get`, 0 à 100). */
+export function ScoreRing({ score, level }: { score: number; level: 'Débutant' | 'Bon' | 'Expert' }) {
   const t = useIdnTheme();
-  const r = 60;
+  const size = 76;
+  const stroke = 8;
+  const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const clamped = Math.max(0, Math.min(100, score));
-  const off = c * (1 - clamped / 100);
-  const desc =
-    level === 'Expert'
-      ? icvStrings.dashboard.descExpert
-      : level === 'Bon'
-        ? icvStrings.dashboard.descGood
-        : icvStrings.dashboard.descBeginner;
-  const levelLabel =
-    level === 'Expert'
-      ? icvStrings.dashboard.levelExpert
-      : level === 'Bon'
-        ? icvStrings.dashboard.levelGood
-        : icvStrings.dashboard.levelBeginner;
+  const clamped = Math.max(0, Math.min(100, Math.round(score)));
+  const meta = LEVELS[level];
 
   return (
     <View
-      style={{
-        backgroundColor: t.surface,
-        borderWidth: 1,
-        borderColor: t.border,
-        borderRadius: 14,
-        padding: 22,
-        alignItems: 'center',
-      }}
+      accessible
+      accessibilityLabel={`Score du CV : ${clamped} sur 100, ${meta.label}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 14 }}
     >
-      <Svg width={180} height={180} viewBox="0 0 180 180">
-        <Circle cx={90} cy={90} r={r} fill="none" stroke={t.surface2} strokeWidth={12} />
-        <Circle
-          cx={90}
-          cy={90}
-          r={r}
-          fill="none"
-          stroke={ICV_ACCENT}
-          strokeWidth={12}
-          strokeLinecap="round"
-          strokeDasharray={`${c}`}
-          strokeDashoffset={off}
-          transform="rotate(-90 90 90)"
-        />
-        <SvgText
-          x={90}
-          y={88}
-          textAnchor="middle"
-          fontSize={38}
-          fontWeight="700"
-          fill={t.ink}
-        >
-          {clamped}
-        </SvgText>
-        <SvgText
-          x={90}
-          y={112}
-          textAnchor="middle"
-          fontSize={10}
-          fontWeight="600"
-          fill={t.muted}
-          letterSpacing={1.2}
-        >
-          {icvStrings.dashboard.score}
-        </SvgText>
-      </Svg>
-      <Text style={{ fontSize: 18, fontWeight: '700', color: t.ink, marginTop: 6 }}>
-        {levelLabel}
-      </Text>
-      <Text style={{ fontSize: 12, color: t.muted, marginTop: 4 }}>{desc}</Text>
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <Svg width={size} height={size} style={{ position: 'absolute' }}>
+          <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={t.surface2} strokeWidth={stroke} />
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={t.green}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${c}`}
+            strokeDashoffset={c * (1 - clamped / 100)}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        </Svg>
+        <Text style={{ fontSize: 22, fontWeight: '600', color: t.ink }}>{clamped}</Text>
+      </View>
+      <View style={{ flex: 1, gap: 6 }}>
+        <Badge tone={meta.tone}>{meta.label}</Badge>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: t.muted }}>{meta.desc}</Text>
+      </View>
     </View>
   );
 }

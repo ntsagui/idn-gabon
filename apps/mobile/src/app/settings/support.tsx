@@ -1,60 +1,53 @@
 import React from "react"
-import { Linking, ScrollView, View } from "react-native"
+import { Linking } from "react-native"
+import { Text } from "@/design/text"
 import { useRouter } from "expo-router"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { NLargeHeader } from "@/components/chrome/large-header"
-import { SetMobileRow } from "@/components/rows/setting-row"
+import { AppBar } from "@/design/components/app-bar"
+import { Screen } from "@/design/components/screen"
+import { Card, ErrorNote, Row } from "@/design/components/list"
 import { useIdnTheme } from "@/design/theme"
 
 export default function Support() {
   const t = useIdnTheme()
   const router = useRouter()
-  const insets = useSafeAreaInsets()
+  const [error, setError] = React.useState<string | null>(null)
+
+  function open(url: string, fallback: string) {
+    setError(null)
+    Linking.openURL(url).catch(() => setError(fallback))
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader
-        t={t}
-        title="Aide et support"
-        sub="Une difficulté avec votre identité numérique ?"
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 22,
-          paddingBottom: 24,
-          gap: 12,
-        }}
-      >
-        <View
-          style={{
-            backgroundColor: t.surface,
-            borderWidth: 1,
-            borderColor: t.border,
-            borderRadius: 14,
-            overflow: "hidden",
-          }}
-        >
-          <SetMobileRow
-            t={t}
-            label="Appeler le centre d’aide"
-            value="1407 · gratuit · 24 h/24"
-            onPress={() => void Linking.openURL("tel:1407")}
-          />
-          <SetMobileRow
-            t={t}
-            label="Écrire au support"
-            value="support@identite.ga"
-            onPress={() => void Linking.openURL("mailto:support@identite.ga")}
-          />
-          <SetMobileRow
-            t={t}
-            label="Consulter le centre d’aide"
-            value="Guides et questions fréquentes"
-            onPress={() => void Linking.openURL("https://identite.ga/aide")}
-          />
-        </View>
-      </ScrollView>
-    </View>
+    <Screen header={<AppBar title="Aide et contact" onBack={() => router.back()} />}>
+      <Text style={{ marginTop: 16, fontSize: 14, lineHeight: 20, color: t.muted }}>
+        Une difficulté avec ton identité numérique ? Choisis le moyen qui te convient.
+      </Text>
+      <Card style={{ marginTop: 16 }}>
+        <Row
+          icon="smartphone"
+          tone="green"
+          title="Appeler le centre d’appel"
+          sub="1407"
+          chevron
+          onPress={() => open("tel:1407", "Impossible de lancer l’appel depuis cet appareil. Compose le 1407 depuis un téléphone.")}
+        />
+        <Row
+          icon="mail"
+          title="Écrire au support"
+          sub="support@identite.ga · réponse sous 48 heures ouvrées"
+          chevron
+          onPress={() => open("mailto:support@identite.ga", "Aucune application de messagerie n’est configurée. Écris à support@identite.ga.")}
+        />
+        <Row
+          icon="globe"
+          title="Consulter le centre d’aide"
+          sub="Guides et questions fréquentes"
+          chevron
+          onPress={() => open("https://identite.ga/help", "Impossible d’ouvrir le centre d’aide. Rends-toi sur identite.ga/help.")}
+        />
+      </Card>
+      <ErrorNote>{error}</ErrorNote>
+    </Screen>
   )
 }

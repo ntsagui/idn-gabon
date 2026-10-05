@@ -1,11 +1,15 @@
 import React from "react"
-import { Alert, Linking, ScrollView, Text, View } from "react-native"
+import { Alert, View } from "react-native"
+import { Text } from "@/design/text"
 import { useRouter } from "expo-router"
+import * as WebBrowser from "expo-web-browser"
 import { useConvexAuth, useQuery } from "convex/react"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { NLargeHeader } from "@/components/chrome/large-header"
-import { SetMobileRow } from "@/components/rows/setting-row"
+import { AppBar } from "@/design/components/app-bar"
+import { Screen } from "@/design/components/screen"
+import { Card, Row } from "@/design/components/list"
+import { IdnLottie } from "@/design/components/lottie"
+import type { IconName } from "@/design/icons"
 import { useIdnTheme } from "@/design/theme"
 import { api } from "@/lib/api"
 
@@ -17,10 +21,19 @@ const LABELS = {
   attestation: "Attestation",
 } as const
 
+const ICONS: Record<keyof typeof LABELS, IconName> = {
+  profilePhoto: "userRound",
+  kycDocFront: "idCard",
+  kycDocBack: "idCard",
+  selfie: "scanFace",
+  attestation: "doc",
+}
+
+const fmt = (ts: number) => new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+
 export default function AccountDocuments() {
   const t = useIdnTheme()
   const router = useRouter()
-  const insets = useSafeAreaInsets()
   const { isAuthenticated } = useConvexAuth()
   const documents = useQuery(
     api.documents.listMine,
@@ -33,58 +46,44 @@ export default function AccountDocuments() {
         "Fichier indisponible",
         "Ce document ne peut pas être ouvert pour le moment.",
       )
-    await Linking.openURL(url)
+    await WebBrowser.openBrowserAsync(url)
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader
-        t={t}
-        title="Mes documents d’identité"
-        sub="Pièces utilisées pour votre compte et vos vérifications."
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 24 }}
-      >
-        <View
-          style={{
-            backgroundColor: t.surface,
-            borderWidth: 1,
-            borderColor: t.border,
-            borderRadius: 14,
-            overflow: "hidden",
-          }}
-        >
-          {documents?.map((document) => (
-            <SetMobileRow
+    <Screen header={<AppBar title="Mes pièces justificatives" onBack={() => router.back()} />}>
+      <Text style={{ marginTop: 16, fontSize: 14, lineHeight: 20, color: t.muted }}>
+        Ta photo de profil et les attestations enregistrées sur ton compte. Les pièces de ta vérification d’identité restent dans ton dossier de vérification.
+      </Text>
+      <Card style={{ marginTop: 16 }}>
+        <Row icon="shield" tone="blue" title="Dossier de vérification" sub="Recto, verso et selfie envoyés pour le Niveau 2" chevron onPress={() => router.push("/kyc/review")} />
+      </Card>
+      {documents === undefined ? (
+        <Card style={{ marginTop: 16 }}>
+          <Row title="Chargement…" />
+        </Card>
+      ) : documents.length === 0 ? (
+        <View style={{ alignItems: "center", marginTop: 40, gap: 12 }}>
+          <IdnLottie name="idocument" size={120} />
+          <Text style={{ fontSize: 15, fontWeight: "600", color: t.ink }}>Aucune pièce enregistrée</Text>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: t.muted, textAlign: "center" }}>
+            Ajoute une photo de profil depuis Profil pour la retrouver ici.
+          </Text>
+        </View>
+      ) : (
+        <Card style={{ marginTop: 16 }}>
+          {documents.map((document) => (
+            <Row
               key={document._id}
-              t={t}
-              label={LABELS[document.type]}
-              value={`Ajouté le ${new Date(document.createdAt).toLocaleDateString("fr-FR")}${document.expiresAt ? ` · expire le ${new Date(document.expiresAt).toLocaleDateString("fr-FR")}` : ""}`}
+              icon={ICONS[document.type]}
+              title={LABELS[document.type]}
+              sub={`Ajoutée le ${fmt(document.createdAt)}${document.expiresAt ? ` · expire le ${fmt(document.expiresAt)}` : ""}`}
+              chevron
               onPress={() => void open(document.url)}
+              accessibilityLabel={`Ouvrir ${LABELS[document.type]}`}
             />
           ))}
-          {documents?.length === 0 ? (
-            <View style={{ padding: 22 }}>
-              <Text
-                style={{ textAlign: "center", color: t.muted, fontSize: 12 }}
-              >
-                Aucun document d’identité enregistré.
-              </Text>
-            </View>
-          ) : null}
-          {documents === undefined ? (
-            <View style={{ padding: 22 }}>
-              <Text
-                style={{ textAlign: "center", color: t.muted, fontSize: 12 }}
-              >
-                Chargement…
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      </ScrollView>
-    </View>
+        </Card>
+      )}
+    </Screen>
   )
 }

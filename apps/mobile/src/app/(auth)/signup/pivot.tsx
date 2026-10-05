@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { Text } from '@/design/text';
 import { useRouter, type Href } from 'expo-router';
 import { useIdnTheme } from '@/design/theme';
-import { idnTokens } from '@/design/tokens';
-import { NStepShell } from '@/components/chrome/step-shell';
+import { IdnButton } from '@/design/components/idn-button';
 import { IdnInput } from '@/design/components/idn-input';
+import { ErrorNote, ScreenTitle } from '@/design/components/list';
+import { SignupScreen } from '@/components/auth/signup-screen';
 import { IdnDateInput } from '@/design/components/idn-date-input';
 import {
   getOnboardingProfile,
@@ -38,7 +40,7 @@ export default function SignupPivot() {
     (async () => {
       const profile = await getOnboardingProfile();
       if (!profile) {
-        router.replace('/(auth)/signup/profil');
+        router.replace('/(auth)/hub');
         return;
       }
       const saved = await getOnboardingPivot();
@@ -57,8 +59,7 @@ export default function SignupPivot() {
   }, [router]);
 
   const dobValid = isIsoDate(dob);
-  const canSubmit =
-    firstName.trim() && lastName.trim() && dobValid && birthPlace.trim() && nat.trim() && !submitting;
+  const canSubmit = !!(firstName.trim() && lastName.trim() && dobValid && birthPlace.trim() && nat.trim()) && !submitting;
 
   async function next() {
     if (!canSubmit) {
@@ -86,54 +87,55 @@ export default function SignupPivot() {
   }
 
   return (
-    <NStepShell
-      t={t}
-      step={2}
-      total={5}
-      title="Vos informations"
-      sub="Identité pivot — telle qu'elle figure sur vos documents officiels."
-      onBack={() => router.back()}
-      onPrimary={next}
-      primary={submitting ? 'Enregistrement…' : 'Continuer'}
+    <SignupScreen
+      step={0}
+      keyboard
+      footer={
+        <IdnButton t={t} full onPress={next} disabled={!canSubmit} loading={submitting}>
+          Continuer
+        </IdnButton>
+      }
     >
-      <IdnInput t={t} label="Prénom" value={firstName} onChangeText={setFirstName} placeholder="Aïssatou" autoFocus />
-      <IdnInput t={t} label="Nom" value={lastName} onChangeText={setLastName} placeholder="Mboumba" />
-      <IdnDateInput t={t} label="Date de naissance" value={dob} onChange={setDob} />
-      <View>
-        <Text style={{ fontSize: idnTokens.text.label, fontWeight: '600', color: t.ink, marginBottom: 8 }}>Genre</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {GENDERS.map((g) => {
-            const sel = g.v === gender;
-            return (
-              <Pressable key={g.v} onPress={() => setGender(g.v)} style={{
-                paddingHorizontal: 18, paddingVertical: 14,
-                borderRadius: 12, borderWidth: 1.5,
-                borderColor: sel ? idnTokens.green : t.border,
-                backgroundColor: sel ? (t.dark ? '#0F2A18' : idnTokens.greenSoft) : t.surface,
-              }}>
-                <Text style={{ fontSize: idnTokens.text.callout, color: t.ink, fontWeight: sel ? '600' : '500' }}>{g.label}</Text>
-              </Pressable>
-            );
-          })}
+      <ScreenTitle title="Ton identité" lead="Telle qu’elle figure sur tes documents officiels. Tu la feras vérifier ensuite pour passer au Niveau 2." />
+      <View style={{ gap: 18, marginTop: 24 }}>
+        <IdnInput t={t} label="Prénom" value={firstName} onChangeText={setFirstName} placeholder="Awa" autoCapitalize="words" autoFocus />
+        <IdnInput t={t} label="Nom" value={lastName} onChangeText={setLastName} placeholder="Mboumba" autoCapitalize="words" />
+        <IdnDateInput t={t} label="Date de naissance" value={dob} onChange={setDob} />
+        <View>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink, marginBottom: 6 }}>Sexe</Text>
+          <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: 8 }}>
+            {GENDERS.map((g) => {
+              const sel = g.v === gender;
+              return (
+                <Pressable
+                  key={g.v}
+                  onPress={() => setGender(g.v)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: sel }}
+                  style={{
+                    flex: 1, height: 50, borderRadius: 10, borderWidth: sel ? 2 : 1, alignItems: 'center', justifyContent: 'center',
+                    borderColor: sel ? t.green : t.muted, backgroundColor: sel ? t.greenBadge : t.surface,
+                  }}
+                >
+                  <Text style={{ fontSize: 15, color: t.ink, fontWeight: sel ? '600' : '400' }}>{g.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
+        <IdnInput t={t} label="Lieu de naissance" value={birthPlace} onChangeText={setBirthPlace} placeholder="Libreville" autoCapitalize="words" />
+        <IdnInput t={t} label="Nationalité" value={nat} onChangeText={setNat} autoCapitalize="words" />
+        <IdnInput
+          t={t}
+          label="Téléphone (facultatif)"
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="+241 77 12 34 56"
+          type="tel"
+          hint="Il sert à récupérer ton code PIN par SMS."
+        />
       </View>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}><IdnInput t={t} label="Nationalité" value={nat} onChangeText={setNat} /></View>
-        <View style={{ flex: 1 }}><IdnInput t={t} label="Lieu de naissance" value={birthPlace} onChangeText={setBirthPlace} placeholder="Libreville" /></View>
-      </View>
-      <IdnInput
-        t={t}
-        label="Numéro de téléphone"
-        value={phone}
-        onChangeText={setPhone}
-        placeholder="+241 06 22 14 89"
-        type="tel"
-      />
-      {error ? (
-        <View style={{ backgroundColor: t.dark ? '#3A1212' : '#FBE5E5', borderRadius: 12, padding: 14 }}>
-          <Text style={{ color: idnTokens.danger, fontSize: idnTokens.text.footnote, lineHeight: 18 }}>{error}</Text>
-        </View>
-      ) : null}
-    </NStepShell>
+      <ErrorNote>{error}</ErrorNote>
+    </SignupScreen>
   );
 }

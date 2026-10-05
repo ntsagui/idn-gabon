@@ -1,20 +1,23 @@
-import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
+import React, { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+import { Text } from '@/design/text';
 import { useIdnTheme } from '@/design/theme';
-import { idnTokens } from '@/design/tokens';
 import { IdnButton } from '@/design/components/idn-button';
 import { IdnInput } from '@/design/components/idn-input';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { ErrorNote, ScreenTitle } from '@/design/components/list';
 import { Icon } from '@/design/icons';
+import { PinLogin } from '@/components/auth/pin-login';
 import { authClient } from '@/lib/auth-client';
+import { listPasskeys, passkeyErrorMessage } from '@/lib/passkeys';
+import { BIOMETRIC } from '@/lib/biometric-label';
+import { getLastAccount, initialsOf, type LastAccount } from '@/lib/last-account';
 import { setOnboardingDone } from '@/hooks/use-app-state';
 
-type Phase = 'handle' | 'pin';
+type Phase = 'loading' | 'handle' | 'pin';
 
-const PIN_KEYS: string[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 const HANDLE_REGEX = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const IDN_DOMAIN = '@idn.ga';
 
@@ -31,50 +34,57 @@ function normalizeIdnIdentifier(input: string): { handle: string; email: string 
   return { handle, email: `${handle}${IDN_DOMAIN}` };
 }
 
+/** Connexion : adresse @idn.ga (mémorisée), puis PIN 6 chiffres ou Face ID (passkey). */
 export default function Login() {
   const t = useIdnTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ identifier?: string | string[] }>();
-  const insets = useSafeAreaInsets();
-  const [phase, setPhase] = useState<Phase>('handle');
-  const [identifier, setIdentifier] = useState(() =>
-    Array.isArray(params.identifier) ? (params.identifier[0] ?? '') : (params.identifier ?? ''),
-  );
-  const [pin, setPin] = useState('');
+  const paramIdentifier = Array.isArray(params.identifier) ? (params.identifier[0] ?? '') : (params.identifier ?? '');
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [identifier, setIdentifier] = useState(paramIdentifier);
+  const [last, setLast] = useState<LastAccount | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinSetupRequired, setPinSetupRequired] = useState(false);
 
   const normalized = normalizeIdnIdentifier(identifier);
-  const handleValid = normalized !== null;
+
+  useEffect(() => {
+    void getLastAccount().then((account) => {
+      setLast(account);
+      if (paramIdentifier) {
+        setPhase(normalizeIdnIdentifier(paramIdentifier) ? 'pin' : 'handle');
+      } else if (account) {
+        setIdentifier(account.email);
+        setPhase('pin');
+      } else {
+        setPhase('handle');
+      }
+    });
+  }, [paramIdentifier]);
 
   function goToPin() {
-    if (!handleValid) {
-      setError('Saisissez un identifiant IDN valide.');
+    if (!normalized) {
+      setError('Saisis une adresse IDN valide.');
       return;
     }
     setError(null);
     setPinSetupRequired(false);
-    setPin('');
     setPhase('pin');
   }
 
   function backToHandle() {
     setPhase('handle');
-    setPin('');
     setError(null);
     setPinSetupRequired(false);
   }
 
   async function routeAfterAuth() {
-    // Si le user n'a aucun passkey enrôlé, on propose d'en créer un avant
-    // d'entrer dans l'app. L'écran bio sait revenir à /(tabs)/home grâce
-    // au paramètre `next`. En cas d'erreur réseau (ou plugin indispo en
-    // mode web), on tombe sur home sans bloquer la connexion.
+    // Sans passkey enrôlé, on propose Face ID avant d'entrer dans l'app.
+    // En cas d'erreur réseau (ou plugin indispo), on va à l'accueil sans bloquer.
     try {
-      const list = await authClient.passkey.listUserPasskeys?.();
-      const data = (list?.data ?? list) as unknown[] | undefined;
-      if (Array.isArray(data) && data.length === 0) {
+      const data = await listPasskeys();
+      if (data.length === 0) {
         router.replace('/(auth)/signup/bio?next=/(tabs)/home');
         return;
       }
@@ -93,30 +103,15 @@ export default function Login() {
         method: 'POST',
         body: { email: normalized.email, pin: entered },
       });
-      const errorBody = (res?.error ?? null) as {
-        code?: string;
-        status?: number;
-        message?: string;
-      } | null;
+      const errorBody = (res?.error ?? null) as { code?: string; status?: number; message?: string } | null;
       if (errorBody) {
         const code = errorBody.code;
-        if (code === 'EMAIL_NOT_VERIFIED') {
-          setPinSetupRequired(false);
-          setError('Email non vérifié. Consultez votre boîte de réception.');
-        } else if (code === 'PIN_SETUP_REQUIRED') {
-          setPinSetupRequired(true);
-          setError("Ce compte n'a pas encore de PIN. Vérifiez votre numéro mobile pour en créer un.");
-        } else if (errorBody.status === 429) {
-          setPinSetupRequired(false);
-          setError('Trop de tentatives. Réessayez plus tard.');
-        } else if (code === 'INVALID_PIN') {
-          setPinSetupRequired(false);
-          setError('Identifiant ou PIN incorrect.');
-        } else {
-          setPinSetupRequired(false);
-          setError('Connexion impossible pour le moment. Réessayez.');
-        }
-        setPin('');
+        setPinSetupRequired(code === 'PIN_SETUP_REQUIRED');
+        if (code === 'EMAIL_NOT_VERIFIED') setError('Adresse non vérifiée. Termine ton inscription ou contacte le support.');
+        else if (code === 'PIN_SETUP_REQUIRED') setError('Ce compte n’a pas encore de code PIN. Vérifie ton numéro de mobile pour en créer un.');
+        else if (errorBody.status === 429) setError('Trop de tentatives. Réessaie plus tard.');
+        else if (code === 'INVALID_PIN') setError('Adresse ou code PIN incorrect.');
+        else setError('Connexion impossible pour le moment. Réessaie.');
         setSubmitting(false);
         return;
       }
@@ -131,23 +126,9 @@ export default function Login() {
       await routeAfterAuth();
     } catch {
       setPinSetupRequired(false);
-      setError('Connexion impossible pour le moment. Réessayez.');
-      setPin('');
+      setError('Connexion impossible pour le moment. Réessaie.');
       setSubmitting(false);
     }
-  }
-
-  function pressPinKey(k: string) {
-    if (k === '' || submitting || pinSetupRequired) return;
-    setError(null);
-    if (k === '⌫') {
-      setPin((v) => v.slice(0, -1));
-      return;
-    }
-    if (pin.length >= 6) return;
-    const next = pin + k;
-    setPin(next);
-    if (next.length === 6) void signInWithPin(next);
   }
 
   async function signInWithPasskey() {
@@ -157,7 +138,7 @@ export default function Login() {
     try {
       const res = await authClient.signIn.passkey();
       if (res?.error) {
-        setError(res.error.message ?? 'Aucun passkey utilisable sur ce device.');
+        setError(passkeyErrorMessage(res.error, 'Aucune clé d’accès utilisable sur cet appareil.'));
         setSubmitting(false);
         return;
       }
@@ -167,322 +148,73 @@ export default function Login() {
         return;
       }
       await setOnboardingDone(true);
-      // User connecté via passkey → forcément déjà enrôlé → home direct.
       router.replace('/(tabs)/home');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connexion par passkey impossible.');
+      setError(err instanceof Error ? err.message : `Connexion par ${BIOMETRIC} impossible.`);
       setSubmitting(false);
     }
   }
 
+  function forgotPin() {
+    router.push(normalized ? (`/(auth)/forgot-pin?identifier=${encodeURIComponent(normalized.email)}` as Href) : '/(auth)/forgot-pin');
+  }
+
+  if (phase === 'loading') return <Screen scroll={false}>{null}</Screen>;
+
+  if (phase === 'pin' && normalized) {
+    const known = last && last.email.toLowerCase() === normalized.email ? last : null;
+    return (
+      <Screen
+        scroll={false}
+        contentStyle={{ paddingHorizontal: 0 }}
+        header={<AppBar border={false} onBack={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/hub'))} />}
+      >
+        <PinLogin
+          initials={initialsOf(known?.firstName, known?.lastName, normalized.handle)}
+          title={known?.firstName ? `Bon retour, ${known.firstName}` : 'Saisis ton code PIN'}
+          subtitle={known?.firstName ? 'Saisis ton code PIN à 6 chiffres' : <Text style={{ fontFamily: t.mono }}>{normalized.email}</Text>}
+          onComplete={signInWithPin}
+          busy={submitting}
+          error={error}
+          onClearError={() => setError(null)}
+          onFaceId={signInWithPasskey}
+          links={[
+            { label: pinSetupRequired ? 'Configurer mon PIN' : 'Code PIN oublié ?', onPress: forgotPin },
+            { label: 'Autre compte', onPress: backToHandle },
+          ]}
+        />
+      </Screen>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 20 }}>
-      <Pressable
-        onPress={() => (phase === 'pin' ? backToHandle() : router.back())}
-        style={{
-          alignSelf: 'flex-start',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          paddingVertical: 6,
-          paddingHorizontal: 26,
-        }}
-      >
-        <Icon name="arrowL" size={20} color={idnTokens.green} />
-        <Text
-          style={{
-            color: idnTokens.green,
-            fontSize: idnTokens.text.callout,
-            fontWeight: '600',
-          }}
-        >
-          {phase === 'pin' ? "Modifier l'identifiant" : 'Retour'}
-        </Text>
-      </Pressable>
-
-      <KeyboardAwareScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 26,
-          paddingBottom: 24,
-          flexGrow: 1,
-        }}
-        keyboardShouldPersistTaps="handled"
-        bottomOffset={20}
-      >
-        {phase === 'handle' ? (
-          <>
-            <View style={{ marginTop: 30 }}>
-              <Text
-                style={{
-                  fontSize: idnTokens.text.title,
-                  fontWeight: '700',
-                  color: t.ink,
-                  letterSpacing: -0.5,
-                }}
-              >
-                Connexion
-              </Text>
-              <Text
-                style={{
-                  fontSize: idnTokens.text.callout,
-                  color: t.muted,
-                  marginTop: 10,
-                  lineHeight: 22,
-                }}
-              >
-                Saisissez votre identifiant IDN pour continuer.
-              </Text>
-            </View>
-
-            <View style={{ marginTop: 30, gap: 14 }}>
-              <IdnInput
-                t={t}
-                label="Identifiant IDN"
-                value={identifier}
-                onChangeText={(v) => setIdentifier(v.toLowerCase())}
-                placeholder="prenom.nom"
-                hint="Avec ou sans @idn.ga"
-                leadIcon={<Icon name="user" size={20} color={t.muted} />}
-                autoFocus
-              />
-            </View>
-
-            {error ? (
-              <View
-                style={{
-                  marginTop: 14,
-                  backgroundColor: t.dark ? '#3A1212' : '#FBE5E5',
-                  borderRadius: 12,
-                  padding: 14,
-                }}
-              >
-                <Text
-                  style={{
-                    color: idnTokens.danger,
-                    fontSize: idnTokens.text.footnote,
-                    lineHeight: 19,
-                  }}
-                >
-                  {error}
-                </Text>
-              </View>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <View style={{ marginTop: 26, alignItems: 'center' }}>
-              <Text
-                style={{
-                  fontSize: idnTokens.text.title,
-                  fontWeight: '700',
-                  color: t.ink,
-                  letterSpacing: -0.4,
-                }}
-              >
-                Votre code PIN
-              </Text>
-              <Text
-                style={{
-                  fontSize: idnTokens.text.callout,
-                  color: t.muted,
-                  marginTop: 10,
-                  textAlign: 'center',
-                }}
-              >
-                6 chiffres pour accéder à votre compte.
-              </Text>
-              <Text
-                style={{
-                  fontSize: idnTokens.text.footnote,
-                  color: t.muted,
-                  marginTop: 6,
-                }}
-              >
-                {normalized?.email ?? ''}
-              </Text>
-            </View>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'center',
-                gap: 18,
-                paddingVertical: 26,
-              }}
-            >
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <View
-                  key={i}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 9999,
-                    backgroundColor: i < pin.length ? idnTokens.green : 'transparent',
-                    borderWidth: 2,
-                    borderColor: i < pin.length ? idnTokens.green : t.border,
-                  }}
-                />
-              ))}
-            </View>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                marginHorizontal: -6,
-              }}
-            >
-              {PIN_KEYS.map((k, i) => (
-                <View key={i} style={{ width: '33.3333%', padding: 6 }}>
-                  <Pressable
-                    disabled={k === '' || submitting || pinSetupRequired}
-                    onPress={() => pressPinKey(k)}
-                    style={{
-                      height: 64,
-                      borderRadius: 14,
-                      backgroundColor: k === '' ? 'transparent' : t.surface,
-                      borderWidth: k === '' ? 0 : 1,
-                      borderColor: t.borderSoft,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      opacity: submitting || pinSetupRequired ? 0.6 : 1,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 26,
-                        fontWeight: '500',
-                        color: t.ink,
-                        fontFamily: idnTokens.mono,
-                      }}
-                    >
-                      {k}
-                    </Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-
-            {error ? (
-              <View
-                style={{
-                  marginTop: 14,
-                  backgroundColor: t.dark ? '#3A1212' : '#FBE5E5',
-                  borderRadius: 12,
-                  padding: 14,
-                }}
-              >
-                <Text
-                  style={{
-                    color: idnTokens.danger,
-                    fontSize: idnTokens.text.footnote,
-                    lineHeight: 19,
-                  }}
-                >
-                  {error}
-                </Text>
-              </View>
-            ) : null}
-
-            {pinSetupRequired ? (
-              <IdnButton
-                t={t}
-                variant="primary"
-                size="lg"
-                full
-                style={{ marginTop: 12 }}
-                onPress={() => {
-                  if (!normalized) return;
-                  router.push(
-                    `/(auth)/forgot-pin?identifier=${encodeURIComponent(normalized.email)}` as Href,
-                  );
-                }}
-              >
-                Configurer mon PIN
-              </IdnButton>
-            ) : (
-              <Pressable
-                disabled={submitting || !normalized}
-                onPress={() => {
-                  if (!normalized) return;
-                  router.push(
-                    `/(auth)/forgot-pin?identifier=${encodeURIComponent(normalized.email)}` as Href,
-                  );
-                }}
-                style={{ alignSelf: 'center', paddingVertical: 10, marginTop: 4 }}
-              >
-                <Text style={{ color: idnTokens.green, fontSize: idnTokens.text.footnote, fontWeight: '600' }}>
-                  PIN oublié ?
-                </Text>
-              </Pressable>
-            )}
-
-            <Text
-              style={{
-                textAlign: 'center',
-                fontSize: idnTokens.text.footnote,
-                color: t.muted,
-                paddingVertical: 14,
-                marginTop: 12,
-              }}
-            >
-              {submitting ? 'Connexion…' : 'Saisissez vos 6 chiffres pour vous connecter.'}
-            </Text>
-          </>
-        )}
-      </KeyboardAwareScrollView>
-
-      {phase === 'handle' ? (
-        <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-          <View
-            style={{
-              paddingHorizontal: 26,
-              paddingTop: 14,
-              paddingBottom: Math.max(insets.bottom, 24),
-              gap: 12,
-              backgroundColor: t.bg,
-              borderTopWidth: 1,
-              borderTopColor: t.borderSoft,
-            }}
-          >
-            <IdnButton t={t} variant="primary" size="lg" full onPress={goToPin} disabled={!handleValid}>
-              Continuer
-            </IdnButton>
-
-            <Pressable
-              onPress={signInWithPasskey}
-              disabled={submitting}
-              style={{
-                paddingVertical: 16,
-                borderWidth: 1,
-                borderColor: t.border,
-                backgroundColor: t.surface,
-                borderRadius: 12,
-                alignItems: 'center',
-                flexDirection: 'row',
-                justifyContent: 'center',
-                gap: 10,
-                opacity: submitting ? 0.5 : 1,
-              }}
-            >
-              <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-                <Path d="M5 11c0-3 3-7 7-7s7 4 7 7" stroke={t.ink2} strokeWidth={1.6} strokeLinecap="round" />
-                <Path d="M9 13c.5-1.5 2-2 3-2s2.5.5 3 2v2" stroke={t.ink2} strokeWidth={1.6} strokeLinecap="round" />
-                <Path d="M12 15v5M5 16c0 3 3 4 7 4" stroke={t.ink2} strokeWidth={1.6} strokeLinecap="round" />
-              </Svg>
-              <Text
-                style={{
-                  color: t.ink2,
-                  fontSize: idnTokens.text.callout,
-                  fontWeight: '600',
-                }}
-              >
-                Se connecter avec un passkey
-              </Text>
-            </Pressable>
-          </View>
-        </KeyboardStickyView>
-      ) : null}
-    </View>
+    <Screen
+      keyboard
+      header={<AppBar title="Connexion" onBack={() => router.back()} />}
+      footer={
+        <>
+          <IdnButton t={t} full onPress={goToPin} disabled={!normalized}>Continuer</IdnButton>
+          <IdnButton t={t} variant="ghost" full onPress={signInWithPasskey} loading={submitting} leadIcon={<Icon name="scanFace" size={18} color={t.ink} />}>
+            {`Se connecter avec ${BIOMETRIC}`}
+          </IdnButton>
+        </>
+      }
+    >
+      <ScreenTitle title="Ton adresse IDN" lead="Saisis ton adresse @idn.ga pour te connecter avec ton code PIN." />
+      <View style={{ marginTop: 24 }}>
+        <IdnInput
+          t={t}
+          label="Adresse IDN"
+          value={identifier}
+          onChangeText={(v) => setIdentifier(v.toLowerCase().trim())}
+          placeholder="prenom.nom@idn.ga"
+          hint="Avec ou sans @idn.ga"
+          type="email"
+          mono
+          autoFocus
+        />
+      </View>
+      <ErrorNote>{error}</ErrorNote>
+    </Screen>
   );
 }

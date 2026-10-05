@@ -1,5 +1,6 @@
 import React from "react"
-import { Linking, Text } from "react-native"
+import { Linking } from "react-native";
+import { Text } from "@/design/text";
 import type { IdnTheme } from "@/design/tokens"
 import { splitEmailTextLinks } from "@/lib/email-links"
 

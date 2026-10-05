@@ -1,16 +1,19 @@
 import type { IconName } from '@/design/icons';
 
-// Gradients par type de carte — verbatim mockups
+// Couleurs des cartes : aplats de la charte (prototype iCarte), contraste du
+// texte blanc ≥ 4,5:1. Trois arrêts identiques : les composants qui passent
+// par LinearGradient affichent ainsi un aplat sans être réécrits.
+const flat = (c: string) => [c, c, c] as const;
 export const CARD_GRADIENTS = {
-  green:  ['#16a34a', '#15803d', '#065f46'] as const,
-  orange: ['#f97316', '#ea580c', '#dc2626'] as const,
-  blue:   ['#3b82f6', '#2563eb', '#4338ca'] as const,
-  rose:   ['#f43f5e', '#e11d48', '#db2777'] as const,
-  black:  ['#1e293b', '#0f172a', '#000000'] as const,
-  purple: ['#9333ea', '#7e22ce', '#5b21b6'] as const,
-  amber:  ['#f59e0b', '#d97706', '#a16207'] as const,
-  yellow: ['#f59e0b', '#d97706', '#ca8a04'] as const,
-  indigo: ['#4f46e5', '#4338ca', '#1e40af'] as const,
+  green:  flat('#0E7C3A'),
+  orange: flat('#C2410C'),
+  blue:   flat('#2563AC'),
+  rose:   flat('#BE185D'),
+  black:  flat('#16170F'),
+  purple: flat('#6D28D9'),
+  amber:  flat('#A35A06'),
+  yellow: flat('#8A6A00'),
+  indigo: flat('#3730A3'),
 };
 
 export type GradKey = keyof typeof CARD_GRADIENTS;

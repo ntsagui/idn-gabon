@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Pressable, Text, View, type ViewStyle, type StyleProp } from 'react-native';
-import { idnTokens } from '../tokens';
+import { ActivityIndicator, Pressable, View, type ViewStyle, type StyleProp } from 'react-native';
+import { Text } from '@/design/text';
 import type { IdnTheme } from '../tokens';
 
-type Variant = 'primary' | 'ghost' | 'quiet' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'quiet' | 'danger' | 'dangerGhost';
 type Size = 'sm' | 'md' | 'lg';
 
 type Props = {
@@ -13,55 +13,66 @@ type Props = {
   t: IdnTheme;
   onPress?: () => void;
   disabled?: boolean;
+  loading?: boolean;
   full?: boolean;
   leadIcon?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
 };
 
-// Tailles dimensionnées pour des cibles tactiles confortables (Apple HIG 44pt, Material 48dp).
-// `md` reste au-dessus du minimum recommandé ; `lg` est calibré pour les CTA principaux.
+// Boutons de la charte (`.button` du prototype) : 50 px de haut, rayon 14,
+// libellé 15/600. Cibles tactiles ≥ 44 pt (RGAA 13.x / Apple HIG).
 const sizes = {
-  sm: { h: 40, px: 14, fs: idnTokens.text.footnote },
-  md: { h: 48, px: 18, fs: idnTokens.text.callout },
-  lg: { h: 56, px: 22, fs: idnTokens.text.body },
+  sm: { h: 40, px: 14, fs: 14, r: 10 },
+  md: { h: 50, px: 20, fs: 15, r: 14 },
+  lg: { h: 52, px: 20, fs: 16, r: 14 },
 } as const;
 
-export function IdnButton({ children, variant = 'primary', size = 'md', t, onPress, disabled, full, leadIcon, style }: Props) {
+export function IdnButton({
+  children, variant = 'primary', size = 'md', t, onPress, disabled, loading, full, leadIcon, style, accessibilityLabel,
+}: Props) {
   const [pressed, setPressed] = useState(false);
-  const sz = sizes[size];
-  const variants = {
-    primary: { bg: t.green, fg: '#fff', bd: t.green, hover: t.greenDk },
-    ghost:   { bg: 'transparent' as string, fg: t.ink, bd: t.border, hover: t.surface2 },
-    quiet:   { bg: 'transparent' as string, fg: t.ink2, bd: 'transparent', hover: t.surface2 },
-    danger:  { bg: 'transparent' as string, fg: idnTokens.danger, bd: t.border, hover: 'rgba(184,58,58,0.06)' },
+  const sz = variant === 'secondary' && size === 'md' ? { ...sizes.md, h: 44, fs: 14 } : sizes[size];
+  const v = {
+    primary: { bg: t.green, fg: '#fff', bd: t.green, press: t.greenDk },
+    secondary: { bg: t.surface, fg: t.ink, bd: t.border, press: t.surface2 },
+    ghost: { bg: 'transparent', fg: t.ink, bd: t.border, press: t.surface2 },
+    quiet: { bg: 'transparent', fg: t.ink2, bd: 'transparent', press: t.surface2 },
+    danger: { bg: '#B3261E', fg: '#fff', bd: '#B3261E', press: '#8F1E18' },
+    dangerGhost: { bg: 'transparent', fg: t.redText, bd: t.border, press: t.redBadge },
   }[variant];
+  const inactive = disabled || loading;
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={inactive}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
+      accessibilityRole="button"
+      // TalkBack n'agrège pas toujours le texte enfant : on le fournit explicitement.
+      accessibilityLabel={accessibilityLabel ?? (typeof children === 'string' ? children : undefined)}
+      accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       style={[
         {
-          height: sz.h,
+          minHeight: sz.h,
           paddingHorizontal: sz.px,
-          backgroundColor: pressed && !disabled ? variants.hover : variants.bg,
-          borderColor: variants.bd,
+          backgroundColor: pressed && !inactive ? v.press : v.bg,
+          borderColor: v.bd,
           borderWidth: 1,
-          borderRadius: 12,
-          opacity: disabled ? 0.5 : 1,
+          borderRadius: sz.r,
+          opacity: disabled ? 0.45 : 1,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 10,
+          gap: 8,
           alignSelf: full ? 'stretch' : 'flex-start',
           width: full ? '100%' : undefined,
         },
         style,
       ]}
     >
-      {leadIcon ? <View>{leadIcon}</View> : null}
-      <Text style={{ color: variants.fg, fontSize: sz.fs, fontWeight: '600' }}>{children}</Text>
+      {loading ? <ActivityIndicator size="small" color={v.fg} /> : leadIcon ? <View>{leadIcon}</View> : null}
+      <Text style={{ color: v.fg, fontSize: sz.fs, fontWeight: '600', textAlign: 'center' }}>{children}</Text>
     </Pressable>
   );
 }

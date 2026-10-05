@@ -1,17 +1,20 @@
-import React from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
-import Svg, { Circle, Text as SvgText } from 'react-native-svg';
-import { useQuery } from 'convex/react';
+import React, { useState } from 'react';
+import { Alert, View } from 'react-native';
+import { Text } from '@/design/text';
+import Svg, { Circle } from 'react-native-svg';
+import { useAction, useQuery } from 'convex/react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { api } from '@/lib/api';
 import type { Id } from '@repo/backend/convex/_generated/dataModel';
 import { Icon } from '@/design/icons';
-import { idnTokens } from '@/design/tokens';
 import { useIdnTheme } from '@/design/theme';
-import { NSheetHeader } from '@/components/chrome/sheet-header';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Badge } from '@/design/components/badge';
+import { Card, DetailRow, ErrorNote, ScreenTitle, SectionTitle, useToneColors } from '@/design/components/list';
 import { IdnButton } from '@/design/components/idn-button';
-import { icvStrings } from '@/data/cv';
+import { IdnLottie } from '@/design/components/lottie';
 
 interface AtsResult {
   score?: number;
@@ -19,164 +22,145 @@ interface AtsResult {
   recommendations?: string[];
 }
 
+/** Dimensions renvoyées par `cv.ai` (chacune notée sur 25). */
+const DIMENSIONS: Record<string, string> = {
+  keywords: 'Mots-clés',
+  structure: 'Structure',
+  length: 'Longueur',
+  readability: 'Lisibilité',
+};
+
 export default function ICVAts() {
   const params = useLocalSearchParams<{ cv?: string }>();
   const cvId = params.cv as Id<'citizenCv'> | undefined;
   const t = useIdnTheme();
   const router = useRouter();
-  const job = useQuery(
-    api.cv.ai.getLastResult,
-    cvId ? { cvId, feature: 'ats_check' } : 'skip',
-  );
+  const job = useQuery(api.cv.ai.getLastResult, cvId ? { cvId, feature: 'ats_check' } : 'skip');
+  const atsCheck = useAction(api.cv.ai.atsCheck);
+  const [starting, setStarting] = useState(false);
 
-  const isLoading = job === undefined;
+  const isLoading = cvId !== undefined && job === undefined;
   const isPending = job?.status === 'queued' || job?.status === 'running';
+  const hasResult = job?.status === 'completed' && !!job.result;
+
+  // Lance (ou relance) l'analyse : le résultat arrive par la query réactive.
+  async function start() {
+    if (!cvId || starting) return;
+    setStarting(true);
+    try {
+      await atsCheck({ cvId });
+    } catch (e) {
+      const msg = (e as Error).message ?? '';
+      Alert.alert(
+        'Analyse impossible',
+        msg.includes('cvAi') || msg.includes('RATE_LIMIT') ? 'Tu as atteint ton quota quotidien d’outils IA (10 par jour). Réessaie demain.' : 'L’outil IA a échoué. Réessaie dans un instant.',
+      );
+    } finally {
+      setStarting(false);
+    }
+  }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <NSheetHeader t={t} title={icvStrings.ats.title} onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ padding: 18, gap: 16 }}>
-        <Text style={{ fontSize: 13, color: t.muted }}>{icvStrings.ats.desc}</Text>
-
-        {isLoading || isPending ? (
-          <View style={{ paddingVertical: 60, alignItems: 'center', gap: 10 }}>
-            <ActivityIndicator color={idnTokens.green} />
-            <Text style={{ fontSize: 13, color: t.muted }}>Analyse en cours…</Text>
-          </View>
-        ) : !job || job.status === 'failed' || !job.result ? (
-          <View style={{ paddingVertical: 40, alignItems: 'center', gap: 8 }}>
-            <Icon name="alert" size={22} color="#f59e0b" />
-            <Text style={{ fontSize: 14, fontWeight: '700', color: t.ink }}>
-              Aucune analyse disponible.
-            </Text>
-            <Text style={{ fontSize: 12, color: t.muted, textAlign: 'center' }}>
-              Lancez l’outil « Score ATS » depuis le panneau iCV.
-            </Text>
-          </View>
-        ) : (
-          <AtsResultBody result={job.result as AtsResult} />
-        )}
-
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-          <View style={{ flex: 1 }} />
-          <IdnButton variant="ghost" size="md" t={t} onPress={() => router.back()}>
-            {icvStrings.ats.close}
+    <Screen
+      sheet
+      header={<AppBar title="Score ATS" onBack={() => router.back()} backIcon="close" />}
+      footer={
+        cvId && !isLoading && !isPending ? (
+          <IdnButton t={t} full variant={hasResult ? 'ghost' : 'primary'} onPress={start} loading={starting}>
+            {hasResult ? 'Relancer l’analyse' : 'Lancer l’analyse'}
           </IdnButton>
+        ) : undefined
+      }
+    >
+      <Text style={{ marginTop: 16, fontSize: 14, lineHeight: 20, color: t.muted }}>
+        Compatibilité de ton CV avec les logiciels de tri des candidatures (ATS) utilisés par les recruteurs.
+      </Text>
+
+      {!cvId ? (
+        <ErrorNote>Aucun CV sélectionné. Ferme cette fenêtre et relance l’outil depuis le Studio.</ErrorNote>
+      ) : isLoading || isPending ? (
+        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+          <IdnLottie name="loader" size={80} loop label="Analyse en cours" />
+          <Text style={{ marginTop: 8, fontSize: 14, color: t.muted }}>{isPending ? 'Analyse en cours…' : 'Chargement…'}</Text>
         </View>
-      </ScrollView>
-    </View>
+      ) : hasResult ? (
+        <AtsResultBody result={job.result as AtsResult} />
+      ) : (
+        <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+          {job?.status === 'failed' ? <ErrorNote>{job.errorMessage || 'La dernière analyse a échoué.'}</ErrorNote> : null}
+          <ScreenTitle center title="Aucune analyse pour ce CV" lead="Lance l’analyse : le résultat s’affichera ici dans quelques secondes." />
+        </View>
+      )}
+    </Screen>
   );
 }
 
 function AtsResultBody({ result }: { result: AtsResult }) {
   const t = useIdnTheme();
+  const yellow = useToneColors('yellow').fg;
   const score = clampScore(result.score);
-  const tone =
-    score >= 80
-      ? { label: icvStrings.ats.resultGood, fg: '#15803D', bg: '#DCFCE7' }
-      : score >= 50
-        ? { label: icvStrings.ats.resultMid, fg: '#92400E', bg: '#FEF3C7' }
-        : { label: icvStrings.ats.resultBad, fg: '#9F1239', bg: '#FFE4E6' };
-  const r = 60;
+  const tone = score >= 80 ? { label: 'Bien optimisé', badge: 'green' as const, color: t.green } : score >= 50 ? { label: 'À améliorer', badge: 'yellow' as const, color: yellow } : { label: 'Peu optimisé', badge: 'red' as const, color: t.redText };
+  const size = 140;
+  const stroke = 11;
+  const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const off = c * (1 - score / 100);
 
   return (
-    <View style={{ gap: 14 }}>
-      <View
-        style={{
-          backgroundColor: tone.bg,
-          borderRadius: 14,
-          padding: 16,
-          alignItems: 'center',
-        }}
-      >
-        <Svg width={160} height={160} viewBox="0 0 160 160">
-          <Circle cx={80} cy={80} r={r} fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth={11} />
-          <Circle
-            cx={80}
-            cy={80}
-            r={r}
-            fill="none"
-            stroke={tone.fg}
-            strokeWidth={11}
-            strokeLinecap="round"
-            strokeDasharray={`${c}`}
-            strokeDashoffset={off}
-            transform="rotate(-90 80 80)"
-          />
-          <SvgText x={80} y={78} textAnchor="middle" fontSize={32} fontWeight="700" fill={tone.fg}>
-            {score}
-          </SvgText>
-          <SvgText
-            x={80}
-            y={102}
-            textAnchor="middle"
-            fontSize={9}
-            fontWeight="600"
-            fill={tone.fg}
-            letterSpacing={1.2}
-          >
-            SCORE ATS
-          </SvgText>
-        </Svg>
-        <Text style={{ fontSize: 22, fontWeight: '700', color: tone.fg, marginTop: 4 }}>
-          {tone.label}
-        </Text>
-        {result.breakdown ? (
-          <View style={{ marginTop: 12, gap: 4, alignSelf: 'stretch' }}>
+    <>
+      <Card padded style={{ marginTop: 16, alignItems: 'center' }}>
+        <View
+          accessible
+          accessibilityLabel={`Score ATS : ${score} sur 100, ${tone.label}`}
+          style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Svg width={size} height={size} style={{ position: 'absolute' }}>
+            <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={t.surface2} strokeWidth={stroke} />
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              fill="none"
+              stroke={tone.color}
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              strokeDasharray={`${c}`}
+              strokeDashoffset={c * (1 - score / 100)}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          </Svg>
+          <Text style={{ fontSize: 34, fontWeight: '600', color: t.ink }}>{score}</Text>
+          <Text style={{ fontFamily: t.mono, fontSize: 11, letterSpacing: 1.3, color: t.muted }}>SUR 100</Text>
+        </View>
+        <Badge tone={tone.badge} style={{ marginTop: 12, alignSelf: 'center' }}>{tone.label}</Badge>
+      </Card>
+
+      {result.breakdown ? (
+        <>
+          <SectionTitle>Détail</SectionTitle>
+          <Card>
             {Object.entries(result.breakdown).map(([k, v]) => (
-              <View
-                key={k}
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  backgroundColor: 'rgba(255,255,255,0.4)',
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 6,
-                }}
-              >
-                <Text style={{ fontSize: 12, color: tone.fg, textTransform: 'capitalize' }}>
-                  {k}
-                </Text>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: tone.fg }}>{v}</Text>
-              </View>
+              <DetailRow key={k} label={DIMENSIONS[k] ?? k} value={`${v} / 25`} />
             ))}
-          </View>
-        ) : null}
-      </View>
+          </Card>
+        </>
+      ) : null}
 
       {result.recommendations && result.recommendations.length > 0 ? (
-        <View
-          style={{
-            backgroundColor: t.surface,
-            borderWidth: 1,
-            borderColor: t.border,
-            borderRadius: 12,
-            padding: 14,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 10,
-              fontWeight: '700',
-              letterSpacing: 1.4,
-              color: t.muted,
-              marginBottom: 8,
-            }}
-          >
-            RECOMMANDATIONS
-          </Text>
-          {result.recommendations.map((rec, i) => (
-            <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
-              <Icon name="check" size={14} color={idnTokens.green} />
-              <Text style={{ flex: 1, fontSize: 13, color: t.ink, lineHeight: 18 }}>{rec}</Text>
+        <>
+          <SectionTitle>Recommandations</SectionTitle>
+          <Card padded>
+            <View style={{ gap: 10 }}>
+              {result.recommendations.map((rec, i) => (
+                <View key={i} style={{ flexDirection: 'row', gap: 10 }}>
+                  <Icon name="checkCir" size={18} color={t.greenText} />
+                  <Text style={{ flex: 1, fontSize: 14, lineHeight: 20, color: t.ink }}>{rec}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </Card>
+        </>
       ) : null}
-    </View>
+    </>
   );
 }
 

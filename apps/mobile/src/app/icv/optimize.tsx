@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, View } from 'react-native';
+import { Text } from '@/design/text';
 import { useAction, useQuery } from 'convex/react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { api } from '@/lib/api';
 import type { Id } from '@repo/backend/convex/_generated/dataModel';
-import { Icon } from '@/design/icons';
 import { useIdnTheme } from '@/design/theme';
-import { NSheetHeader } from '@/components/chrome/sheet-header';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { ErrorNote } from '@/design/components/list';
 import { IdnButton } from '@/design/components/idn-button';
-import { icvStrings } from '@/data/cv';
+import { IdnLottie } from '@/design/components/lottie';
+import { CvField } from '@/components/cv/cv-ui';
 
 export default function ICVOptimize() {
   const params = useLocalSearchParams<{ cv?: string }>();
@@ -25,23 +28,20 @@ export default function ICVOptimize() {
   // `optimizeForJob` délègue l'exécution au pool IA et ne renvoie plus le
   // `derivedCvId` en synchrone : on suit le job via la query réactive et on
   // navigue une fois le CV dérivé créé.
-  const job = useQuery(
-    api.cv.ai.getLastResult,
-    activeJobId && cvId ? { cvId, feature: 'optimize_job' } : 'skip',
-  );
+  const job = useQuery(api.cv.ai.getLastResult, activeJobId && cvId ? { cvId, feature: 'optimize_job' } : 'skip');
 
   useEffect(() => {
     if (!activeJobId || !job || job._id !== activeJobId) return;
     if (job.status === 'completed' && job.derivedCvId) {
       setActiveJobId(null);
       setBusy(false);
-      Alert.alert(icvStrings.optimize.success);
+      Alert.alert('CV optimisé créé', 'Ton nouveau CV adapté à l’offre est prêt.');
       router.dismissAll();
       router.push(`/icv?cv=${job.derivedCvId}` as never);
     } else if (job.status === 'failed') {
       setActiveJobId(null);
       setBusy(false);
-      Alert.alert('Erreur', job.errorMessage ?? icvStrings.errors.aiFailed);
+      Alert.alert('Optimisation impossible', job.errorMessage ?? 'L’outil IA a échoué. Réessaie dans un instant.');
     }
   }, [activeJobId, job, router]);
 
@@ -49,111 +49,70 @@ export default function ICVOptimize() {
     if (!cvId || busy) return;
     const trimmed = offer.trim();
     if (trimmed.length < 30) {
-      Alert.alert('Erreur', 'Le texte de l\'offre est trop court (30 caractères min).');
+      Alert.alert('Offre trop courte', 'Colle au moins 30 caractères du texte de l’offre.');
       return;
     }
     setBusy(true);
     try {
-      const { jobId } = await optimizeForJob({
-        cvId,
-        jobOfferText: trimmed,
-        newCvName: name.trim() || undefined,
-      });
+      const { jobId } = await optimizeForJob({ cvId, jobOfferText: trimmed, newCvName: name.trim() || undefined });
       // On reste en `busy` jusqu'à la complétion, gérée par l'effet ci-dessus.
       setActiveJobId(jobId);
     } catch (e) {
       setBusy(false);
       const msg = (e as Error).message ?? '';
       Alert.alert(
-        'Erreur',
-        msg.includes('cvAi') || msg.includes('RATE_LIMIT')
-          ? icvStrings.errors.quotaIa
-          : msg,
+        'Optimisation impossible',
+        msg.includes('cvAi') || msg.includes('RATE_LIMIT') ? 'Tu as atteint ton quota quotidien d’outils IA (10 par jour). Réessaie demain.' : msg,
       );
     }
   }
 
+  const header = <AppBar title="Optimiser pour une offre" onBack={() => router.back()} backIcon="close" />;
+
   if (!cvId) {
     return (
-      <View style={{ flex: 1, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: t.muted }}>CV non spécifié.</Text>
-      </View>
+      <Screen sheet header={header}>
+        <ErrorNote>Aucun CV sélectionné. Ferme cette fenêtre et relance l’outil depuis le Studio.</ErrorNote>
+      </Screen>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <NSheetHeader t={t} title={icvStrings.optimize.title} onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ padding: 18, gap: 16 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Icon name="cap" size={18} color="#f97316" />
-          <Text style={{ fontSize: 13, color: t.muted, flex: 1 }}>
-            {icvStrings.optimize.desc}
+    <Screen
+      sheet
+      keyboard
+      header={header}
+      footer={
+        <IdnButton t={t} full onPress={submit} loading={busy}>
+          {busy ? 'Optimisation en cours…' : 'Créer le CV optimisé'}
+        </IdnButton>
+      }
+    >
+      {busy ? (
+        <View style={{ alignItems: 'center', marginTop: 32 }}>
+          <IdnLottie name="loader" size={80} loop label="Optimisation en cours" />
+          <Text style={{ marginTop: 12, fontSize: 14, color: t.muted, textAlign: 'center' }}>
+            L’IA adapte ton CV à l’offre. Tu peux patienter ici, le nouveau CV s’ouvrira tout seul.
           </Text>
         </View>
-
-        <View>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: t.ink, marginBottom: 6 }}>
-            {icvStrings.optimize.offerLabel}
+      ) : (
+        <>
+          <Text style={{ marginTop: 16, fontSize: 14, lineHeight: 20, color: t.muted }}>
+            L’IA crée un nouveau CV adapté à l’offre. Ton CV actuel n’est pas modifié.
           </Text>
-          <TextInput
+          <CvField
+            label="Texte de l’offre"
             value={offer}
-            onChangeText={setOffer}
-            placeholder={icvStrings.optimize.offerPh}
-            placeholderTextColor={t.mutedSoft}
+            onChange={setOffer}
+            placeholder="Colle ici la description du poste visé…"
             multiline
+            minHeight={180}
             maxLength={8000}
-            style={{
-              backgroundColor: t.surface,
-              borderWidth: 1,
-              borderColor: t.border,
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              color: t.ink,
-              fontSize: 14,
-              minHeight: 160,
-              textAlignVertical: 'top',
-            }}
+            hint={`${offer.length} / 8 000 caractères`}
           />
-          <Text style={{ textAlign: 'right', fontSize: 11, color: t.muted, marginTop: 4 }}>
-            {offer.length} / 8000
-          </Text>
-        </View>
-
-        <View>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: t.ink, marginBottom: 6 }}>
-            {icvStrings.optimize.nameLabel}
-          </Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder={icvStrings.optimize.namePh}
-            placeholderTextColor={t.mutedSoft}
-            maxLength={80}
-            style={{
-              backgroundColor: t.surface,
-              borderWidth: 1,
-              borderColor: t.border,
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 12,
-              color: t.ink,
-              fontSize: 14,
-            }}
-          />
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-          <IdnButton variant="ghost" size="md" t={t} onPress={() => router.back()} disabled={busy}>
-            {icvStrings.optimize.cancel}
-          </IdnButton>
-          <View style={{ flex: 1 }} />
-          <IdnButton variant="primary" size="md" t={t} onPress={submit} disabled={busy}>
-            {busy ? icvStrings.optimize.running : icvStrings.optimize.submit}
-          </IdnButton>
-        </View>
-      </ScrollView>
-    </View>
+          <CvField label="Nom du nouveau CV (facultatif)" value={name} onChange={setName} placeholder="Par exemple : CV Chef de projet" maxLength={80} />
+        </>
+      )}
+    </Screen>
   );
 }

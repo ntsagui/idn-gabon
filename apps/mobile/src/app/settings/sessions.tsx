@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable } from 'react-native';
+import { Text } from '@/design/text';
 import { useRouter } from 'expo-router';
 import { useConvexAuth, useMutation, useQuery } from 'convex/react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIdnTheme } from '@/design/theme';
-import { idnTokens } from '@/design/tokens';
-import { NLargeHeader } from '@/components/chrome/large-header';
-import { Icon } from '@/design/icons';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Badge } from '@/design/components/badge';
+import { Card, ErrorNote, Row } from '@/design/components/list';
+import { IdnButton } from '@/design/components/idn-button';
+import { deviceLabel } from '@/lib/device-label';
 import { api } from '@/lib/api';
 
 type Session = {
@@ -31,7 +34,6 @@ function relative(ts: number): string {
 export default function SettingsSessions() {
   const t = useIdnTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { isAuthenticated } = useConvexAuth();
   const sessions = useQuery(api.sessions.listMine, isAuthenticated ? {} : 'skip') as Session[] | undefined;
   const revoke = useMutation(api.sessions.revoke);
@@ -42,12 +44,12 @@ export default function SettingsSessions() {
   async function handleRevoke(s: Session) {
     if (s.isCurrent || revoking) return;
     Alert.alert(
-      'Révoquer cette session ?',
-      `Déconnecter ${s.device}. Cette action ne peut être annulée.`,
+      'Déconnecter cet appareil ?',
+      `${s.device} devra se reconnecter avec ton code PIN.`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
-          text: 'Révoquer',
+          text: 'Déconnecter',
           style: 'destructive',
           onPress: async () => {
             setRevoking(s.id);
@@ -68,7 +70,7 @@ export default function SettingsSessions() {
   async function handleRevokeAllOthers() {
     Alert.alert(
       'Déconnecter tous les autres appareils ?',
-      'Toutes les autres sessions seront immédiatement déconnectées. Vous resterez connecté sur cet appareil.',
+      'Toutes les autres sessions sont fermées immédiatement. Tu restes connecté sur cet appareil.',
       [
         { text: 'Annuler', style: 'cancel' },
         {
@@ -90,80 +92,37 @@ export default function SettingsSessions() {
     );
   }
 
-  const count = sessions?.length ?? 0;
-  const others = sessions?.filter((s) => !s.isCurrent) ?? [];
+  const named = (sessions ?? []).map((s) => ({ ...s, device: deviceLabel(s.device, s.userAgent ?? null) }));
+  const others = named.filter((s) => !s.isCurrent);
+  const icon = (d: string) => (/iphone|android/i.test(d) ? 'smartphone' : /ipad/i.test(d) ? 'tablet' : 'laptop') as 'smartphone' | 'tablet' | 'laptop';
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader
-        t={t}
-        title="Appareils & sessions"
-        sub={count > 0 ? `${count} session${count > 1 ? 's' : ''} active${count > 1 ? 's' : ''} sur votre compte.` : 'Chargement…'}
-        onBack={() => router.back()}
-      />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 4, paddingBottom: 22 }}>
-        {sessions === undefined ? (
-          [0, 1, 2].map((i) => (
-            <View key={i} style={{ marginBottom: 10, height: 80, borderRadius: 14, backgroundColor: t.surface2 }} />
-          ))
-        ) : sessions.length === 0 ? (
-          <View style={{ alignItems: 'center', padding: 40, gap: 10 }}>
-            <Icon name="shield" size={32} color={t.muted} />
-            <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>Aucune session active.</Text>
-          </View>
-        ) : (
-          sessions.map((s) => (
-            <View key={s.id} style={{
-              flexDirection: 'row', gap: 14, padding: 14,
-              backgroundColor: t.surface,
-              borderWidth: 1,
-              borderColor: t.border,
-              borderRadius: 14, marginBottom: 10,
-            }}>
-              <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: t.surface2, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="shield" size={18} color={t.ink2} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <Text style={{ fontSize: 13, color: t.ink, fontWeight: '600' }}>{s.device}</Text>
-                  {s.isCurrent ? (
-                    <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9999, backgroundColor: t.dark ? '#0A1F11' : idnTokens.greenSoft }}>
-                      <Text style={{ fontSize: 9, fontWeight: '600', color: idnTokens.green }}>CET APPAREIL</Text>
-                    </View>
-                  ) : null}
-                </View>
-                {s.ipAddress ? (
-                  <Text style={{ fontSize: 11, color: t.muted, marginTop: 3, fontFamily: idnTokens.mono }}>{s.ipAddress}</Text>
-                ) : null}
-                <Text style={{ fontSize: 11, color: t.muted, marginTop: 1 }}>{relative(s.createdAt)}</Text>
-                {!s.isCurrent ? (
-                  <Pressable onPress={() => handleRevoke(s)} style={{ marginTop: 8 }} disabled={revoking !== null}>
-                    <Text style={{ color: '#B83A3A', fontSize: 12, fontWeight: '500' }}>
-                      {revoking === s.id ? 'Révocation…' : 'Révoquer cette session'}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-          ))
-        )}
-        {error ? (
-          <View style={{ backgroundColor: t.dark ? '#3A1212' : '#FBE5E5', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-            <Text style={{ color: '#B83A3A', fontSize: 12, lineHeight: 17 }}>{error}</Text>
-          </View>
-        ) : null}
-        {others.length > 0 ? (
-          <Pressable onPress={handleRevokeAllOthers} style={{
-            padding: 14, backgroundColor: 'transparent',
-            borderWidth: 1, borderColor: t.border, borderRadius: 12,
-            alignItems: 'center',
-          }} disabled={revoking !== null}>
-            <Text style={{ color: '#B83A3A', fontWeight: '500', fontSize: 13 }}>
-              {revoking === 'all' ? 'Déconnexion…' : 'Déconnecter tous les autres appareils'}
-            </Text>
-          </Pressable>
-        ) : null}
-      </ScrollView>
-    </View>
+    <Screen
+      header={<AppBar title="Appareils et sessions" onBack={() => router.back()} />}
+      footer={others.length > 0 ? (
+        <IdnButton t={t} variant="dangerGhost" full onPress={handleRevokeAllOthers} loading={revoking === 'all'}>Déconnecter tous les autres appareils</IdnButton>
+      ) : undefined}
+    >
+      <Text style={{ marginTop: 16, fontSize: 14, lineHeight: 20, color: t.muted }}>
+        {sessions === undefined ? 'Chargement…' : `${named.length} session${named.length > 1 ? 's' : ''} active${named.length > 1 ? 's' : ''}. Déconnecte un appareil que tu ne reconnais pas.`}
+      </Text>
+      <Card style={{ marginTop: 16 }}>
+        {named.map((s) => (
+          <Row
+            key={s.id}
+            icon={icon(s.device)}
+            tone={s.isCurrent ? 'green' : 'neutral'}
+            title={s.device}
+            sub={[s.isCurrent ? 'Cet appareil' : relative(s.createdAt), s.ipAddress].filter(Boolean).join(' · ')}
+            right={s.isCurrent ? <Badge tone="green">Actif</Badge> : (
+              <Pressable onPress={() => handleRevoke(s)} disabled={revoking !== null} accessibilityRole="button" accessibilityLabel={`Déconnecter ${s.device}`} hitSlop={8}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: t.redText }}>{revoking === s.id ? '…' : 'Déconnecter'}</Text>
+              </Pressable>
+            )}
+          />
+        ))}
+      </Card>
+      <ErrorNote>{error}</ErrorNote>
+    </Screen>
   );
 }

@@ -1,12 +1,6 @@
 import React from "react"
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native"
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from "react-native";
+import { Text } from "@/design/text";
 import { Image } from "expo-image"
 import * as ImagePicker from "expo-image-picker"
 import { useRouter } from "expo-router"
@@ -92,11 +86,8 @@ export default function ProfileEdit() {
 
   async function choosePhoto() {
     setError(null)
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (!permission.granted) {
-      setError("Autorisez l’accès aux photos pour choisir une image de profil.")
-      return
-    }
+    // Le sélecteur système (PHPicker) ne demande pas d'accès à toute la
+    // photothèque : seule l'image choisie est transmise à l'app.
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
@@ -167,7 +158,7 @@ export default function ProfileEdit() {
       await updatePivot(normalizeProfileForm(form))
       Alert.alert(
         "Profil mis à jour",
-        "Vos informations ont bien été enregistrées.",
+        "Tes informations ont bien été enregistrées.",
       )
       router.back()
     } catch (caught) {
@@ -190,7 +181,7 @@ export default function ProfileEdit() {
       <NLargeHeader
         t={t}
         title="Modifier mon profil"
-        sub="Ces informations constituent votre identité pivot."
+        sub="Ton identité telle qu’elle figure sur tes documents officiels."
         onBack={() => router.back()}
       />
       <ScrollView
@@ -215,7 +206,7 @@ export default function ProfileEdit() {
             style={{
               width: 92,
               height: 92,
-              borderRadius: 24,
+              borderRadius: 9999,
               overflow: "hidden",
               backgroundColor: idnTokens.green,
               alignItems: "center",

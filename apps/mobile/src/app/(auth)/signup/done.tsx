@@ -1,118 +1,66 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from 'convex/react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from '@/design/text';
 import { useIdnTheme } from '@/design/theme';
-import { idnTokens } from '@/design/tokens';
 import { IdnButton } from '@/design/components/idn-button';
+import { Screen } from '@/design/components/screen';
+import { LevelBadge } from '@/design/components/badge';
+import { Note } from '@/design/components/list';
+import { IdnLottie } from '@/design/components/lottie';
+import { Icon } from '@/design/icons';
 import { api } from '@/lib/api';
+import { setLastAccount } from '@/lib/last-account';
 import { clearOnboarding } from '@/hooks/use-onboarding-state';
 import { setOnboardingDone } from '@/hooks/use-app-state';
 
-const IDN_DOMAIN = '@idn.ga';
-
+/** Compte créé (prototype « signup-done »). */
 export default function SignupDone() {
   const t = useIdnTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const user = useQuery(api.profile.getCurrentUser);
+  const pivot = user?.profile?.pivot;
+  const email = user?.email ?? '';
+  const level = (user?.profile?.loa ?? 1) as 1 | 2 | 3;
+
+  React.useEffect(() => {
+    if (email) void setLastAccount({ email, firstName: pivot?.firstName, lastName: pivot?.lastName });
+  }, [email, pivot?.firstName, pivot?.lastName]);
 
   async function finish(toKyc: boolean) {
     await Promise.all([setOnboardingDone(true), clearOnboarding()]);
-    router.replace(toKyc ? '/kyc/intro' : '/(tabs)/home');
+    router.replace('/(tabs)/home');
+    if (toKyc) router.push('/kyc/intro');
   }
 
-  const email = user?.email ?? '';
-  const handle = email.toLowerCase().endsWith(IDN_DOMAIN)
-    ? email.slice(0, -IDN_DOMAIN.length)
-    : email;
-  const pivot = user?.profile?.pivot;
-  const fullName = pivot ? `${pivot.firstName} ${pivot.lastName}` : '';
-  const firstName = pivot?.firstName ?? '';
-  const idnId = user?.profile?.idnId ?? '';
-  const phone = pivot?.phone ?? '';
-
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 30, paddingHorizontal: 22, paddingBottom: Math.max(insets.bottom, 22) }}>
-      <View style={{ alignItems: 'center' }}>
-        <View style={{ width: 60, height: 60, borderRadius: 9999, backgroundColor: idnTokens.green, alignItems: 'center', justifyContent: 'center' }}>
-          <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
-            <Path d="M5 12l5 5 9-11" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-        </View>
-      </View>
-
-      <View style={{ alignItems: 'center', marginTop: 16 }}>
-        <Text style={{ fontSize: idnTokens.text.headline, fontWeight: '700', color: t.ink, letterSpacing: -0.4 }}>
-          {firstName ? `Bienvenue, ${firstName}.` : 'Bienvenue.'}
+    <Screen
+      scroll={false}
+      footer={
+        <>
+          <IdnButton t={t} full onPress={() => void finish(false)}>Accéder à l’accueil</IdnButton>
+          <IdnButton t={t} variant="ghost" full onPress={() => void finish(true)}>Vérifier mon identité</IdnButton>
+        </>
+      }
+    >
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <IdnLottie name="success" size={128} label="Compte créé" />
+        <Text accessibilityRole="header" style={{ marginTop: 16, fontSize: 22, fontWeight: '600', color: t.ink, textAlign: 'center' }}>
+          {pivot?.firstName ? `Bienvenue, ${pivot.firstName}` : 'Bienvenue'}
         </Text>
-        <Text style={{ fontSize: idnTokens.text.callout, color: t.muted, marginTop: 10, lineHeight: 22, textAlign: 'center', maxWidth: 300 }}>
-          Votre identité numérique est active.
+        <Text style={{ marginTop: 6, fontSize: 14, lineHeight: 20, color: t.muted, textAlign: 'center' }}>
+          Ton compte IDN est créé. Ton adresse souveraine est active :
         </Text>
+        {email ? (
+          <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, backgroundColor: t.surface2 }}>
+            <Icon name="mail" size={16} color={t.ink2} />
+            <Text selectable style={{ fontFamily: t.mono, fontSize: 13, color: t.ink }}>{email}</Text>
+          </View>
+        ) : null}
+        <LevelBadge level={level} style={{ marginTop: 12, alignSelf: 'center' }} />
+        <Note center style={{ maxWidth: 320 }}>Vérifie ton identité pour passer au Niveau 2 et accéder aux démarches en ligne.</Note>
       </View>
-
-      {/* Carte IDN — adresse souveraine */}
-      <View
-        style={{
-          marginTop: 22,
-          backgroundColor: idnTokens.green,
-          padding: 20,
-          borderRadius: 16,
-          shadowColor: idnTokens.green,
-          shadowOpacity: 0.18,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 8 },
-        }}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', gap: 2, height: 3 }}>
-            <View style={{ width: 9, backgroundColor: '#3B9C58' }} />
-            <View style={{ width: 9, backgroundColor: '#FCD34D' }} />
-            <View style={{ width: 9, backgroundColor: '#2563EB' }} />
-          </View>
-          <Text style={{ color: '#fff', fontFamily: idnTokens.mono, fontSize: 9, letterSpacing: 1, opacity: 0.75 }}>
-            IDN ID · {idnId || '—'}
-          </Text>
-        </View>
-        <Text style={{ color: '#fff', marginTop: 22, fontSize: 9.5, letterSpacing: 1.3, fontWeight: '700', opacity: 0.75 }}>
-          VOTRE ADRESSE IDN
-        </Text>
-        <Text style={{ color: '#fff', fontFamily: idnTokens.mono, fontSize: 17, fontWeight: '600', marginTop: 6, letterSpacing: -0.3 }}>
-          {handle}
-          <Text style={{ color: '#fff', opacity: 0.85 }}>{IDN_DOMAIN}</Text>
-        </Text>
-        <View style={{ marginTop: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <View>
-            <Text style={{ color: '#fff', fontSize: 9, letterSpacing: 1, opacity: 0.6 }}>TITULAIRE</Text>
-            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '500', marginTop: 2 }}>{fullName || '—'}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.18)' }}>
-            <View style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: '#fff' }} />
-            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }}>Niveau 1</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Récap utile */}
-      <View style={{ marginTop: 18, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: t.surface, borderWidth: 1, borderColor: t.border, borderRadius: 12, gap: 12 }}>
-        {[
-          { l: 'Téléphone', v: phone || '—' },
-          { l: 'Code PIN', v: '••••••' },
-        ].map((r, i) => (
-          <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: idnTokens.text.footnote, color: t.muted }}>{r.l}</Text>
-            <Text style={{ fontSize: idnTokens.text.footnote, color: t.ink, fontFamily: idnTokens.mono, fontWeight: '500' }}>{r.v}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={{ flex: 1 }} />
-      <IdnButton t={t} variant="primary" size="lg" full onPress={() => finish(true)}>Vérifier mon identité · Niveau 2</IdnButton>
-      <Pressable style={{ alignItems: 'center', padding: 16 }} onPress={() => finish(false)}>
-        <Text style={{ color: t.muted, fontSize: idnTokens.text.callout, fontWeight: '600' }}>Continuer vers l’accueil</Text>
-      </Pressable>
-    </View>
+    </Screen>
   );
 }

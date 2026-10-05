@@ -1,495 +1,223 @@
-import React from "react"
-import { Alert, Pressable, ScrollView, Text, View } from "react-native"
-import { useRouter } from "expo-router"
-import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
+import React from 'react';
+import { Alert, Pressable, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAction, useConvexAuth, useMutation, useQuery } from 'convex/react';
+import { Text } from '@/design/text';
+import { useIdnTheme } from '@/design/theme';
+import { Icon } from '@/design/icons';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Stepper } from '@/design/components/stepper';
+import { IdnButton } from '@/design/components/idn-button';
+import { ErrorNote } from '@/design/components/list';
+import { NativeLiveKitRoom } from '@/components/native-livekit-room';
+import { Level3Intro } from '@/components/level3/intro';
+import { Level3Slots, slotSummary, type AvailableSlot } from '@/components/level3/slots';
+import { Level3Confirm } from '@/components/level3/confirm';
+import { Level3Waiting } from '@/components/level3/waiting';
+import { Level3Result } from '@/components/level3/result';
+import { api } from '@/lib/api';
+import { formatLevel3Time } from '@/lib/level3';
+import { level3Ref, level3View } from '@/lib/level3-view';
 
-import { NLargeHeader } from "@/components/chrome/large-header"
-import { NativeLiveKitRoom } from "@/components/native-livekit-room"
-import { IdnButton } from "@/design/components/idn-button"
-import { Icon } from "@/design/icons"
-import { useIdnTheme } from "@/design/theme"
-import { idnTokens } from "@/design/tokens"
-import { api } from "@/lib/api"
-import {
-  canJoinLevel3,
-  formatLevel3Appointment,
-  formatLevel3Time,
-  groupLevel3Slots,
-  LEVEL3_JOIN_EARLY_MS,
-} from "@/lib/level3"
-import type { Id } from "@repo/backend/convex/_generated/dataModel"
+type Credentials = { serverUrl: string; token: string; roomName: string };
 
-type Credentials = { serverUrl: string; token: string; roomName: string }
+const L3_STEPS = ['Créneau', 'Confirmation', 'Équipement', 'Entretien'];
 
+function errorMessage(err: unknown, fallback: string): string {
+  const data = (err as { data?: { message?: string } })?.data;
+  return data?.message ?? (err instanceof Error ? err.message : fallback);
+}
+
+/** Parcours Niveau 3 : présentation, créneau, confirmation, salle d'attente, visio, résultat. */
 export default function LevelThree() {
-  const t = useIdnTheme()
-  const router = useRouter()
-  const insets = useSafeAreaInsets()
-  const { isAuthenticated } = useConvexAuth()
-  const me = useQuery(api.profile.getCurrentUser, isAuthenticated ? {} : "skip")
-  const verification = useQuery(
-    api.level3.getMine,
-    isAuthenticated ? {} : "skip",
-  )
-  const shouldLoadSlots =
-    verification != null &&
-    (verification.status === "waiting_controller" ||
-      verification.status === "claimed")
-  const slots = useQuery(
-    api.level3.scheduling.listAvailable,
-    shouldLoadSlots ? {} : "skip",
-  )
-  const request = useMutation(api.verification.request)
-  const cancel = useMutation(api.level3.cancel)
-  const book = useMutation(api.level3.scheduling.book)
-  const issueJoinToken = useAction(api.level3.livekit.issueJoinToken)
-  const [pending, setPending] = React.useState<string | null>(null)
-  const [credentials, setCredentials] = React.useState<Credentials | null>(null)
-  const [showSlots, setShowSlots] = React.useState(false)
-  const [now, setNow] = React.useState(Date.now())
+  const t = useIdnTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { isAuthenticated } = useConvexAuth();
+  const q = isAuthenticated ? {} : 'skip';
+  const me = useQuery(api.profile.getCurrentUser, q);
+  const verification = useQuery(api.level3.getMine, q);
+  const request = useMutation(api.verification.request);
+  const cancel = useMutation(api.level3.cancel);
+  const book = useMutation(api.level3.scheduling.book);
+  const issueJoinToken = useAction(api.level3.livekit.issueJoinToken);
+
+  const [choosingSlot, setChoosingSlot] = React.useState(false);
+  const [selected, setSelected] = React.useState<AvailableSlot | null>(null);
+  const [pending, setPending] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [ready, setReady] = React.useState(false);
+  const [credentials, setCredentials] = React.useState<Credentials | null>(null);
+  const [callStart, setCallStart] = React.useState(0);
+  const [now, setNow] = React.useState(Date.now());
 
   React.useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000)
-    return () => clearInterval(timer)
-  }, [])
+    const timer = setInterval(() => setNow(Date.now()), credentials ? 1_000 : 15_000);
+    return () => clearInterval(timer);
+  }, [credentials]);
 
-  async function start() {
-    if ((me?.profile?.loa ?? 1) < 2) {
-      router.replace("/kyc/intro?target=3" as never)
-      return
-    }
-    setPending("start")
+  const loa = me?.profile?.loa ?? 1;
+  const view = me === undefined || verification === undefined ? null : level3View({ loa, verification, now, choosingSlot });
+  const slots = useQuery(api.level3.scheduling.listAvailable, view === 'slots' || view === 'intro' ? {} : 'skip');
+  const shortestMin = slots?.length ? Math.min(...slots.map((s) => Math.round((s.endsAt - s.startsAt) / 60_000))) : undefined;
+
+  async function run(key: string, fn: () => Promise<void>, fallback: string) {
+    setPending(key);
+    setError(null);
     try {
-      await request({ targetLoa: 3 })
-      setShowSlots(true)
-    } catch (caught) {
-      Alert.alert(
-        "Démarrage impossible",
-        caught instanceof Error ? caught.message : "Veuillez réessayer.",
-      )
+      await fn();
+    } catch (err) {
+      setError(errorMessage(err, fallback));
     } finally {
-      setPending(null)
+      setPending(null);
     }
   }
 
-  async function onBook(slotId: Id<"level3AppointmentSlot">) {
-    if (!verification) return
-    setPending(slotId)
-    try {
-      await book({ verificationId: verification._id, slotId })
-      setShowSlots(false)
-      Alert.alert(
-        "Rendez-vous confirmé",
-        "Un rappel vous sera envoyé la veille.",
-      )
-    } catch (caught) {
-      Alert.alert(
-        "Créneau indisponible",
-        caught instanceof Error
-          ? caught.message
-          : "Choisissez un autre créneau.",
-      )
-    } finally {
-      setPending(null)
-    }
-  }
+  const startRequest = () =>
+    run('start', async () => {
+      await request({ targetLoa: 3 });
+      setChoosingSlot(true);
+    }, 'Impossible d’ouvrir la demande.');
+
+  const bookSelected = () =>
+    run('book', async () => {
+      if (!verification || !selected) return;
+      await book({ verificationId: verification._id, slotId: selected._id });
+      setChoosingSlot(false);
+      setSelected(null);
+    }, 'Ce créneau n’est plus disponible.');
 
   function confirmCancel() {
-    if (!verification) return
-    Alert.alert(
-      "Annuler ce rendez-vous ?",
-      "Le créneau sera rendu disponible.",
-      [
-        { text: "Conserver", style: "cancel" },
-        {
-          text: "Annuler le rendez-vous",
-          style: "destructive",
-          onPress: () => void onCancel(),
-        },
-      ],
-    )
+    if (!verification) return;
+    Alert.alert('Annuler ta demande ?', 'Le créneau sera libéré. Tu pourras refaire une demande plus tard.', [
+      { text: 'Conserver', style: 'cancel' },
+      { text: 'Annuler la demande', style: 'destructive', onPress: () => void run('cancel', async () => { await cancel({ verificationId: verification._id }); }, 'Annulation impossible.') },
+    ]);
   }
 
-  async function onCancel() {
-    if (!verification) return
-    setPending("cancel")
-    try {
-      await cancel({ verificationId: verification._id })
-      setShowSlots(false)
-    } catch (caught) {
-      Alert.alert(
-        "Annulation impossible",
-        caught instanceof Error ? caught.message : "Veuillez réessayer.",
-      )
-    } finally {
-      setPending(null)
-    }
-  }
+  const addToCalendar = () =>
+    run('calendar', async () => {
+      if (!verification?.scheduledAt || !verification.scheduledEndAt) return;
+      // Éditeur d'évènement du système : l'utilisateur valide lui-même l'ajout.
+      // Chargé à la demande : le module natif n'est sollicité qu'à l'appui.
+      const Calendar = await import('expo-calendar');
+      await Calendar.createEventInCalendarAsync({
+        title: 'Entretien Niveau 3 · Identité Numérique',
+        startDate: new Date(verification.scheduledAt),
+        endDate: new Date(verification.scheduledEndAt),
+        notes: `Entretien vidéo dans l’application IDN${verification.controllerName ? ` avec ${verification.controllerName}` : ''}. Garde ta CNI à portée de main. Référence ${level3Ref(verification._id)}.`,
+        alarms: [{ relativeOffset: -15 }],
+      });
+    }, 'Impossible de préparer l’évènement.');
 
-  async function join() {
-    if (!verification) return
-    setPending("join")
-    try {
-      setCredentials(await issueJoinToken({ verificationId: verification._id }))
-    } catch (caught) {
-      Alert.alert(
-        "Connexion impossible",
-        caught instanceof Error ? caught.message : "Veuillez réessayer.",
-      )
-    } finally {
-      setPending(null)
-    }
-  }
+  const join = () =>
+    run('join', async () => {
+      if (!verification) return;
+      setCredentials(await issueJoinToken({ verificationId: verification._id }));
+      setCallStart(Date.now());
+    }, 'Connexion à l’entretien impossible.');
 
-  if (
-    credentials &&
-    verification &&
-    (verification.status === "claimed" ||
-      verification.status === "in_interview")
-  ) {
+  // ── Visio : plein écran sombre ───────────────────────────────────────────
+  if (credentials && verification && (verification.status === 'claimed' || verification.status === 'in_interview')) {
+    const elapsed = Math.max(0, Math.floor((now - callStart) / 1000));
+    const mmss = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
     return (
-      <View
-        style={{ flex: 1, backgroundColor: "#0B0D0B", paddingTop: insets.top }}
-      >
-        <View
-          style={{ padding: 14, flexDirection: "row", alignItems: "center" }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>
-              Entretien Niveau 3
-            </Text>
-            <Text
-              style={{
-                color: "rgba(255,255,255,0.62)",
-                fontSize: 11,
-                marginTop: 2,
-              }}
-            >
-              Avec {verification.controllerName ?? "le contrôleur IDN"}
-            </Text>
+      <View style={{ flex: 1, backgroundColor: '#0E110D', paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 12) }}>
+        <StatusBar style="light" />
+        <View style={{ paddingHorizontal: 20, paddingVertical: 12 }}>
+          <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Entretien Niveau 3</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <Icon name="lock" size={12} color="rgba(255,255,255,0.7)" />
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Chiffré · {mmss}</Text>
           </View>
-          <Pressable onPress={() => setCredentials(null)}>
-            <Text style={{ color: "#fff", fontSize: 13 }}>Fermer</Text>
-          </Pressable>
         </View>
         <NativeLiveKitRoom
           credentials={credentials}
+          controllerName={verification.controllerName}
           onLeave={() => setCredentials(null)}
-          onError={(message) => Alert.alert("Entretien vidéo", message)}
-        />
-        <Text
-          style={{
-            color: "rgba(255,255,255,0.65)",
-            fontSize: 11,
-            lineHeight: 16,
-            padding: 14,
-            paddingBottom: Math.max(insets.bottom, 14),
+          onError={(message) => {
+            // Une fin de salle (raccrocher, décision du contrôleur) n'est pas une erreur.
+            if (/disconnect/i.test(message)) return;
+            setCredentials(null);
+            setError(`L’entretien vidéo s’est interrompu : ${message}`);
           }}
-        >
-          Présentez votre pièce à la caméra. La vidéo n’est pas enregistrée.
-        </Text>
+        />
       </View>
-    )
+    );
   }
 
-  const status = verification?.status
-  const alreadyLevel3 = (me?.profile?.loa ?? 1) >= 3 || status === "approved"
-  const canStart =
-    !alreadyLevel3 &&
-    (!verification || status === "cancelled" || status === "rejected")
-  const hasAppointment = Boolean(
-    verification &&
-    (status === "claimed" || status === "in_interview") &&
-    verification.scheduledAt !== undefined,
-  )
-  const canJoin = Boolean(
-    hasAppointment &&
-    canJoinLevel3(verification?.scheduledAt, verification?.scheduledEndAt, now),
-  )
+  if (!view) return <Screen header={<AppBar title="Niveau 3 · Élevé" onBack={() => router.back()} />}>{null}</Screen>;
+
+  const back = () => (choosingSlot && verification?.scheduledAt ? setChoosingSlot(false) : router.back());
+  const stepIndex = view === 'slots' ? 0 : view === 'confirm' ? 1 : view === 'waiting' ? 2 : -1;
+  const title = view === 'slots' ? 'Choisir un créneau' : view === 'confirm' ? 'Rendez-vous' : view === 'waiting' ? 'Salle d’attente' : 'Niveau 3 · Élevé';
+  const joinOpensAt = verification?.joinOpensAt ?? (verification?.scheduledAt ? verification.scheduledAt - 15 * 60_000 : undefined);
+
+  let footer: React.ReactNode = null;
+  if (view === 'needs-level2') {
+    footer = <IdnButton t={t} full onPress={() => router.replace('/kyc/intro?target=3' as never)}>Vérifier d’abord mon identité</IdnButton>;
+  } else if (view === 'intro' || view === 'rejected') {
+    footer = <IdnButton t={t} full onPress={startRequest} loading={pending === 'start'}>{view === 'rejected' ? 'Refaire une demande' : 'Choisir un créneau'}</IdnButton>;
+  } else if (view === 'slots') {
+    footer = (
+      <>
+        {selected ? <Text style={{ textAlign: 'center', fontSize: 14, fontWeight: '600', color: t.ink }}>{slotSummary(selected)}</Text> : null}
+        <IdnButton t={t} full onPress={bookSelected} disabled={!selected} loading={pending === 'book'}>Réserver ce créneau</IdnButton>
+        {verification && !verification.scheduledAt ? (
+          <Pressable onPress={confirmCancel} accessibilityRole="button" style={{ alignSelf: 'center', padding: 6 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: t.redText }}>Annuler ma demande</Text>
+          </Pressable>
+        ) : null}
+      </>
+    );
+  } else if (view === 'confirm') {
+    footer = (
+      <>
+        <IdnButton t={t} full disabled>{joinOpensAt ? `Salle d’attente à partir de ${formatLevel3Time(joinOpensAt)}` : 'Rejoindre la salle d’attente'}</IdnButton>
+        <IdnButton t={t} variant="ghost" full onPress={() => setChoosingSlot(true)}>Modifier le créneau</IdnButton>
+      </>
+    );
+  } else if (view === 'waiting') {
+    footer = (
+      <IdnButton t={t} full onPress={join} disabled={!ready} loading={pending === 'join'} leadIcon={<Icon name="video" size={18} color="#fff" />}>
+        Entrer en visio
+      </IdnButton>
+    );
+  } else if (view === 'approved') {
+    footer = (
+      <>
+        <IdnButton t={t} full onPress={() => router.replace('/(tabs)/home')}>Retour à l’accueil</IdnButton>
+        <IdnButton t={t} variant="ghost" full onPress={() => router.replace('/id-card')}>Voir ma carte</IdnButton>
+      </>
+    );
+  }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader
-        t={t}
-        title="Niveau 3"
-        sub="Entretien vidéo avec un contrôleur habilité."
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 22,
-          paddingBottom: Math.max(insets.bottom, 24),
-          gap: 14,
-        }}
-      >
-        <View
-          style={{
-            backgroundColor: t.surface,
-            borderWidth: 1,
-            borderColor: t.border,
-            borderRadius: 16,
-            padding: 18,
-          }}
-        >
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 26,
-              backgroundColor: t.dark ? "#0F2A18" : idnTokens.greenSoft,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Icon name="shield" size={26} color={idnTokens.green} />
-          </View>
-          <Text
-            style={{
-              color: t.ink,
-              fontSize: 20,
-              fontWeight: "700",
-              marginTop: 16,
-            }}
-          >
-            Garantie d’identité élevée
-          </Text>
-          <Text
-            style={{
-              color: t.muted,
-              fontSize: 12,
-              lineHeight: 18,
-              marginTop: 7,
-            }}
-          >
-            Choisissez un créneau, puis présentez votre pièce d’identité en
-            vidéo. Votre niveau actuel reste actif pendant la procédure.
-          </Text>
-        </View>
-
-        {alreadyLevel3 ? (
-          <Panel
-            t={t}
-            title="Niveau 3 accordé"
-            body="Votre entretien a été validé. Votre profil bénéficie du niveau de garantie élevé."
-            color={idnTokens.green}
-          />
-        ) : null}
-        {status === "rejected" ? (
-          <Panel
-            t={t}
-            title="Demande non validée"
-            body={
-              verification?.rejectionReason ??
-              "Le contrôleur n’a pas pu valider cet entretien."
-            }
-            color="#B83A3A"
-          />
-        ) : null}
-
-        {status === "waiting_controller" && verification ? (
-          <Panel
-            t={t}
-            title="Choisissez votre rendez-vous"
-            body="Tous les horaires sont affichés à l’heure de Libreville."
-            color={idnTokens.blue}
-          >
-            <SlotPicker t={t} slots={slots} pending={pending} onBook={onBook} />
-            <IdnButton
-              t={t}
-              variant="quiet"
-              size="sm"
-              onPress={confirmCancel}
-              disabled={pending !== null}
-            >
-              Annuler la demande
-            </IdnButton>
-          </Panel>
-        ) : null}
-
-        {hasAppointment && verification?.scheduledAt !== undefined ? (
-          <Panel
-            t={t}
-            title="Votre entretien est planifié"
-            body={`${formatLevel3Appointment(verification.scheduledAt, verification.scheduledEndAt)}\nAvec ${verification.controllerName ?? "un contrôleur IDN"} · heure de Libreville`}
-            color={idnTokens.green}
-          >
-            <Text style={{ color: t.muted, fontSize: 12, lineHeight: 18 }}>
-              {canJoin
-                ? "La salle est ouverte. Préparez votre pièce, votre caméra et votre micro."
-                : `La salle ouvrira 15 minutes avant, à ${formatLevel3Time(verification.scheduledAt - LEVEL3_JOIN_EARLY_MS)}.`}
-            </Text>
-            <IdnButton
-              t={t}
-              size="md"
-              full
-              onPress={join}
-              disabled={!canJoin || pending !== null}
-            >
-              {pending === "join" ? "Connexion…" : "Rejoindre l’entretien"}
-            </IdnButton>
-            <IdnButton
-              t={t}
-              variant="ghost"
-              size="sm"
-              onPress={() => setShowSlots((value) => !value)}
-            >
-              {showSlots ? "Conserver ce créneau" : "Changer de créneau"}
-            </IdnButton>
-            <IdnButton t={t} variant="quiet" size="sm" onPress={confirmCancel}>
-              Annuler le rendez-vous
-            </IdnButton>
-            {showSlots ? (
-              <SlotPicker
-                t={t}
-                slots={slots}
-                pending={pending}
-                onBook={onBook}
-              />
-            ) : null}
-          </Panel>
-        ) : null}
-
-        {status === "claimed" && verification?.scheduledAt === undefined ? (
-          <Panel
-            t={t}
-            title="Le contrôleur vous attend"
-            body="Cet entretien peut être rejoint maintenant."
-            color={idnTokens.blue}
-          >
-            <IdnButton t={t} full onPress={join}>
-              Rejoindre l’entretien
-            </IdnButton>
-          </Panel>
-        ) : null}
-
-        {canStart ? (
-          <IdnButton
-            t={t}
-            size="lg"
-            full
-            onPress={start}
-            disabled={pending !== null}
-          >
-            {pending === "start"
-              ? "Création…"
-              : status === "rejected"
-                ? "Choisir un nouveau rendez-vous"
-                : "Planifier mon entretien"}
-          </IdnButton>
-        ) : null}
-      </ScrollView>
-    </View>
-  )
-}
-
-function Panel({
-  t,
-  title,
-  body,
-  color,
-  children,
-}: {
-  t: ReturnType<typeof useIdnTheme>
-  title: string
-  body: string
-  color: string
-  children?: React.ReactNode
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: t.surface,
-        borderWidth: 1,
-        borderColor: color,
-        borderRadius: 14,
-        padding: 16,
-        gap: 12,
-      }}
+    <Screen
+      header={<AppBar title={title} onBack={back} />}
+      subHeader={stepIndex >= 0 ? <Stepper steps={L3_STEPS} current={stepIndex} /> : undefined}
+      footer={footer}
     >
-      <Text style={{ color: t.ink, fontSize: 14, fontWeight: "700" }}>
-        {title}
-      </Text>
-      <Text style={{ color: t.muted, fontSize: 12, lineHeight: 18 }}>
-        {body}
-      </Text>
-      {children}
-    </View>
-  )
-}
-
-function SlotPicker({
-  t,
-  slots,
-  pending,
-  onBook,
-}: {
-  t: ReturnType<typeof useIdnTheme>
-  slots:
-    | undefined
-    | {
-        _id: Id<"level3AppointmentSlot">
-        startsAt: number
-        endsAt: number
-        controllerName: string
-      }[]
-  pending: string | null
-  onBook: (id: Id<"level3AppointmentSlot">) => Promise<void>
-}) {
-  if (slots === undefined)
-    return (
-      <Text style={{ color: t.muted, fontSize: 12 }}>
-        Chargement des créneaux…
-      </Text>
-    )
-  if (slots.length === 0)
-    return (
-      <Text style={{ color: t.muted, fontSize: 12 }}>
-        Aucun créneau disponible. Revenez un peu plus tard.
-      </Text>
-    )
-  return (
-    <View style={{ gap: 14 }}>
-      {groupLevel3Slots(slots).map(([date, daySlots]) => (
-        <View key={date} style={{ gap: 8 }}>
-          <Text
-            style={{
-              color: t.ink,
-              fontSize: 12,
-              fontWeight: "700",
-              textTransform: "capitalize",
-            }}
-          >
-            {date}
-          </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {daySlots.map((slot) => (
-              <Pressable
-                key={slot._id}
-                onPress={() => void onBook(slot._id)}
-                disabled={pending !== null}
-                style={{
-                  borderWidth: 1,
-                  borderColor: t.border,
-                  backgroundColor: t.surface2,
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 9,
-                }}
-              >
-                <Text style={{ color: t.ink, fontSize: 12, fontWeight: "600" }}>
-                  {pending === slot._id
-                    ? "…"
-                    : `${formatLevel3Time(slot.startsAt)} – ${formatLevel3Time(slot.endsAt)}`}
-                </Text>
-                <Text style={{ color: t.muted, fontSize: 9, marginTop: 2 }}>
-                  {slot.controllerName}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ))}
-    </View>
-  )
+      {view === 'intro' || view === 'needs-level2' ? <Level3Intro needsLevel2={view === 'needs-level2'} durationMin={shortestMin} /> : null}
+      {view === 'slots' ? <Level3Slots slots={slots} selected={selected} onSelect={setSelected} /> : null}
+      {view === 'confirm' && verification?.scheduledAt ? (
+        <>
+          <Level3Confirm scheduledAt={verification.scheduledAt} scheduledEndAt={verification.scheduledEndAt} controllerName={verification.controllerName} reference={level3Ref(verification._id)} />
+          <IdnButton t={t} variant="secondary" full style={{ marginTop: 16 }} onPress={addToCalendar} loading={pending === 'calendar'} leadIcon={<Icon name="calendarPlus" size={16} color={t.ink} />}>
+            Ajouter au calendrier
+          </IdnButton>
+          <Pressable onPress={confirmCancel} accessibilityRole="button" style={{ alignSelf: 'center', padding: 10, marginTop: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: t.redText }}>Annuler le rendez-vous</Text>
+          </Pressable>
+        </>
+      ) : null}
+      {view === 'waiting' ? <Level3Waiting onReadyChange={setReady} /> : null}
+      {view === 'approved' ? <Level3Result approved controllerName={verification?.controllerName} /> : null}
+      {view === 'rejected' ? <Level3Result approved={false} reason={verification?.rejectionReason} /> : null}
+      <ErrorNote>{error}</ErrorNote>
+    </Screen>
+  );
 }

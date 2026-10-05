@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIdnTheme } from '@/design/theme';
-import { idnTokens } from '@/design/tokens';
 import { IdnButton } from '@/design/components/idn-button';
 import { IdnInput } from '@/design/components/idn-input';
-import { Icon } from '@/design/icons';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { ErrorNote, ScreenTitle } from '@/design/components/list';
+import { OtpInput } from '@/design/components/otp-input';
 import { authClient } from '@/lib/auth-client';
 import { setOnboardingDone } from '@/hooks/use-app-state';
 
@@ -20,7 +20,6 @@ import { setOnboardingDone } from '@/hooks/use-app-state';
 export default function TwoFactorChallenge() {
   const t = useIdnTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<'totp' | 'backup'>('totp');
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -41,7 +40,7 @@ export default function TwoFactorChallenge() {
         setError(
           isBackup
             ? 'Code de secours invalide ou déjà utilisé.'
-            : 'Code incorrect. Vérifiez votre application d\'authentification.',
+            : 'Code incorrect. Vérifie ton application d’authentification.',
         );
         setCode('');
         setSubmitting(false);
@@ -50,7 +49,7 @@ export default function TwoFactorChallenge() {
       await setOnboardingDone(true);
       router.replace('/(tabs)/home');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Vérification impossible. Réessayez.');
+      setError(err instanceof Error ? err.message : 'Vérification impossible. Réessaie.');
       setCode('');
       setSubmitting(false);
     }
@@ -63,69 +62,32 @@ export default function TwoFactorChallenge() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 20 }}>
-      <Pressable
-        onPress={() => router.back()}
-        style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 26 }}
-      >
-        <Icon name="arrowL" size={20} color={idnTokens.green} />
-        <Text style={{ color: idnTokens.green, fontSize: idnTokens.text.callout, fontWeight: '600' }}>
-          Retour
-        </Text>
-      </Pressable>
-
-      <KeyboardAwareScrollView
-        contentContainerStyle={{ paddingHorizontal: 26, paddingBottom: 24, flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-        bottomOffset={20}
-      >
-        <View style={{ marginTop: 30 }}>
-          <Text style={{ fontSize: idnTokens.text.title, fontWeight: '700', color: t.ink, letterSpacing: -0.5 }}>
-            Vérification en deux étapes
-          </Text>
-          <Text style={{ fontSize: idnTokens.text.callout, color: t.muted, marginTop: 10, lineHeight: 22 }}>
-            {isBackup
-              ? 'Saisissez l\'un de vos codes de secours.'
-              : 'Saisissez le code à 6 chiffres de votre application d\'authentification.'}
-          </Text>
-        </View>
-
-        <View style={{ marginTop: 30 }}>
-          <IdnInput
-            t={t}
-            label={isBackup ? 'Code de secours' : 'Code à 6 chiffres'}
-            value={code}
-            onChangeText={(v) => setCode(isBackup ? v.trim() : v.replace(/\D/g, '').slice(0, 6))}
-            placeholder={isBackup ? 'xxxxxxxxxx' : '000000'}
-            type={isBackup ? 'text' : 'number'}
-            autoFocus
-          />
-        </View>
-
-        {error ? (
-          <View
-            style={{
-              marginTop: 14,
-              backgroundColor: t.dark ? '#3A1212' : '#FBE5E5',
-              borderRadius: 12,
-              padding: 14,
-            }}
-          >
-            <Text style={{ color: idnTokens.danger, fontSize: idnTokens.text.footnote, lineHeight: 19 }}>{error}</Text>
-          </View>
-        ) : null}
-
-        <View style={{ marginTop: 24, gap: 12 }}>
-          <IdnButton t={t} variant="primary" size="lg" full onPress={submit} disabled={!canSubmit || submitting}>
-            {submitting ? 'Vérification…' : 'Vérifier'}
+    <Screen
+      keyboard
+      header={<AppBar title="Double authentification" onBack={() => router.back()} />}
+      footer={
+        <>
+          <IdnButton t={t} full onPress={submit} disabled={!canSubmit} loading={submitting}>Vérifier</IdnButton>
+          <IdnButton t={t} variant="ghost" full onPress={switchMode}>
+            {isBackup ? 'Utiliser mon application d’authentification' : 'Utiliser un code de secours'}
           </IdnButton>
-          <Pressable onPress={switchMode} hitSlop={8} style={{ alignSelf: 'center', paddingVertical: 8 }}>
-            <Text style={{ color: idnTokens.green, fontSize: idnTokens.text.footnote, fontWeight: '600' }}>
-              {isBackup ? 'Utiliser un code d\'application' : 'Utiliser un code de secours'}
-            </Text>
-          </Pressable>
-        </View>
-      </KeyboardAwareScrollView>
-    </View>
+        </>
+      }
+    >
+      <ScreenTitle
+        title={isBackup ? 'Code de secours' : 'Code de ton application'}
+        lead={isBackup
+          ? 'Saisis l’un des codes de secours que tu as conservés lors de l’activation.'
+          : 'Ouvre ton application d’authentification et saisis le code à 6 chiffres affiché pour IDN.'}
+      />
+      <View style={{ marginTop: 24 }}>
+        {isBackup ? (
+          <IdnInput t={t} label="Code de secours" value={code} onChangeText={setCode} autoCapitalize="none" mono autoFocus />
+        ) : (
+          <OtpInput value={code} onChange={(v) => { setError(null); setCode(v); }} autoFocus error={!!error} />
+        )}
+      </View>
+      <ErrorNote>{error}</ErrorNote>
+    </Screen>
   );
 }

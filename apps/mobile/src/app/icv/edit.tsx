@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Switch, View } from 'react-native';
+import { Text } from '@/design/text';
 import { useMutation, useQuery } from 'convex/react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '@/lib/api';
 import type { Id } from '@repo/backend/convex/_generated/dataModel';
 import type { FunctionReturnType } from 'convex/server';
-import { Icon } from '@/design/icons';
-import { idnTokens } from '@/design/tokens';
 import { useIdnTheme } from '@/design/theme';
-import { NLargeHeader } from '@/components/chrome/large-header';
+import { AppBar, IconButton } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Card, ErrorNote, Row, SectionTitle } from '@/design/components/list';
 import { IdnButton } from '@/design/components/idn-button';
-import { icvStrings, LANG_LEVELS, SKILL_LEVELS } from '@/data/cv';
-import { AiResultCard } from '@/components/cv/ai-result-card';
+import { LANG_LEVELS, SKILL_LEVELS } from '@/data/cv';
+import { CvChips, CvField, CvLoading } from '@/components/cv/cv-ui';
 
 type SectionKind = 'info' | 'experience' | 'education' | 'skill' | 'language' | 'hobby';
 const VALID_SECTIONS: SectionKind[] = [
@@ -27,6 +27,16 @@ const VALID_SECTIONS: SectionKind[] = [
 
 type CvFull = NonNullable<FunctionReturnType<typeof api.cv.profile.get>>;
 
+/**
+ * Cadre d'écran fourni par l'éditeur à chaque formulaire : le formulaire
+ * garde son état et ses actions, l'éditeur fournit la barre et la liste.
+ * C'est une fonction (et non un composant) pour ne pas remonter le
+ * formulaire à chaque mise à jour réactive du CV.
+ */
+type Frame = (children: React.ReactNode, footer: React.ReactNode) => React.ReactElement;
+
+const SAVE_FAILED = 'L’enregistrement a échoué. Réessaie dans un instant.';
+
 export default function ICVEdit() {
   const t = useIdnTheme();
   const params = useLocalSearchParams<{ section?: string; cv?: string; id?: string }>();
@@ -37,12 +47,12 @@ export default function ICVEdit() {
 
   if (!section || !VALID_SECTIONS.includes(section) || !cvParam) {
     return (
-      <View style={{ flex: 1, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <Text style={{ color: t.muted }}>Paramètres invalides.</Text>
-        <Pressable onPress={() => router.back()} style={{ marginTop: 12 }}>
-          <Text style={{ color: idnTokens.green, fontWeight: '600' }}>Retour</Text>
-        </Pressable>
-      </View>
+      <Screen
+        header={<AppBar title="iCV" onBack={() => router.back()} />}
+        footer={<IdnButton t={t} full variant="ghost" onPress={() => router.back()}>Retour</IdnButton>}
+      >
+        <ErrorNote>Cette rubrique est introuvable. Reviens à ton CV et réessaie.</ErrorNote>
+      </Screen>
     );
   }
 
@@ -58,23 +68,17 @@ function Editor({
   cvId: Id<'citizenCv'>;
   entryId: string | null;
 }) {
-  const t = useIdnTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const cv = useQuery(api.cv.profile.get, { cvId });
 
   if (cv === undefined) {
-    return (
-      <View style={{ flex: 1, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={idnTokens.green} />
-      </View>
-    );
+    return <CvLoading title="iCV" onBack={() => router.back()} />;
   }
   if (cv === null) {
     return (
-      <View style={{ flex: 1, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <Text style={{ color: t.muted }}>{icvStrings.errors.loadFailed}</Text>
-      </View>
+      <Screen header={<AppBar title="iCV" onBack={() => router.back()} />}>
+        <ErrorNote>Impossible de charger ce CV.</ErrorNote>
+      </Screen>
     );
   }
 
@@ -84,69 +88,28 @@ function Editor({
     && sectionItems(cv, section).length > 0;
   const title = showList ? listTitleFor(section) : computeTitle(section, isEditing);
 
-  return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader
-        t={t}
-        title={title}
-        sub={icvStrings.editor.eyebrow}
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 18,
-          paddingBottom: insets.bottom + 32,
-          gap: 14,
-        }}
-      >
-        {showList ? <SectionList section={section} cv={cv} cvId={cvId} /> : null}
-        {showList ? (
-          <Text
-            style={{
-              fontSize: 10,
-              fontWeight: '700',
-              letterSpacing: 1.4,
-              color: t.muted,
-              marginTop: 4,
-            }}
-          >
-            {addTitleFor(section).toUpperCase()}
-          </Text>
-        ) : null}
-
-        {section === 'info' && <InfoForm cv={cv} onDone={() => router.back()} />}
-        {section === 'experience' && (
-          <ExperienceForm
-            cvId={cvId}
-            entry={findEntry(cv.experiences, entryId)}
-            onDone={() => router.back()}
-          />
-        )}
-        {section === 'education' && (
-          <EducationForm
-            cvId={cvId}
-            entry={findEntry(cv.education, entryId)}
-            onDone={() => router.back()}
-          />
-        )}
-        {section === 'skill' && (
-          <SkillForm
-            cvId={cvId}
-            entry={findEntry(cv.skills, entryId)}
-            onDone={() => router.back()}
-          />
-        )}
-        {section === 'language' && (
-          <LanguageForm
-            cvId={cvId}
-            entry={findEntry(cv.languages, entryId)}
-            onDone={() => router.back()}
-          />
-        )}
-        {section === 'hobby' && <HobbyForm cv={cv} cvId={cvId} onDone={() => router.back()} />}
-      </ScrollView>
-    </View>
+  const frame: Frame = (children, footer) => (
+    <Screen keyboard header={<AppBar title={title} onBack={() => router.back()} />} footer={footer}>
+      {showList ? <SectionList section={section} cv={cv} cvId={cvId} /> : null}
+      {showList ? <SectionTitle>{addTitleFor(section)}</SectionTitle> : null}
+      {children}
+    </Screen>
   );
+
+  if (section === 'info') return <InfoForm cv={cv} onDone={() => router.back()} frame={frame} />;
+  if (section === 'experience') {
+    return <ExperienceForm cvId={cvId} entry={findEntry(cv.experiences, entryId)} onDone={() => router.back()} frame={frame} />;
+  }
+  if (section === 'education') {
+    return <EducationForm cvId={cvId} entry={findEntry(cv.education, entryId)} onDone={() => router.back()} frame={frame} />;
+  }
+  if (section === 'skill') {
+    return <SkillForm cvId={cvId} entry={findEntry(cv.skills, entryId)} onDone={() => router.back()} frame={frame} />;
+  }
+  if (section === 'language') {
+    return <LanguageForm cvId={cvId} entry={findEntry(cv.languages, entryId)} onDone={() => router.back()} frame={frame} />;
+  }
+  return <HobbyForm cv={cv} cvId={cvId} onDone={() => router.back()} frame={frame} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -164,10 +127,10 @@ function sectionItems(cv: CvFull, section: SectionKind): SectionEntry[] {
 }
 
 function listTitleFor(section: SectionKind): string {
-  if (section === 'experience') return 'Mes expériences';
-  if (section === 'education') return 'Mes formations';
-  if (section === 'skill') return 'Mes compétences';
-  if (section === 'language') return 'Mes langues';
+  if (section === 'experience') return 'Tes expériences';
+  if (section === 'education') return 'Tes formations';
+  if (section === 'skill') return 'Tes compétences';
+  if (section === 'language') return 'Tes langues';
   return '';
 }
 
@@ -204,7 +167,7 @@ function SectionList({
           try {
             await exec();
           } catch (e) {
-            Alert.alert('Erreur', (e as Error).message ?? icvStrings.errors.saveFailed);
+            Alert.alert('Suppression impossible', (e as Error).message || SAVE_FAILED);
           }
         },
       },
@@ -216,15 +179,13 @@ function SectionList({
   }
 
   return (
-    <View style={{ gap: 8 }}>
+    <Card style={{ marginTop: 16 }}>
       {section === 'experience' &&
         cv.experiences.map((e) => (
-          <Row
+          <EntryRow
             key={e.id}
-            primary={e.title || '(sans titre)'}
-            secondary={[e.company, formatRange(e.startDate, e.endDate, e.current)]
-              .filter(Boolean)
-              .join(' · ')}
+            primary={e.title || 'Poste sans intitulé'}
+            secondary={[e.company, formatRange(e.startDate, e.endDate, e.current)].filter(Boolean).join(' · ')}
             onPress={() => rowPress(e.id)}
             onDelete={() =>
               confirmDelete('cette expérience', async () => {
@@ -235,9 +196,9 @@ function SectionList({
         ))}
       {section === 'education' &&
         cv.education.map((e) => (
-          <Row
+          <EntryRow
             key={e.id}
-            primary={e.degree || '(sans diplôme)'}
+            primary={e.degree || 'Diplôme sans intitulé'}
             secondary={[e.school, e.year].filter(Boolean).join(' · ')}
             onPress={() => rowPress(e.id)}
             onDelete={() =>
@@ -249,7 +210,7 @@ function SectionList({
         ))}
       {section === 'skill' &&
         cv.skills.map((e) => (
-          <Row
+          <EntryRow
             key={e.id}
             primary={e.name}
             secondary={e.level}
@@ -263,7 +224,7 @@ function SectionList({
         ))}
       {section === 'language' &&
         cv.languages.map((e) => (
-          <Row
+          <EntryRow
             key={e.id}
             primary={e.name}
             secondary={e.level}
@@ -275,11 +236,11 @@ function SectionList({
             }
           />
         ))}
-    </View>
+    </Card>
   );
 }
 
-function Row({
+function EntryRow({
   primary,
   secondary,
   onPress,
@@ -292,71 +253,29 @@ function Row({
 }) {
   const t = useIdnTheme();
   return (
-    <Pressable
+    <Row
+      title={primary}
+      sub={secondary || undefined}
       onPress={onPress}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        backgroundColor: t.surface,
-        borderWidth: 1,
-        borderColor: t.border,
-        borderRadius: 12,
-        padding: 12,
-      }}
-    >
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>
-          {primary}
-        </Text>
-        {secondary ? (
-          <Text numberOfLines={1} style={{ fontSize: 12, color: t.muted, marginTop: 2 }}>
-            {secondary}
-          </Text>
-        ) : null}
-      </View>
-      <Pressable
-        onPress={onDelete}
-        hitSlop={8}
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 9999,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Icon name="trash" size={16} color="#dc2626" />
-      </Pressable>
-    </Pressable>
+      accessibilityLabel={`Modifier ${primary}`}
+      right={<IconButton icon="trash" label={`Supprimer ${primary}`} onPress={onDelete} plain color={t.redText} />}
+    />
   );
 }
 
 function formatRange(start: string, end: string | undefined, current: boolean): string {
-  if (current) return `${start} → Aujourd'hui`;
+  if (current) return `${start} → aujourd’hui`;
   if (!end) return start;
   return `${start} → ${end}`;
 }
 
 function computeTitle(s: SectionKind, editing: boolean): string {
-  if (s === 'info') return icvStrings.editor.sections.info;
-  if (s === 'experience')
-    return editing
-      ? icvStrings.editor.sections.experienceEdit
-      : icvStrings.editor.sections.experienceAdd;
-  if (s === 'education')
-    return editing
-      ? icvStrings.editor.sections.educationEdit
-      : icvStrings.editor.sections.educationAdd;
-  if (s === 'skill')
-    return editing
-      ? icvStrings.editor.sections.skillEdit
-      : icvStrings.editor.sections.skillAdd;
-  if (s === 'language')
-    return editing
-      ? icvStrings.editor.sections.languageEdit
-      : icvStrings.editor.sections.languageAdd;
-  return "Centres d'intérêt";
+  if (s === 'info') return 'Tes informations';
+  if (s === 'experience') return editing ? 'Modifier l’expérience' : 'Ajouter une expérience';
+  if (s === 'education') return editing ? 'Modifier la formation' : 'Ajouter une formation';
+  if (s === 'skill') return editing ? 'Modifier la compétence' : 'Ajouter une compétence';
+  if (s === 'language') return editing ? 'Modifier la langue' : 'Ajouter une langue';
+  return 'Centres d’intérêt';
 }
 
 function findEntry<T extends { id: string }>(arr: T[], id: string | null): T | null {
@@ -368,7 +287,7 @@ function findEntry<T extends { id: string }>(arr: T[], id: string | null): T | n
 // INFO
 // ─────────────────────────────────────────────────────────────────────────
 
-function InfoForm({ cv, onDone }: { cv: CvFull; onDone: () => void }) {
+function InfoForm({ cv, onDone, frame }: { cv: CvFull; onDone: () => void; frame: Frame }) {
   const upsert = useMutation(api.cv.profile.upsert);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
@@ -401,52 +320,53 @@ function InfoForm({ cv, onDone }: { cv: CvFull; onDone: () => void }) {
       });
       onDone();
     } catch (e) {
-      Alert.alert('Erreur', (e as Error).message ?? icvStrings.errors.saveFailed);
+      Alert.alert('Enregistrement impossible', (e as Error).message || SAVE_FAILED);
     } finally {
       setBusy(false);
     }
   }
 
-  return (
+  return frame(
     <>
-      <FormField label={icvStrings.editor.fields.firstName} value={form.firstName} onChange={(v) => setForm({ ...form, firstName: v })} />
-      <FormField label={icvStrings.editor.fields.lastName} value={form.lastName} onChange={(v) => setForm({ ...form, lastName: v })} />
-      <FormField label={icvStrings.editor.fields.email} value={form.email} onChange={(v) => setForm({ ...form, email: v })} keyboardType="email-address" />
-      <FormField label={icvStrings.editor.fields.phone} value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" />
-      <FormField label={icvStrings.editor.fields.address} value={form.address} onChange={(v) => setForm({ ...form, address: v })} />
-      <FormField
-        label={icvStrings.editor.fields.summary}
-        hint={icvStrings.editor.fields.summaryHint}
+      <CvField label="Prénom" value={form.firstName} onChange={(v) => setForm({ ...form, firstName: v })} autoCapitalize="words" />
+      <CvField label="Nom" value={form.lastName} onChange={(v) => setForm({ ...form, lastName: v })} autoCapitalize="words" />
+      <CvField label="E-mail" value={form.email} onChange={(v) => setForm({ ...form, email: v })} keyboardType="email-address" autoCapitalize="none" />
+      <CvField label="Téléphone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" />
+      <CvField label="Adresse" value={form.address} onChange={(v) => setForm({ ...form, address: v })} />
+      <CvField
+        label="Résumé professionnel"
+        hint="Entre 50 et 300 caractères pour un score optimal."
         value={form.summary}
         onChange={(v) => setForm({ ...form, summary: v })}
         multiline
       />
-      <FormField label={icvStrings.editor.fields.linkedinUrl} value={form.linkedinUrl} onChange={(v) => setForm({ ...form, linkedinUrl: v })} keyboardType="url" />
-      <FormField label={icvStrings.editor.fields.portfolioUrl} value={form.portfolioUrl} onChange={(v) => setForm({ ...form, portfolioUrl: v })} keyboardType="url" />
-      <SaveBar onCancel={onDone} onSave={save} busy={busy} />
-    </>
+      <CvField label="LinkedIn (adresse du profil)" value={form.linkedinUrl} onChange={(v) => setForm({ ...form, linkedinUrl: v })} keyboardType="url" autoCapitalize="none" />
+      <CvField label="Portfolio (adresse du site)" value={form.portfolioUrl} onChange={(v) => setForm({ ...form, portfolioUrl: v })} keyboardType="url" autoCapitalize="none" />
+    </>,
+    <SaveBar onSave={save} busy={busy} />,
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// EXPERIENCE (avec bouton IA)
+// EXPERIENCE
 // ─────────────────────────────────────────────────────────────────────────
 
 function ExperienceForm({
   cvId,
   entry,
   onDone,
+  frame,
 }: {
   cvId: Id<'citizenCv'>;
   entry: CvFull['experiences'][number] | null;
   onDone: () => void;
+  frame: Frame;
 }) {
   const t = useIdnTheme();
   const add = useMutation(api.cv.experiences.add);
   const update = useMutation(api.cv.experiences.update);
   const remove = useMutation(api.cv.experiences.remove);
   const [busy, setBusy] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
   const [form, setForm] = useState({
     title: entry?.title ?? '',
     company: entry?.company ?? '',
@@ -475,7 +395,7 @@ function ExperienceForm({
       }
       onDone();
     } catch (e) {
-      Alert.alert('Erreur', (e as Error).message ?? icvStrings.errors.saveFailed);
+      Alert.alert('Enregistrement impossible', (e as Error).message || SAVE_FAILED);
     } finally {
       setBusy(false);
     }
@@ -497,7 +417,7 @@ function ExperienceForm({
               await remove({ cvId, id: entry.id });
               onDone();
             } catch (e) {
-              Alert.alert('Erreur', (e as Error).message ?? icvStrings.errors.saveFailed);
+              Alert.alert('Suppression impossible', (e as Error).message || SAVE_FAILED);
             } finally {
               setBusy(false);
             }
@@ -507,72 +427,34 @@ function ExperienceForm({
     );
   }
 
-  return (
+  return frame(
     <>
-      <FormField label={icvStrings.editor.fields.title} value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="ex. Chef de Projet Digital" />
-      <FormField label={icvStrings.editor.fields.company} value={form.company} onChange={(v) => setForm({ ...form, company: v })} />
+      <CvField label="Intitulé du poste" value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="Par exemple : Chef de projet numérique" />
+      <CvField label="Entreprise ou organisme" value={form.company} onChange={(v) => setForm({ ...form, company: v })} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <FormField label={icvStrings.editor.fields.startDate} value={form.startDate} onChange={(v) => setForm({ ...form, startDate: v })} placeholder="01/2022" />
+          <CvField label="Début" value={form.startDate} onChange={(v) => setForm({ ...form, startDate: v })} placeholder="01/2022" keyboardType="numbers-and-punctuation" />
         </View>
         <View style={{ flex: 1 }}>
-          <FormField label={icvStrings.editor.fields.endDate} value={form.endDate} onChange={(v) => setForm({ ...form, endDate: v })} placeholder={form.current ? '—' : '—'} editable={!form.current} />
+          <CvField label="Fin" value={form.current ? '' : form.endDate} onChange={(v) => setForm({ ...form, endDate: v })} placeholder={form.current ? 'En cours' : '06/2024'} editable={!form.current} keyboardType="numbers-and-punctuation" />
         </View>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Switch value={form.current} onValueChange={(v) => setForm({ ...form, current: v })} />
-        <Text style={{ color: t.ink, fontSize: 14 }}>{icvStrings.editor.fields.current}</Text>
-      </View>
-
-      <View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-          <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: t.ink }}>
-            {icvStrings.editor.fields.description}
-          </Text>
-          <Pressable
-            onPress={() => setAiOpen(true)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              paddingHorizontal: 10,
-              paddingVertical: 5,
-              borderRadius: 9999,
-              backgroundColor: t.dark ? '#0F2818' : '#DCFCE7',
-            }}
-          >
-            <Icon name="sparkles" size={12} color={idnTokens.green} />
-            <Text style={{ fontSize: 11, fontWeight: '700', color: idnTokens.green }}>
-              {icvStrings.editor.aiImprove}
-            </Text>
-          </Pressable>
-        </View>
-        <TextInput
-          value={form.description}
-          onChangeText={(v) => setForm({ ...form, description: v })}
-          multiline
-          numberOfLines={5}
-          style={{
-            backgroundColor: t.surface,
-            borderWidth: 1,
-            borderColor: t.border,
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            color: t.ink,
-            fontSize: 14,
-            minHeight: 100,
-            textAlignVertical: 'top',
-          }}
+      <Card style={{ marginTop: 16 }}>
+        <Row
+          title="J’occupe ce poste actuellement"
+          right={
+            <Switch
+              value={form.current}
+              onValueChange={(v) => setForm({ ...form, current: v })}
+              trackColor={{ true: t.green, false: t.border }}
+              accessibilityLabel="J’occupe ce poste actuellement"
+            />
+          }
         />
-      </View>
-
-      {aiOpen ? (
-        <AiResultCard cvId={cvId} feature="improve_summary" onClose={() => setAiOpen(false)} />
-      ) : null}
-
-      <SaveBar onCancel={onDone} onSave={save} onDelete={entry ? handleDelete : undefined} busy={busy} />
-    </>
+      </Card>
+      <CvField label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} multiline minHeight={120} hint="Tes missions et tes résultats, en quelques lignes." />
+    </>,
+    <SaveBar onSave={save} onDelete={entry ? handleDelete : undefined} busy={busy} />,
   );
 }
 
@@ -584,10 +466,12 @@ function EducationForm({
   cvId,
   entry,
   onDone,
+  frame,
 }: {
   cvId: Id<'citizenCv'>;
   entry: CvFull['education'][number] | null;
   onDone: () => void;
+  frame: Frame;
 }) {
   const add = useMutation(api.cv.education.add);
   const update = useMutation(api.cv.education.update);
@@ -614,7 +498,7 @@ function EducationForm({
       else await add({ cvId, data });
       onDone();
     } catch (e) {
-      Alert.alert('Erreur', (e as Error).message ?? icvStrings.errors.saveFailed);
+      Alert.alert('Enregistrement impossible', (e as Error).message || SAVE_FAILED);
     } finally {
       setBusy(false);
     }
@@ -635,14 +519,14 @@ function EducationForm({
     ]);
   }
 
-  return (
+  return frame(
     <>
-      <FormField label={icvStrings.editor.fields.degree} value={form.degree} onChange={(v) => setForm({ ...form, degree: v })} />
-      <FormField label={icvStrings.editor.fields.school} value={form.school} onChange={(v) => setForm({ ...form, school: v })} />
-      <FormField label={icvStrings.editor.fields.year} value={form.year} onChange={(v) => setForm({ ...form, year: v })} placeholder="2024" />
-      <FormField label="Description (optionnel)" value={form.description} onChange={(v) => setForm({ ...form, description: v })} multiline />
-      <SaveBar onCancel={onDone} onSave={save} onDelete={entry ? handleDelete : undefined} busy={busy} />
-    </>
+      <CvField label="Diplôme" value={form.degree} onChange={(v) => setForm({ ...form, degree: v })} placeholder="Par exemple : Master en droit des affaires" />
+      <CvField label="Établissement" value={form.school} onChange={(v) => setForm({ ...form, school: v })} />
+      <CvField label="Année d’obtention" value={form.year} onChange={(v) => setForm({ ...form, year: v })} placeholder="2024" keyboardType="number-pad" />
+      <CvField label="Description (facultatif)" value={form.description} onChange={(v) => setForm({ ...form, description: v })} multiline />
+    </>,
+    <SaveBar onSave={save} onDelete={entry ? handleDelete : undefined} busy={busy} />,
   );
 }
 
@@ -654,10 +538,12 @@ function SkillForm({
   cvId,
   entry,
   onDone,
+  frame,
 }: {
   cvId: Id<'citizenCv'>;
   entry: CvFull['skills'][number] | null;
   onDone: () => void;
+  frame: Frame;
 }) {
   const add = useMutation(api.cv.skills.add);
   const update = useMutation(api.cv.skills.update);
@@ -676,7 +562,7 @@ function SkillForm({
       else await add({ cvId, data: form });
       onDone();
     } catch (e) {
-      Alert.alert('Erreur', (e as Error).message ?? icvStrings.errors.saveFailed);
+      Alert.alert('Enregistrement impossible', (e as Error).message || SAVE_FAILED);
     } finally {
       setBusy(false);
     }
@@ -697,17 +583,17 @@ function SkillForm({
     ]);
   }
 
-  return (
+  return frame(
     <>
-      <FormField label={icvStrings.editor.fields.skillName} value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="ex. TypeScript" />
-      <ChipPicker
-        label={icvStrings.editor.fields.skillLevel}
+      <CvField label="Compétence" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Par exemple : Gestion de projet" />
+      <LevelPicker
+        label="Niveau"
         value={form.level}
         options={[...SKILL_LEVELS]}
         onChange={(v) => setForm({ ...form, level: v as (typeof SKILL_LEVELS)[number] })}
       />
-      <SaveBar onCancel={onDone} onSave={save} onDelete={entry ? handleDelete : undefined} busy={busy} />
-    </>
+    </>,
+    <SaveBar onSave={save} onDelete={entry ? handleDelete : undefined} busy={busy} />,
   );
 }
 
@@ -719,10 +605,12 @@ function LanguageForm({
   cvId,
   entry,
   onDone,
+  frame,
 }: {
   cvId: Id<'citizenCv'>;
   entry: CvFull['languages'][number] | null;
   onDone: () => void;
+  frame: Frame;
 }) {
   const add = useMutation(api.cv.languages.add);
   const update = useMutation(api.cv.languages.update);
@@ -741,7 +629,7 @@ function LanguageForm({
       else await add({ cvId, data: form });
       onDone();
     } catch (e) {
-      Alert.alert('Erreur', (e as Error).message ?? icvStrings.errors.saveFailed);
+      Alert.alert('Enregistrement impossible', (e as Error).message || SAVE_FAILED);
     } finally {
       setBusy(false);
     }
@@ -762,17 +650,18 @@ function LanguageForm({
     ]);
   }
 
-  return (
+  return frame(
     <>
-      <FormField label={icvStrings.editor.fields.languageName} value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="ex. Anglais" />
-      <ChipPicker
-        label={icvStrings.editor.fields.languageLevel}
+      <CvField label="Langue" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Par exemple : Anglais" />
+      <LevelPicker
+        label="Niveau"
+        hint="Cadre européen : de A1 (débutant) à C2 (maîtrise)."
         value={form.level}
         options={[...LANG_LEVELS]}
         onChange={(v) => setForm({ ...form, level: v as (typeof LANG_LEVELS)[number] })}
       />
-      <SaveBar onCancel={onDone} onSave={save} onDelete={entry ? handleDelete : undefined} busy={busy} />
-    </>
+    </>,
+    <SaveBar onSave={save} onDelete={entry ? handleDelete : undefined} busy={busy} />,
   );
 }
 
@@ -784,10 +673,12 @@ function HobbyForm({
   cv,
   cvId,
   onDone,
+  frame,
 }: {
   cv: CvFull;
   cvId: Id<'citizenCv'>;
   onDone: () => void;
+  frame: Frame;
 }) {
   const upsert = useMutation(api.cv.profile.upsert);
   const [busy, setBusy] = useState(false);
@@ -804,24 +695,23 @@ function HobbyForm({
       await upsert({ cvId, patch: { hobbies } });
       onDone();
     } catch (e) {
-      Alert.alert('Erreur', (e as Error).message ?? icvStrings.errors.saveFailed);
+      Alert.alert('Enregistrement impossible', (e as Error).message || SAVE_FAILED);
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <>
-      <FormField
-        label="Vos centres d'intérêt"
-        hint="Un par ligne (ex. Photographie, Course à pied, Échecs)"
-        value={value}
-        onChange={setValue}
-        multiline
-        placeholder={'Photographie\nCourse à pied\nÉchecs'}
-      />
-      <SaveBar onCancel={onDone} onSave={save} busy={busy} />
-    </>
+  return frame(
+    <CvField
+      label="Tes centres d’intérêt"
+      hint="Un par ligne (par exemple : photographie, course à pied, échecs)."
+      value={value}
+      onChange={setValue}
+      multiline
+      minHeight={140}
+      placeholder={'Photographie\nCourse à pied\nÉchecs'}
+    />,
+    <SaveBar onSave={save} busy={busy} />,
   );
 }
 
@@ -829,130 +719,50 @@ function HobbyForm({
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────
 
-function FormField({
+function LevelPicker({
   label,
-  value,
-  onChange,
-  placeholder,
   hint,
-  multiline,
-  keyboardType,
-  editable = true,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  hint?: string;
-  multiline?: boolean;
-  keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'url' | 'numeric';
-  editable?: boolean;
-}) {
-  const t = useIdnTheme();
-  return (
-    <View>
-      <Text style={{ fontSize: 13, fontWeight: '500', color: t.ink, marginBottom: 6 }}>
-        {label}
-      </Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={t.mutedSoft}
-        multiline={multiline}
-        keyboardType={keyboardType ?? 'default'}
-        editable={editable}
-        style={{
-          backgroundColor: t.surface,
-          borderWidth: 1,
-          borderColor: t.border,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: multiline ? 10 : 12,
-          color: t.ink,
-          fontSize: 14,
-          minHeight: multiline ? 96 : 44,
-          textAlignVertical: multiline ? 'top' : 'center',
-          opacity: editable ? 1 : 0.6,
-        }}
-      />
-      {hint ? (
-        <Text style={{ fontSize: 11, color: t.muted, marginTop: 4 }}>{hint}</Text>
-      ) : null}
-    </View>
-  );
-}
-
-function ChipPicker({
-  label,
   value,
   options,
   onChange,
 }: {
   label: string;
+  hint?: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
 }) {
   const t = useIdnTheme();
   return (
-    <View>
-      <Text style={{ fontSize: 13, fontWeight: '500', color: t.ink, marginBottom: 6 }}>
-        {label}
-      </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {options.map((opt) => {
-          const sel = opt === value;
-          return (
-            <Pressable
-              key={opt}
-              onPress={() => onChange(opt)}
-              style={{
-                paddingHorizontal: 14,
-                paddingVertical: 8,
-                borderRadius: 9999,
-                backgroundColor: sel ? idnTokens.green : t.surface,
-                borderWidth: 1,
-                borderColor: sel ? idnTokens.green : t.border,
-              }}
-            >
-              <Text style={{ color: sel ? '#fff' : t.ink, fontSize: 12, fontWeight: '600' }}>
-                {opt}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+    <View style={{ marginTop: 16 }}>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink, marginBottom: 8 }}>{label}</Text>
+      <CvChips wrap label={label} items={options.map((o) => ({ id: o, label: o }))} value={value} onChange={onChange} />
+      {hint ? <Text style={{ fontSize: 13, color: t.muted, marginTop: 8, lineHeight: 18 }}>{hint}</Text> : null}
     </View>
   );
 }
 
+/** Pied d'écran : enregistrer (et supprimer en modification). Annuler = retour. */
 function SaveBar({
-  onCancel,
   onSave,
   onDelete,
   busy,
 }: {
-  onCancel: () => void;
   onSave: () => void;
   onDelete?: () => void;
   busy: boolean;
 }) {
   const t = useIdnTheme();
   return (
-    <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+    <>
+      <IdnButton t={t} full onPress={onSave} loading={busy}>
+        Enregistrer
+      </IdnButton>
       {onDelete ? (
-        <IdnButton variant="danger" size="md" t={t} onPress={onDelete} disabled={busy}>
-          {icvStrings.editor.delete}
+        <IdnButton t={t} full variant="dangerGhost" onPress={onDelete} disabled={busy}>
+          Supprimer
         </IdnButton>
       ) : null}
-      <View style={{ flex: 1 }} />
-      <IdnButton variant="ghost" size="md" t={t} onPress={onCancel} disabled={busy}>
-        {icvStrings.editor.cancel}
-      </IdnButton>
-      <IdnButton variant="primary" size="md" t={t} onPress={onSave} disabled={busy}>
-        {busy ? '…' : icvStrings.editor.save}
-      </IdnButton>
-    </View>
+    </>
   );
 }

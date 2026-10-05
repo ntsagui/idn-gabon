@@ -11,14 +11,14 @@
 
 export const iboiteFr = {
   title: "iBoîte",
-  subtitle: "Vos courriers, colis et emails",
+  subtitle: "Tes courriers, colis et emails",
   loading: "Chargement…",
-  notAuthenticated: "Connectez-vous pour accéder à iBoîte.",
+  notAuthenticated: "Connecte-toi pour accéder à iBoîte.",
   noAccount:
-    "Aucun compte iBoîte. Terminez votre inscription pour activer votre adresse souveraine.",
+    "Aucun compte iBoîte. Termine ton inscription pour activer ton adresse souveraine.",
 
   account: {
-    listLabel: "VOS BOÎTES",
+    listLabel: "TES BOÎTES",
     addBox: "Ajouter une boîte",
     copyAddress: "Copier l'adresse",
     pointRelais: "Point Relais idn.ga",
@@ -90,7 +90,7 @@ export const iboiteFr = {
     notFound: "Message introuvable.",
     attachment: "PIÈCE JOINTE",
     archiveSoon:
-      "L'archivage sera proposé dans la prochaine version. En attendant, marquez ce message comme favori (étoile) pour le retrouver facilement.",
+      "L’archivage sera proposé dans la prochaine version. En attendant, marque ce message comme favori (étoile) pour le retrouver facilement.",
     attachmentDownloadLabel: "Télécharger",
   },
 
@@ -104,18 +104,18 @@ export const iboiteFr = {
     name: "Nom",
     namePlaceholder: "Nom du destinataire (optionnel)",
     subject: "Objet",
-    bodyEmail: "Votre message…",
-    bodyLetter: "Rédigez votre courrier…",
+    bodyEmail: "Ton message…",
+    bodyLetter: "Rédige ton courrier…",
     attach: "Joindre",
     send: "Envoyer",
     sending: "…",
     errors: {
       noAccount: "Aucun compte iBoîte actif.",
-      invalidRecipient: "Saisissez une adresse email valide.",
-      letterRecipient: "Saisissez une adresse iBoîte (login ou alias @idn.ga).",
-      subjectRequired: "Donnez un objet à votre message.",
-      bodyRequired: "Écrivez votre message.",
-      bodyRequiredLetter: "Écrivez le contenu de votre courrier.",
+      invalidRecipient: "Saisis une adresse email valide.",
+      letterRecipient: "Saisis une adresse iBoîte (login ou alias @idn.ga).",
+      subjectRequired: "Donne un objet à ton message.",
+      bodyRequired: "Écris ton message.",
+      bodyRequiredLetter: "Écris le contenu de ton courrier.",
       sendFailed: "Envoi impossible.",
     },
   },
@@ -123,15 +123,15 @@ export const iboiteFr = {
   address: {
     title: "Configurer mon adresse",
     intro:
-      "Au Gabon les adresses postales formelles sont rares. Nous utilisons votre position GPS pour localiser votre logement — vous pouvez compléter manuellement si besoin.",
+      "Au Gabon les adresses postales formelles sont rares. Nous utilisons ta position GPS pour localiser ton logement — tu peux compléter manuellement si besoin.",
     methodGps: "Utiliser ma position GPS",
     methodGpsHint: "Recommandé — précis et instantané",
     methodManual: "Saisir manuellement",
     locating: "Localisation en cours…",
     locatingHint:
-      "Autorisez la géolocalisation à l'invite système pour continuer.",
+      "Autorise la géolocalisation à l’invite système pour continuer.",
     resolved: "Adresse détectée",
-    resolvedHint: "Vérifiez les champs ci-dessous avant de confirmer.",
+    resolvedHint: "Vérifie les champs ci-dessous avant de confirmer.",
     district: "Quartier",
     districtPlaceholder: "ex. Akanda, Glass, Nzeng-Ayong",
     city: "Ville",
@@ -140,19 +140,19 @@ export const iboiteFr = {
     postalCodePlaceholder: "ex. BP 1000",
     country: "Pays",
     addressLine: "Adresse complète",
-    addressLinePlaceholder: "Précisez si besoin (point de repère, immeuble…)",
+    addressLinePlaceholder: "Précise si besoin (point de repère, immeuble…)",
     useGps: "Réessayer la géolocalisation",
     confirm: "Enregistrer mon adresse",
     submitting: "Enregistrement…",
     cancel: "Annuler",
     error: {
       denied:
-        "Géolocalisation refusée. Autorisez-la dans les réglages ou saisissez votre adresse à la main.",
+        "Géolocalisation refusée. Autorise-la dans les réglages ou saisis ton adresse à la main.",
       unavailable:
-        "Géolocalisation impossible. Réessayez ou saisissez à la main.",
+        "Géolocalisation impossible. Réessaie ou saisis à la main.",
       cityRequired:
-        "Indiquez au moins votre ville ou activez la géolocalisation.",
-      saveFailed: "Réessayez plus tard.",
+        "Indique au moins ta ville ou active la géolocalisation.",
+      saveFailed: "Réessaie plus tard.",
       accountMissing: "Compte iBoîte introuvable.",
     },
   },

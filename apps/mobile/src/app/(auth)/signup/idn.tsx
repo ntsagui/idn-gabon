@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
+import { Text, TextInput } from '@/design/text';
 import { useRouter } from 'expo-router';
 import { useQuery } from 'convex/react';
 import { useIdnTheme } from '@/design/theme';
-import { idnTokens } from '@/design/tokens';
-import { NStepShell } from '@/components/chrome/step-shell';
-import { Icon } from '@/design/icons';
+import { IdnButton } from '@/design/components/idn-button';
+import { Badge } from '@/design/components/badge';
+import { ErrorNote, IconTile, ScreenTitle } from '@/design/components/list';
+import { SignupScreen } from '@/components/auth/signup-screen';
 import { api } from '@/lib/api';
 import {
   getOnboardingHandle,
@@ -32,7 +34,7 @@ export default function SignupIdn() {
       const pv = await getOnboardingPivot();
       const savedHandle = await getOnboardingHandle();
       if (!p || !pv) {
-        router.replace('/(auth)/signup/profil');
+        router.replace('/(auth)/hub');
         return;
       }
       setProfile(p);
@@ -64,7 +66,7 @@ export default function SignupIdn() {
 
   const status = useMemo(() => {
     if (!handle) {
-      return { ok: false, neutral: true, label: 'Saisissez votre identifiant' };
+      return { ok: false, neutral: true, label: 'Choisis une adresse' };
     }
     if (!handleValid) {
       return {
@@ -80,17 +82,15 @@ export default function SignupIdn() {
       return {
         ok: true,
         neutral: false,
-        label: 'Disponible — vous pouvez la réserver',
+        label: 'Disponible',
       };
     }
     return {
       ok: false,
       neutral: false,
-      label: 'Cette adresse est déjà attribuée à un autre citoyen',
+      label: 'Déjà attribuée à un autre compte',
     };
   }, [handle, handleValid, availability]);
-
-  const isTaken = handleValid && availability && !availability.available;
 
   async function reserve() {
     if (!profile || !pivot || !handleValid || !availability?.available) return;
@@ -100,226 +100,85 @@ export default function SignupIdn() {
   }
 
   const visibleSuggestions = suggestions ? suggestions.slice(0, 4) : [];
+  const customIsSuggestion = visibleSuggestions.some((s) => s.handle === handleNormalized);
 
   return (
-    <NStepShell
-      t={t}
-      step={3}
-      total={5}
-      title="Votre adresse IDN"
-      sub="Choisissez l'adresse qui vous identifiera auprès de l'administration."
-      onBack={() => router.back()}
-      onPrimary={reserve}
-      primary="Réserver cette adresse"
+    <SignupScreen
+      step={1}
+      keyboard
+      footer={
+        <IdnButton t={t} full onPress={reserve} disabled={!status.ok}>
+          {status.ok ? `Valider ${handleNormalized}@idn.ga` : 'Valider cette adresse'}
+        </IdnButton>
+      }
     >
-      <View>
-        <Text
-          style={{
-            fontSize: idnTokens.text.label,
-            fontWeight: '600',
-            color: t.ink,
-            marginBottom: 8,
-          }}
-        >
-          Identifiant
-        </Text>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: t.surface,
-            borderWidth: 1.5,
-            borderColor: status.ok ? idnTokens.green : isTaken ? '#B83A3A' : t.border,
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            height: 52,
-          }}
-        >
-          <TextInput
-            value={handle}
-            onChangeText={(v) => setHandle(v.toLowerCase())}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="prenom.nom"
-            placeholderTextColor={t.muted}
-            style={{
-              flex: 1,
-              color: t.ink,
-              fontSize: 16,
-              fontFamily: idnTokens.mono,
-              fontWeight: '500',
-              paddingVertical: 0,
-              height: '100%',
-            }}
-          />
-          <Text
-            style={{
-              fontFamily: idnTokens.mono,
-              fontSize: 16,
-              color: t.muted,
-              fontWeight: '500',
-            }}
-          >
-            @idn.ga
-          </Text>
-        </View>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            marginTop: 8,
-          }}
-        >
-          <View
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 9999,
-              backgroundColor: status.neutral ? t.muted : status.ok ? idnTokens.green : '#B83A3A',
-            }}
-          />
-          <Text
-            style={{
-              fontSize: idnTokens.text.footnote,
-              fontWeight: '500',
-              color: status.neutral ? t.muted : status.ok ? idnTokens.green : idnTokens.danger,
-              flex: 1,
-            }}
-          >
-            {status.label}
-          </Text>
-        </View>
-      </View>
-
-      <View>
-        <Text
-          style={{
-            fontSize: idnTokens.text.footnote,
-            color: t.muted,
-            letterSpacing: 1,
-            fontWeight: '700',
-            marginBottom: 12,
-          }}
-        >
-          {isTaken ? 'DISPONIBLES POUR VOUS' : 'SUGGESTIONS'}
-        </Text>
-        <View style={{ gap: 8 }}>
-          {visibleSuggestions.map((s, i) => {
+      <ScreenTitle
+        title="Choisis ton adresse souveraine"
+        lead="Ton adresse @idn.ga est ton identifiant officiel et l’adresse de ton iBoîte. Elle ne pourra plus être modifiée."
+      />
+      <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: '600', color: t.ink }}>Propositions</Text>
+      {suggestions === undefined ? (
+        <ActivityIndicator color={t.green} style={{ marginVertical: 16 }} />
+      ) : (
+        <View accessibilityRole="radiogroup" style={{ gap: 8 }}>
+          {visibleSuggestions.map((s) => {
             const sel = s.handle === handleNormalized;
             return (
               <Pressable
                 key={s.handle}
                 onPress={() => s.available && setHandle(s.handle)}
                 disabled={!s.available}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: sel, disabled: !s.available }}
+                accessibilityLabel={`${s.handle}@idn.ga, ${s.available ? 'disponible' : 'déjà attribuée'}`}
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                  borderWidth: 1,
-                  borderColor: sel ? idnTokens.green : t.border,
-                  backgroundColor: sel ? (t.dark ? '#0F2A18' : idnTokens.greenSoft) : t.surface,
-                  borderRadius: 10,
-                  opacity: s.available ? 1 : 0.5,
+                  flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1,
+                  borderColor: sel ? t.green : t.border,
+                  backgroundColor: sel ? t.greenBadge : s.available ? t.surface : t.surface2,
                 }}
               >
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 9999,
-                    backgroundColor: s.available ? idnTokens.green : '#B83A3A',
-                  }}
-                />
-                <Text
-                  style={{
-                    flex: 1,
-                    fontFamily: idnTokens.mono,
-                    fontSize: 13,
-                    color: t.ink,
-                    fontWeight: '500',
-                  }}
-                  numberOfLines={1}
-                >
-                  {s.handle}
-                  <Text style={{ color: t.muted }}>@idn.ga</Text>
-                </Text>
-                {i === 0 && s.available && !isTaken ? (
-                  <Text
-                    style={{
-                      fontSize: 10.5,
-                      fontWeight: '600',
-                      color: idnTokens.green,
-                      paddingHorizontal: 8,
-                      paddingVertical: 2,
-                      borderRadius: 9999,
-                      backgroundColor: t.dark ? '#0F2A18' : idnTokens.greenSoft,
-                      letterSpacing: 0.2,
-                    }}
-                  >
-                    Recommandé
-                  </Text>
-                ) : null}
+                <IconTile icon="mail" tone={s.available ? 'green' : 'neutral'} />
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: t.mono, fontSize: 14, color: t.ink }}>{s.handle}@idn.ga</Text>
+                  <Badge tone={s.available ? 'green' : 'neutral'} icon={s.available ? 'check' : 'close'} style={{ paddingVertical: 1, paddingHorizontal: 8 }}>
+                    {s.available ? 'Disponible' : 'Déjà attribuée'}
+                  </Badge>
+                </View>
+                <View style={{ width: 20, height: 20, borderRadius: 9999, borderWidth: 1.5, borderStyle: s.available ? 'solid' : 'dashed', borderColor: sel ? t.green : t.muted, alignItems: 'center', justifyContent: 'center' }}>
+                  {sel ? <View style={{ width: 10, height: 10, borderRadius: 9999, backgroundColor: t.green }} /> : null}
+                </View>
               </Pressable>
             );
           })}
         </View>
-      </View>
+      )}
 
+      <Text style={{ marginTop: 24, marginBottom: 6, fontSize: 14, fontWeight: '600', color: t.ink }}>Ou choisis la tienne</Text>
       <View
         style={{
-          backgroundColor: t.dark ? '#10243A' : idnTokens.blueSoft,
-          padding: 12,
-          borderRadius: 10,
-          flexDirection: 'row',
-          gap: 10,
-          alignItems: 'flex-start',
+          flexDirection: 'row', alignItems: 'center', height: 50, borderRadius: 10, paddingHorizontal: 13,
+          borderWidth: 2, backgroundColor: t.surface,
+          borderColor: handle && !customIsSuggestion ? (status.ok ? t.green : status.neutral ? t.muted : t.redText) : t.border,
         }}
       >
-        <Icon name="shield" size={20} color={idnTokens.blue} />
-        <Text
-          style={{
-            flex: 1,
-            fontSize: idnTokens.text.footnote,
-            color: t.ink2,
-            lineHeight: 20,
-          }}
-        >
-          L’adresse{' '}
-          <Text
-            style={{
-              fontFamily: idnTokens.mono,
-              color: t.ink,
-              fontWeight: '600',
-            }}
-          >
-            @idn.ga
-          </Text>{' '}
-          est hébergée sur le sol gabonais. Elle est définitive et reste valide à vie.
-        </Text>
+        <TextInput
+          value={customIsSuggestion ? '' : handle}
+          onChangeText={(v) => setHandle(v.toLowerCase().trim())}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="prenom.nom"
+          placeholderTextColor={t.muted}
+          accessibilityLabel="Adresse personnalisée, avant @idn.ga"
+          style={{ flex: 1, color: t.ink, fontSize: 16, fontFamily: t.mono, height: '100%', paddingVertical: 0 }}
+        />
+        <Text style={{ fontFamily: t.mono, fontSize: 16, color: t.muted }}>@idn.ga</Text>
       </View>
-
-      {error ? (
-        <View
-          style={{
-            backgroundColor: t.dark ? '#3A1212' : '#FBE5E5',
-            borderRadius: 12,
-            padding: 14,
-          }}
-        >
-          <Text
-            style={{
-              color: idnTokens.danger,
-              fontSize: idnTokens.text.footnote,
-              lineHeight: 19,
-            }}
-          >
-            {error}
-          </Text>
-        </View>
-      ) : null}
-    </NStepShell>
+      {handle && !customIsSuggestion ? (
+        <Text accessibilityLiveRegion="polite" style={{ marginTop: 6, fontSize: 13, color: status.neutral ? t.muted : status.ok ? t.greenText : t.redText }}>{status.label}</Text>
+      ) : (
+        <Text style={{ marginTop: 6, fontSize: 13, color: t.muted }}>Lettres minuscules, chiffres, points et tirets.</Text>
+      )}
+      <ErrorNote>{error}</ErrorNote>
+    </SignupScreen>
   );
 }

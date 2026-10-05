@@ -1,3 +1,6 @@
+/** Étapes affichées dans le stepper du parcours KYC (prototype « kyc »). */
+export const KYC_STEPS = ["Recto", "Verso", "Selfie", "Envoi"]
+
 export type KycEntryRoute = "review" | "level3" | "documents"
 
 export function kycEntryRoute(args: {

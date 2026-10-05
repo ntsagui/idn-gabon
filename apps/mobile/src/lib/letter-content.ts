@@ -1,5 +1,9 @@
+// L'éditeur riche (contenteditable) peut produire « texte<p></p> » : le corps
+// est du HTML dès qu'il contient une balise connue, pas seulement s'il commence par « < ».
+const LETTER_TAG = /<\/?(p|br|div|span|b|strong|i|em|u|s|ul|ol|li|a|h[1-6]|blockquote|img)\b[^>]*>/i;
+
 export function isHtmlLetterBody(body: string): boolean {
-  return body.trimStart().startsWith('<');
+  return body.trimStart().startsWith('<') || LETTER_TAG.test(body);
 }
 
 export function plainTextToLetterHtml(value: string): string {

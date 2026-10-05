@@ -1,8 +1,11 @@
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react"
 import { ConvexReactClient, useConvexAuth, useQuery } from "convex/react"
 import { Stack } from "expo-router"
+import * as SplashScreen from "expo-splash-screen"
+import { useFonts } from "expo-font"
 import { StatusBar } from "expo-status-bar"
 import React, { StrictMode } from "react"
+import { LogBox } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { KeyboardProvider } from "react-native-keyboard-controller"
 import { SafeAreaProvider } from "react-native-safe-area-context"
@@ -10,11 +13,17 @@ import { AuthRouteGuard } from "@/components/auth-route-guard"
 import { ThemePreferenceProvider, useThemePreference } from "@/design/theme"
 import { authClient } from "@/lib/auth-client"
 import { api } from "@/lib/api"
-import { VaultProvider } from "@/hooks/use-vault"
 import { MobilePushBootstrap } from "@/components/mobile-push-bootstrap"
 import { registerLiveKitGlobals } from "@/lib/livekit-globals"
+import { IDN_FONTS } from "@/design/text"
+import { RootErrorBoundary } from "@/components/root-error-boundary"
 
 registerLiveKitGlobals()
+// Avertissement de développement émis par react-native-keyboard-controller
+// (findNodeHandle sous StrictMode) : tiers, sans effet en production. Masqué
+// de la LogBox seulement, il reste affiché dans la console Metro.
+LogBox.ignoreLogs(["findHostInstance_DEPRECATED"])
+void SplashScreen.preventAutoHideAsync()
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL
 
@@ -32,7 +41,19 @@ const convex = new ConvexReactClient(convexUrl, {
   unsavedChangesWarning: false,
 })
 
+// Session révoquée ou erreur de rendu : jamais d’écran rouge en production.
+export const ErrorBoundary = RootErrorBoundary
+
 export default function RootLayout() {
+  // Les polices IBM Plex sont embarquées par le plugin expo-font ; le
+  // chargement ici couvre le dev client et les mises à jour OTA. Une police
+  // manquante ne doit jamais bloquer l'app : on continue en police système.
+  const [fontsLoaded, fontError] = useFonts(IDN_FONTS)
+  const ready = fontsLoaded || !!fontError
+  React.useEffect(() => {
+    if (ready) void SplashScreen.hideAsync()
+  }, [ready])
+  if (!ready) return null
   return (
     <StrictMode>
       <ConvexBetterAuthProvider client={convex} authClient={authClient}>
@@ -40,7 +61,6 @@ export default function RootLayout() {
           <PreferenceSync />
           <MobilePushBootstrap />
           <AuthRouteGuard />
-          <VaultProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <KeyboardProvider>
                 <SafeAreaProvider>
@@ -53,36 +73,21 @@ export default function RootLayout() {
                       name="launcher"
                       options={{ animation: "fade" }}
                     />
-                    <Stack.Screen name="onboarding" />
                     <Stack.Screen name="(auth)" />
                     <Stack.Screen name="(tabs)" />
-                    <Stack.Screen
-                      name="id-card"
-                      options={{ presentation: "modal" }}
-                    />
+                    <Stack.Screen name="id-card" />
                     <Stack.Screen
                       name="scanner"
-                      options={{ presentation: "modal" }}
+                      options={{ presentation: "fullScreenModal" }}
                     />
-                    <Stack.Screen
-                      name="consent"
-                      options={{
-                        presentation: "formSheet",
-                        sheetAllowedDetents: [0.95],
-                      }}
-                    />
-                    <Stack.Screen
-                      name="notifications"
-                      options={{
-                        presentation: "formSheet",
-                        sheetAllowedDetents: [0.95],
-                      }}
-                    />
+                    <Stack.Screen name="consent" />
+                    <Stack.Screen name="notifications" />
                     <Stack.Screen name="service/[id]" />
                     <Stack.Screen name="kyc" />
                     <Stack.Screen name="settings" />
-                    <Stack.Screen name="icarte" />
-                    <Stack.Screen name="iboite" />
+                    <Stack.Screen name="idoc" />
+                    <Stack.Screen name="icv" />
+                    <Stack.Screen name="services" />
                     <Stack.Screen name="activity" />
                     <Stack.Screen name="consents" />
                     <Stack.Screen name="profile-edit" />
@@ -90,7 +95,6 @@ export default function RootLayout() {
                 </SafeAreaProvider>
               </KeyboardProvider>
             </GestureHandlerRootView>
-          </VaultProvider>
         </ThemePreferenceProvider>
       </ConvexBetterAuthProvider>
     </StrictMode>

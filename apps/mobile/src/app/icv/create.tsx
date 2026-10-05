@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert } from 'react-native';
 import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'expo-router';
 
 import { api } from '@/lib/api';
 import type { Id } from '@repo/backend/convex/_generated/dataModel';
-import { idnTokens } from '@/design/tokens';
 import { useIdnTheme } from '@/design/theme';
-import { NSheetHeader } from '@/components/chrome/sheet-header';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Card, SectionTitle } from '@/design/components/list';
 import { IdnButton } from '@/design/components/idn-button';
-import { icvStrings } from '@/data/cv';
+import { IdnInput } from '@/design/components/idn-input';
+import { ChoiceRow } from '@/components/cv/cv-ui';
 
 export default function ICVCreate() {
   const t = useIdnTheme();
@@ -24,7 +26,7 @@ export default function ICVCreate() {
     if (busy) return;
     const trimmed = name.trim();
     if (trimmed.length < 1) {
-      Alert.alert('Erreur', 'Donnez un nom à votre CV.');
+      Alert.alert('Nom manquant', 'Donne un nom à ton CV.');
       return;
     }
     setBusy(true);
@@ -34,97 +36,37 @@ export default function ICVCreate() {
       router.push(`/icv?cv=${id}` as never);
     } catch (e) {
       const msg = (e as Error).message ?? '';
-      Alert.alert(
-        'Erreur',
-        msg.includes('CV_LIMIT_REACHED') ? icvStrings.list.limit : msg,
-      );
+      Alert.alert('Création impossible', msg.includes('CV_LIMIT_REACHED') ? 'Tu as atteint la limite de 10 CV.' : msg);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <NSheetHeader t={t} title={icvStrings.create.title} onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
-        <View>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: t.ink, marginBottom: 6 }}>
-            {icvStrings.create.nameLabel}
-          </Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder={icvStrings.create.namePh}
-            placeholderTextColor={t.mutedSoft}
-            autoFocus
-            maxLength={80}
-            style={{
-              backgroundColor: t.surface,
-              borderWidth: 1,
-              borderColor: t.border,
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 12,
-              color: t.ink,
-              fontSize: 14,
-            }}
-          />
-        </View>
+    <Screen
+      sheet
+      keyboard
+      header={<AppBar title="Crée ton CV" onBack={() => router.back()} backIcon="close" />}
+      footer={
+        <IdnButton t={t} full onPress={submit} loading={busy} disabled={name.trim().length < 1}>
+          Créer le CV
+        </IdnButton>
+      }
+    >
+      <SectionTitle style={{ marginTop: 16 }}>Nom du CV</SectionTitle>
+      <IdnInput t={t} value={name} onChangeText={setName} placeholder="Par exemple : CV Tech, CV Direction…" autoFocus maxLength={80} />
 
-        <View>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: t.ink, marginBottom: 6 }}>
-            {icvStrings.create.copyFromLabel}
-          </Text>
-          <View style={{ gap: 6 }}>
-            <Pressable
-              onPress={() => setCopyFrom(null)}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: copyFrom === null ? idnTokens.green : t.border,
-                backgroundColor: copyFrom === null ? (t.dark ? '#0F2818' : '#DCFCE7') : t.surface,
-              }}
-            >
-              <Text style={{ color: copyFrom === null ? idnTokens.green : t.ink, fontWeight: '600' }}>
-                {icvStrings.create.copyFromEmpty}
-              </Text>
-            </Pressable>
-            {(cvs ?? []).map((cv) => {
-              const sel = copyFrom === cv._id;
-              return (
-                <Pressable
-                  key={cv._id}
-                  onPress={() => setCopyFrom(cv._id)}
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: sel ? idnTokens.green : t.border,
-                    backgroundColor: sel ? (t.dark ? '#0F2818' : '#DCFCE7') : t.surface,
-                  }}
-                >
-                  <Text style={{ color: sel ? idnTokens.green : t.ink, fontWeight: '600' }}>
-                    {cv.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-          <IdnButton variant="ghost" size="md" t={t} onPress={() => router.back()} disabled={busy}>
-            {icvStrings.create.cancel}
-          </IdnButton>
-          <View style={{ flex: 1 }} />
-          <IdnButton variant="primary" size="md" t={t} onPress={submit} disabled={busy}>
-            {busy ? '…' : icvStrings.create.create}
-          </IdnButton>
-        </View>
-      </ScrollView>
-    </View>
+      {cvs && cvs.length > 0 ? (
+        <>
+          <SectionTitle>Point de départ</SectionTitle>
+          <Card>
+            <ChoiceRow label="CV vierge" selected={copyFrom === null} onPress={() => setCopyFrom(null)} />
+            {cvs.map((cv) => (
+              <ChoiceRow key={cv._id} label={cv.name} sub="Copie de ce CV" selected={copyFrom === cv._id} onPress={() => setCopyFrom(cv._id)} />
+            ))}
+          </Card>
+        </>
+      ) : null}
+    </Screen>
   );
 }

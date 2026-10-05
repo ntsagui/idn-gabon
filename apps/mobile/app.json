@@ -2,7 +2,7 @@
   "expo": {
     "name": "Identité Numérique",
     "slug": "identite-ga",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Identité Numérique du Gabon — un compte unique pour accéder à tous les services administratifs en ligne de la République Gabonaise. Authentification, vérification d'identité, portefeuille de cartes, courrier officiel et documents archivés.",
     "primaryColor": "#0E7C3A",
     "orientation": "portrait",
@@ -28,11 +28,11 @@
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Identité Numérique utilise l'appareil photo pour scanner les QR codes de connexion et photographier vos pièces d'identité lors de la vérification KYC.",
-        "NSPhotoLibraryUsageDescription": "Identité Numérique a besoin d'accéder à votre photothèque pour importer une pièce d'identité ou un document existant.",
-        "NSLocationWhenInUseUsageDescription": "Identité Numérique utilise votre position pour pré-remplir l'adresse postale de votre iBoîte avec votre localisation actuelle.",
-        "NSMicrophoneUsageDescription": "Identité Numérique utilise le microphone pendant votre entretien vidéo de vérification d'identité.",
-        "NSFaceIDUsageDescription": "Identité Numérique utilise Face ID pour vous authentifier rapidement et créer un passkey sécurisé attaché à votre compte."
+        "NSCameraUsageDescription": "Identité Numérique utilise l’appareil photo pour lire les QR codes (connexion, actes officiels) et photographier ta pièce d’identité lors de la vérification.",
+        "NSPhotoLibraryUsageDescription": "Identité Numérique accède à ta photothèque pour importer une pièce d’identité ou un document que tu choisis.",
+        "NSLocationWhenInUseUsageDescription": "Identité Numérique utilise ta position pour pré-remplir l’adresse postale de ton iBoîte.",
+        "NSMicrophoneUsageDescription": "Identité Numérique utilise le micro pendant ton entretien vidéo de vérification d’identité.",
+        "NSFaceIDUsageDescription": "Identité Numérique utilise Face ID pour te connecter rapidement avec une clé d’accès liée à ton compte."
       }
     },
     "android": {
@@ -69,7 +69,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0E7C3A",
+          "backgroundColor": "#0A5C2C",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 160,
           "resizeMode": "contain"
@@ -78,32 +78,52 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Identité Numérique utilise l'appareil photo pour scanner les QR codes de connexion et photographier vos pièces d'identité lors de la vérification KYC.",
-          "microphonePermission": false,
+          "cameraPermission": "Identité Numérique utilise l’appareil photo pour lire les QR codes (connexion, actes officiels) et photographier ta pièce d’identité lors de la vérification.",
+          "microphonePermission": "Identité Numérique utilise le micro pendant ton entretien vidéo de vérification d’identité.",
           "recordAudioAndroid": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Identité Numérique a besoin d'accéder à votre photothèque pour importer une pièce d'identité ou un document existant."
+          "photosPermission": "Identité Numérique accède à ta photothèque pour importer une pièce d’identité ou un document que tu choisis."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Identité Numérique utilise votre position pour pré-remplir l'adresse postale de votre iBoîte avec votre localisation actuelle."
+          "locationAlwaysAndWhenInUsePermission": "Identité Numérique utilise ta position pour pré-remplir l’adresse postale de ton iBoîte."
         }
       ],
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Identité Numérique utilise Face ID pour vous authentifier rapidement et créer un passkey sécurisé attaché à votre compte."
+          "faceIDPermission": "Identité Numérique utilise Face ID pour te connecter rapidement avec une clé d’accès liée à ton compte."
         }
       ],
       "expo-sharing",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Identité Numérique ajoute à ton agenda le rendez-vous de ton entretien de vérification, si tu le demandes.",
+          "remindersPermission": "Identité Numérique n’utilise pas tes rappels ; cette autorisation n’est jamais demandée."
+        }
+      ],
       "@react-native-community/datetimepicker",
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/IBMPlexSans-Regular.ttf",
+            "./assets/fonts/IBMPlexSans-Medium.ttf",
+            "./assets/fonts/IBMPlexSans-SemiBold.ttf",
+            "./assets/fonts/IBMPlexSans-Bold.ttf",
+            "./assets/fonts/IBMPlexMono-Regular.ttf",
+            "./assets/fonts/IBMPlexMono-Medium.ttf",
+            "./assets/fonts/IBMPlexMono-SemiBold.ttf"
+          ]
+        }
+      ],
       "expo-image",
       "expo-secure-store",
       "expo-web-browser"

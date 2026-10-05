@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Platform, Pressable, Text, View } from 'react-native';
+import { Keyboard, Modal, Platform, Pressable, View } from 'react-native';
+import { Text } from '@/design/text';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { idnTokens } from '../tokens';
@@ -57,6 +58,7 @@ export function IdnDateInput({
   const insets = useSafeAreaInsets();
 
   function openPicker() {
+    Keyboard.dismiss();
     const current = dateFromIso(value);
     setTempDate(current);
     if (Platform.OS === 'android') {
@@ -88,26 +90,28 @@ export function IdnDateInput({
     <>
       <View>
         {label ? (
-          <Text style={{ fontSize: idnTokens.text.label, fontWeight: '600', color: t.ink, marginBottom: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink, marginBottom: 6 }}>
             {label}
           </Text>
         ) : null}
         <Pressable
           onPress={openPicker}
+          accessibilityRole="button"
+          accessibilityLabel={`${label ?? 'Date'} : ${hasValue ? display : 'non renseignée'}`}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             gap: 10,
             backgroundColor: t.surface,
             borderWidth: 1,
-            borderColor: error ? idnTokens.danger : t.border,
-            borderRadius: 12,
+            borderColor: error ? t.redText : t.muted,
+            borderRadius: 10,
             paddingHorizontal: 14,
-            height: 52,
+            height: 50,
           }}
         >
           <Icon name="calendar" size={20} color={t.muted} />
-          <Text style={{ flex: 1, color: hasValue ? t.ink : t.muted, fontSize: idnTokens.text.body }}>
+          <Text style={{ flex: 1, color: hasValue ? t.ink : t.muted, fontSize: 16 }}>
             {hasValue ? display : placeholder}
           </Text>
         </Pressable>

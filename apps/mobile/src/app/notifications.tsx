@@ -1,231 +1,167 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useConvexAuth, useMutation, useQuery } from 'convex/react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from '@/design/text';
 import { useIdnTheme } from '@/design/theme';
-import { idnTokens } from '@/design/tokens';
-import { Icon } from '@/design/icons';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Card, Overline, Row, type RowTone } from '@/design/components/list';
+import { IdnButton } from '@/design/components/idn-button';
+import type { IconName } from '@/design/icons';
 import { api } from '@/lib/api';
-import { NotifItem, type NotifType, type NotifLike } from '@/components/notif/notif-item';
+import { notificationRoute } from '@/lib/notification-route';
 
-type Notif = {
-  _id: string;
-  channel: string;
-  category: 'security' | 'kyc' | 'consent' | 'comms';
-  title: string;
-  body: string;
-  metadata?: Record<string, unknown>;
-  readAt?: number | null;
-  sentAt?: number | null;
-  createdAt: number;
-};
-
-type Filter = 'all' | 'unread' | 'security' | 'document';
+type Filter = 'all' | 'unread' | 'security' | 'documents';
 
 const FILTERS: { id: Filter; label: string }[] = [
-  { id: 'all',      label: 'Tout' },
-  { id: 'unread',   label: 'Non lu' },
+  { id: 'all', label: 'Tout' },
+  { id: 'unread', label: 'Non lues' },
   { id: 'security', label: 'Sécurité' },
-  { id: 'document', label: 'Documents' },
+  { id: 'documents', label: 'Documents' },
 ];
 
-const CATEGORY_TO_TYPE: Record<Notif['category'], NotifType> = {
-  security: 'security',
-  kyc:      'cv',
-  consent:  'document',
-  comms:    'system',
+const VISUAL: Record<string, { icon: IconName; tone: RowTone; label: string }> = {
+  security: { icon: 'alert', tone: 'yellow', label: 'Sécurité' },
+  kyc: { icon: 'shield', tone: 'blue', label: 'Vérification' },
+  consent: { icon: 'keyRound', tone: 'green', label: 'Accès' },
+  comms: { icon: 'mail', tone: 'blue', label: 'iBoîte' },
+  documents: { icon: 'file', tone: 'neutral', label: 'iDocument' },
+  cv: { icon: 'fileUser', tone: 'neutral', label: 'iCV' },
+  ai: { icon: 'sparkles', tone: 'neutral', label: 'iCV' },
+  system: { icon: 'bell', tone: 'neutral', label: 'IDN' },
 };
 
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const yesterday = today - 86_400_000;
-  if (ts >= today) {
-    const diffMin = Math.floor((now.getTime() - ts) / 60_000);
-    if (diffMin < 1) return "À l'instant";
-    if (diffMin < 60) return `Il y a ${diffMin} min`;
-    const diffH = Math.floor(diffMin / 60);
-    return `Il y a ${diffH} h`;
-  }
-  if (ts >= yesterday) return 'Hier';
-  const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-  return `${String(d.getDate()).padStart(2, '0')} ${months[d.getMonth()]}`;
+function relative(ts: number, now: number): string {
+  const min = Math.floor((now - ts) / 60_000);
+  if (min < 1) return 'À l’instant';
+  if (min < 60) return `Il y a ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `Il y a ${h} h`;
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' }).format(ts);
 }
 
-function dayBucket(ts: number): 'today' | 'yesterday' | 'older' {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const yesterday = today - 86_400_000;
-  if (ts >= today) return 'today';
-  if (ts >= yesterday) return 'yesterday';
+function bucket(ts: number, now: number): 'today' | 'week' | 'older' {
+  const d = new Date(now);
+  const startToday = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  if (ts >= startToday) return 'today';
+  if (ts >= startToday - 6 * 86_400_000) return 'week';
   return 'older';
 }
 
+const BUCKETS = [
+  { id: 'today', label: 'Aujourd’hui' },
+  { id: 'week', label: 'Cette semaine' },
+  { id: 'older', label: 'Plus ancien' },
+] as const;
+
+/** Notifications (prototype « notifs »). */
 export default function Notifications() {
   const t = useIdnTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<Filter>('all');
-
   const { isAuthenticated } = useConvexAuth();
-  const rows = useQuery(api.notifications.listMine, isAuthenticated ? { limit: 100 } : 'skip') as Notif[] | undefined;
+  const rows = useQuery(api.notifications.listMine, isAuthenticated ? { limit: 100, filter } : 'skip');
+  const unread = useQuery(api.notifications.unreadCount, isAuthenticated ? {} : 'skip');
   const markAllRead = useMutation(api.notifications.markAllRead);
   const markRead = useMutation(api.notifications.markRead);
   const clearAll = useMutation(api.notifications.clearAll);
+  const now = Date.now();
 
-  async function handleMarkAll() {
-    try { await markAllRead({}); } catch { /* ignore */ }
-  }
-  async function handleMarkOne(id: string) {
-    try { await markRead({ notificationId: id as any }); } catch { /* ignore */ }
-  }
-  function handleClearAll() {
-    if (total === 0) return;
-    Alert.alert(
-      'Effacer les notifications ?',
-      'Toutes vos notifications seront supprimées. Cette action est irréversible.',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Effacer',
-          style: 'destructive',
-          onPress: async () => {
-            try { await clearAll({}); } catch {
-              Alert.alert('Erreur', 'Suppression impossible. Réessayez.');
-            }
-          },
-        },
-      ],
-    );
+  function confirmClear() {
+    Alert.alert('Effacer les notifications ?', 'Elles disparaissent de cet écran. Tes courriers et documents ne sont pas touchés.', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Effacer', style: 'destructive', onPress: () => void clearAll({}).catch(() => Alert.alert('Effacement impossible', 'Réessaie.')) },
+    ]);
   }
 
-  const filtered = React.useMemo(() => {
-    if (!rows) return undefined;
-    return rows.filter(n => {
-      const type = CATEGORY_TO_TYPE[n.category] ?? 'system';
-      if (filter === 'all') return true;
-      if (filter === 'unread') return !n.readAt;
-      if (filter === 'security') return type === 'security';
-      if (filter === 'document') return type === 'document';
-      return true;
-    });
-  }, [rows, filter]);
-
-  const todayItems = (filtered ?? []).filter(n => dayBucket(n.createdAt) === 'today');
-  const yesterdayItems = (filtered ?? []).filter(n => dayBucket(n.createdAt) === 'yesterday');
-  const olderItems = (filtered ?? []).filter(n => dayBucket(n.createdAt) === 'older');
-
-  const unreadCount = (rows ?? []).filter(n => !n.readAt).length;
-  const total = (rows ?? []).length;
-
-  function toItem(n: Notif): NotifLike {
-    return {
-      id: n._id,
-      type: CATEGORY_TO_TYPE[n.category] ?? 'system',
-      title: n.title,
-      message: n.body,
-      time: formatTime(n.createdAt),
-      read: !!n.readAt,
-      onMarkRead: () => handleMarkOne(n._id),
-    };
+  async function open(n: NonNullable<typeof rows>[number]) {
+    if (!n.readAt) await markRead({ notificationId: n._id }).catch(() => undefined);
+    const route = notificationRoute(n);
+    if (route) router.push(route as never);
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      {/* Header */}
-      <View style={{ paddingHorizontal: 22, paddingTop: 14, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Pressable
-          onPress={() => router.back()}
-          style={{ width: 36, height: 36, borderRadius: 9999, backgroundColor: t.surface, borderWidth: 1, borderColor: t.border, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Icon name="arrowL" size={20} color={t.ink2} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: t.ink, letterSpacing: -0.4, lineHeight: 24 }}>Notifications</Text>
-          <Text style={{ fontSize: 11, color: t.muted, marginTop: 2 }}>{unreadCount} non lue{unreadCount > 1 ? 's' : ''}</Text>
-        </View>
-        <Pressable
-          onPress={handleMarkAll}
-          style={{ width: 36, height: 36, borderRadius: 9999, backgroundColor: t.surface, borderWidth: 1, borderColor: t.border, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Icon name="check" size={18} color={t.ink2} />
-        </Pressable>
-        <Pressable
-          onPress={handleClearAll}
-          disabled={total === 0}
-          style={{ width: 36, height: 36, borderRadius: 9999, backgroundColor: t.surface, borderWidth: 1, borderColor: t.border, alignItems: 'center', justifyContent: 'center', opacity: total === 0 ? 0.4 : 1 }}
-        >
-          <Icon name="trash" size={18} color={t.ink2} />
-        </Pressable>
-      </View>
-
-      {/* Filtres */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ paddingHorizontal: 22, gap: 6, paddingVertical: 8 }}>
-        {FILTERS.map(f => {
+    <Screen
+      header={
+        <AppBar
+          title="Notifications"
+          onBack={() => router.back()}
+          right={
+            unread ? (
+              <Pressable onPress={() => void markAllRead({})} accessibilityRole="button" hitSlop={8}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: t.greenText }}>Tout lire</Text>
+              </Pressable>
+            ) : null
+          }
+        />
+      }
+    >
+      <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 6, marginTop: 14 }}>
+        {FILTERS.map((f) => {
           const sel = f.id === filter;
           return (
             <Pressable
               key={f.id}
               onPress={() => setFilter(f.id)}
-              style={{
-                paddingHorizontal: 14,
-                minHeight: 32,
-                backgroundColor: sel ? idnTokens.green : t.surface,
-                borderWidth: 1,
-                borderColor: sel ? idnTokens.green : t.border,
-                borderRadius: 9999,
-                alignItems: 'center', justifyContent: 'center',
-              }}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: sel }}
+              style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 9999, borderWidth: 1, borderColor: sel ? t.green : t.border, backgroundColor: sel ? t.greenBadge : t.surface }}
             >
-              <Text style={{ fontSize: 12, lineHeight: 16, fontWeight: '600', color: sel ? '#fff' : t.ink2, letterSpacing: 0.2 }}>{f.label}</Text>
+              <Text style={{ fontSize: 13, fontWeight: sel ? '600' : '500', color: sel ? t.greenText : t.ink2 }}>{f.label}</Text>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
 
-      {/* Liste */}
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 4, paddingBottom: insets.bottom + 22 }} showsVerticalScrollIndicator={false}>
-        {filtered === undefined ? (
-          [0, 1, 2].map(i => (
-            <View key={i} style={{ marginTop: 14, height: 78, borderRadius: 14, backgroundColor: t.surface2 }} />
-          ))
-        ) : filtered.length === 0 ? (
-          <View style={{ paddingVertical: 60, paddingHorizontal: 20, alignItems: 'center', opacity: 0.6 }}>
-            <Icon name="bell" size={48} color={t.mutedSoft} />
-            <Text style={{ fontSize: 14, color: t.ink2, fontWeight: '600', marginTop: 12 }}>Aucune notification</Text>
-            <Text style={{ fontSize: 12, color: t.muted, marginTop: 4 }}>Vous êtes à jour !</Text>
-          </View>
-        ) : (
-          <>
-            {todayItems.length > 0 ? (
-              <View>
-                <Text style={{ fontSize: 10, color: t.muted, letterSpacing: 1.2, fontWeight: '700', paddingHorizontal: 4, paddingTop: 10, paddingBottom: 6 }}>AUJOURD’HUI</Text>
-                <View style={{ gap: 8 }}>
-                  {todayItems.map(n => <NotifItem key={n._id} n={toItem(n)} t={t} />)}
-                </View>
-              </View>
-            ) : null}
-            {yesterdayItems.length > 0 ? (
-              <View>
-                <Text style={{ fontSize: 10, color: t.muted, letterSpacing: 1.2, fontWeight: '700', paddingHorizontal: 4, paddingTop: 14, paddingBottom: 6 }}>HIER</Text>
-                <View style={{ gap: 8 }}>
-                  {yesterdayItems.map(n => <NotifItem key={n._id} n={toItem(n)} t={t} />)}
-                </View>
-              </View>
-            ) : null}
-            {olderItems.length > 0 ? (
-              <View>
-                <Text style={{ fontSize: 10, color: t.muted, letterSpacing: 1.2, fontWeight: '700', paddingHorizontal: 4, paddingTop: 14, paddingBottom: 6 }}>PLUS ANCIEN</Text>
-                <View style={{ gap: 8 }}>
-                  {olderItems.map(n => <NotifItem key={n._id} n={toItem(n)} t={t} />)}
-                </View>
-              </View>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
-    </View>
+      {rows === undefined ? (
+        <Text style={{ marginTop: 24, color: t.muted }}>Chargement…</Text>
+      ) : rows.length === 0 ? (
+        <View style={{ alignItems: 'center', marginTop: 48 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: t.ink }}>Aucune notification</Text>
+          <Text style={{ marginTop: 4, fontSize: 14, color: t.muted, textAlign: 'center' }}>
+            {filter === 'unread' ? 'Tout est lu.' : 'Tes alertes de sécurité, courriers et démarches apparaîtront ici.'}
+          </Text>
+        </View>
+      ) : (
+        BUCKETS.map((b) => {
+          const items = rows.filter((n) => bucket(n.createdAt, now) === b.id);
+          if (!items.length) return null;
+          return (
+            <View key={b.id}>
+              <Overline style={{ marginTop: 22, marginBottom: 8 }}>{b.label}</Overline>
+              <Card>
+                {items.map((n) => {
+                  const route = notificationRoute(n);
+                  // Un message ou un courrier iBoîte peut être classé « documents » côté serveur.
+                  const v = route?.startsWith('/iboite') ? VISUAL.comms! : VISUAL[n.category] ?? VISUAL.system!;
+                  return (
+                    <Row
+                      key={n._id}
+                      icon={v.icon}
+                      tone={v.tone}
+                      unread={!n.readAt}
+                      title={n.title}
+                      sub={
+                        <View style={{ gap: 2 }}>
+                          {n.body ? <Text numberOfLines={2} style={{ fontSize: 13, lineHeight: 18, color: t.ink2 }}>{n.body}</Text> : null}
+                          <Text style={{ fontSize: 12, color: t.muted }}>{`${relative(n.createdAt, now)} · ${v.label}`}</Text>
+                        </View>
+                      }
+                      chevron={!!route}
+                      onPress={() => void open(n)}
+                      accessibilityLabel={`${n.readAt ? '' : 'Non lue, '}${n.title}`}
+                    />
+                  );
+                })}
+              </Card>
+            </View>
+          );
+        })
+      )}
+      {rows && rows.length > 0 ? (
+        <IdnButton t={t} variant="ghost" full onPress={confirmClear} style={{ marginTop: 24 }}>Effacer les notifications</IdnButton>
+      ) : null}
+    </Screen>
   );
 }

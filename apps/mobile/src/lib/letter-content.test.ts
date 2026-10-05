@@ -19,4 +19,12 @@ describe('contenu riche des courriers', () => {
     expect(hasLetterContent('<p><br></p>')).toBe(false);
     expect(hasLetterContent('<p><img src="https://example.test/image.jpg"></p>')).toBe(true);
   });
+  it('reconnaît le HTML de l’éditeur même quand il commence par du texte (sinon « <p></p> » s’affiche en clair)', () => {
+    expect(isHtmlLetterBody('Message envoyé.<p></p>')).toBe(true);
+    expect(isHtmlLetterBody('Bonjour<br>Merci')).toBe(true);
+  });
+
+  it('laisse en texte brut un message qui cite un chevron sans balise', () => {
+    expect(isHtmlLetterBody('2 < 3 et 5 > 4')).toBe(false);
+  });
 });

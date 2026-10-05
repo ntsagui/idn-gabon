@@ -21,6 +21,14 @@ export const idnTokens = {
     ink2: '#3A3D2E',
     muted: '#74766B',
     mutedSoft: '#A6A89D',
+    greenText: '#0E7C3A',
+    blueText: '#2563AC',
+    redText: '#B3261E',
+    greenBadge: '#E6F2EA',
+    blueBadge: '#E6EEF7',
+    yellowBadge: '#FCF4D6',
+    redBadge: '#FBEAE8',
+    neutralBadge: '#ECEBE5',
   } as IdnNeutrals,
   d: {
     bg: '#0E110D',
@@ -32,10 +40,18 @@ export const idnTokens = {
     ink2: '#D4D2C7',
     muted: '#9A9C8E',
     mutedSoft: '#6B6D62',
+    greenText: '#5BC57F',
+    blueText: '#6BA4E0',
+    redText: '#F2B8B5',
+    greenBadge: '#0F2A18',
+    blueBadge: '#10243A',
+    yellowBadge: '#332B0A',
+    redBadge: '#3A1414',
+    neutralBadge: '#2C3128',
   } as IdnNeutrals,
 
-  font: undefined as string | undefined,
-  mono: 'Menlo' as string,
+  font: 'IBMPlexSans-Regular' as string,
+  mono: 'IBMPlexMono-Regular' as string,
 
   radius: { sm: 6, md: 10, lg: 14, xl: 20, pill: 9999 },
 
@@ -70,5 +86,14 @@ export type IdnNeutrals = {
   ink2: string;
   muted: string;
   mutedSoft: string;
+  // Textes et fonds de badge à contraste vérifié (prototype de la charte, RGAA 3.2/3.3).
+  greenText: string;
+  blueText: string;
+  redText: string;
+  greenBadge: string;
+  blueBadge: string;
+  yellowBadge: string;
+  redBadge: string;
+  neutralBadge: string;
 };
 export type IdnTheme = typeof idnTokens & IdnNeutrals & { dark: boolean };

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
+import { Text } from '@/design/text';
 import * as Clipboard from 'expo-clipboard';
 import { idnTokens } from '@/design/tokens';
 import type { IdnTheme } from '@/design/tokens';

@@ -1,42 +1,72 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, Share, Text, View } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import Svg, { Path } from 'react-native-svg';
+import { Pressable, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useConvexAuth, useMutation, useQuery } from 'convex/react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
-import { idnTokens } from '@/design/tokens';
+import { Text } from '@/design/text';
+import { useIdnTheme } from '@/design/theme';
+import { IdnFlagBars } from '@/design/mark';
 import { Icon } from '@/design/icons';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { IdnButton } from '@/design/components/idn-button';
+import { LevelBadge } from '@/design/components/badge';
+import { ErrorNote } from '@/design/components/list';
 import { api } from '@/lib/api';
+import { initialsOf } from '@/lib/last-account';
+import { formatNip, maskNip } from '@/lib/nip-format';
 
+// On renouvelle un peu avant l'expiration pour qu'un code affiché soit toujours valide.
 const REFRESH_PADDING_MS = 2_000;
+const TOKEN_TTL_S = 30;
 
+function frDate(iso?: string): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  const t = useIdnTheme();
+  return (
+    <View style={{ marginBottom: 8 }}>
+      <Text style={{ fontFamily: t.mono, fontSize: 10, letterSpacing: 1.2, color: '#BFDCC9', textTransform: 'uppercase' }}>{label}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff', marginTop: 2 }}>{value || '—'}</Text>
+    </View>
+  );
+}
+
+/** Carte d'identité numérique et QR de présentation (prototype « idcard »). */
 export default function IdCard() {
+  const t = useIdnTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { isAuthenticated } = useConvexAuth();
-  const presentation = useQuery(api.presentation.getCurrentPresentation, isAuthenticated ? {} : 'skip');
+  const user = useQuery(api.profile.getCurrentUser, isAuthenticated ? {} : 'skip');
   const mintToken = useMutation(api.presentation.mintToken);
   const [token, setToken] = useState<string | null>(null);
-  const [expiresAt, setExpiresAt] = useState<number>(0);
-  const [remainingMs, setRemainingMs] = useState<number>(0);
+  const [expiresAt, setExpiresAt] = useState(0);
+  const [remainingMs, setRemainingMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [showNip, setShowNip] = useState(false);
+  const [minting, setMinting] = useState(false);
 
   const refresh = useCallback(async () => {
     setError(null);
+    setMinting(true);
     try {
       const r = await mintToken({});
       setToken(r.token);
       setExpiresAt(r.expiresAt);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Impossible de générer le QR.';
-      setError(msg);
+      const data = (err as { data?: { message?: string } })?.data;
+      setError(data?.message ?? (err instanceof Error ? err.message : 'Impossible de générer le code.'));
       setToken(null);
+    } finally {
+      setMinting(false);
     }
   }, [mintToken]);
 
-  // Premier mint + renouvellement automatique
   useEffect(() => {
     if (isAuthenticated) void refresh();
   }, [refresh, isAuthenticated]);
@@ -46,97 +76,93 @@ export default function IdCard() {
     const id = setInterval(() => {
       const left = expiresAt - Date.now();
       setRemainingMs(left);
-      if (left <= REFRESH_PADDING_MS) {
-        void refresh();
-      }
+      if (left <= REFRESH_PADDING_MS) void refresh();
     }, 250);
     return () => clearInterval(id);
   }, [expiresAt, refresh]);
 
-  const idnId = presentation?.idnId ?? '—';
-  const fullName = presentation ? `${presentation.firstName} ${presentation.lastName}` : '—';
-  const profileLabel = presentation
-    ? (presentation.profileType === 'citizen' ? 'Citoyen Gabonais'
-      : presentation.profileType === 'resident' ? 'Résident étranger'
-      : presentation.profileType === 'visitor' ? 'Visiteur'
-      : presentation.profileType === 'developer' ? 'Développeur' : '—')
-    : '—';
-  const dob = presentation?.dateOfBirth ?? '';
-  const dobLabel = dob ? (() => {
-    const [y, m, d] = dob.split('-');
-    if (!y || !m || !d) return dob;
-    const months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-    return `${Number(d)} ${months[Number(m) - 1] ?? m} ${y}`;
-  })() : '';
-  const loa = presentation?.loa ?? 1;
-  const loaLabel = loa === 3 ? 'NIVEAU 3 · ÉLEVÉ' : loa === 2 ? 'NIVEAU 2 · SUBSTANTIEL' : 'NIVEAU 1 · FAIBLE';
-  const secondsLeft = Math.max(0, Math.ceil(remainingMs / 1000));
-
-  async function share() {
-    if (!presentation) return;
-    try {
-      await Share.share({
-        message: `Mon identité IDN : ${fullName} · ${idnId} · ${loaLabel}`,
-      });
-    } catch {
-      // ignore
-    }
-  }
+  const profile = user?.profile;
+  const pivot = profile?.pivot;
+  const loa = (profile?.loa ?? 1) as 1 | 2 | 3;
+  const nip = pivot?.nip;
+  const secondsLeft = Math.max(0, Math.ceil((remainingMs - REFRESH_PADDING_MS) / 1000));
+  const progress = Math.min(1, Math.max(0, secondsLeft / (TOKEN_TTL_S - REFRESH_PADDING_MS / 1000)));
+  // Empreinte courte du jeton, lisible à voix haute si le QR ne passe pas.
+  const shortCode = token ? token.slice(-8).toUpperCase().replace(/[^A-Z0-9]/g, '7') : '········';
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0E110D', paddingTop: insets.top }}>
-      <StatusBar style="light" />
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 18 }}>
-        <Pressable onPress={() => router.back()} style={{
-          width: 32, height: 32, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.12)',
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-            <Path d="M6 6l12 12M18 6L6 18" stroke="#fff" strokeWidth={2} strokeLinecap="round" />
-          </Svg>
-        </Pressable>
-        <Text style={{ flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '600', color: '#fff' }}>Votre identité</Text>
-        <Pressable onPress={refresh} style={{
-          width: 32, height: 32, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.12)',
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Icon name="more" size={18} color="#fff" />
-        </Pressable>
+    <Screen header={<AppBar title="Ma carte d’identité" onBack={() => router.back()} />}>
+      <View style={{ marginTop: 16, borderRadius: 20, backgroundColor: t.green, padding: 18 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ fontFamily: t.mono, fontSize: 11, letterSpacing: 1.3, color: '#D9EADF', textTransform: 'uppercase' }}>République gabonaise</Text>
+          <IdnFlagBars width={42} height={3} />
+        </View>
+        <Text style={{ marginTop: 4, fontSize: 15, fontWeight: '600', color: '#fff' }}>Carte d’identité numérique</Text>
+        <View style={{ flexDirection: 'row', gap: 14, marginTop: 16 }}>
+          <View style={{ width: 76, height: 92, borderRadius: 10, backgroundColor: '#E3F0E7', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {profile?.photoUrl ? (
+              <Image source={{ uri: profile.photoUrl }} style={{ width: 76, height: 92 }} contentFit="cover" accessibilityLabel="Photo d’identité" />
+            ) : (
+              <Text style={{ fontSize: 24, fontWeight: '600', color: '#0A5C2C' }}>{initialsOf(pivot?.firstName, pivot?.lastName)}</Text>
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Nom" value={pivot?.lastName.toUpperCase() ?? ''} />
+            <Field label="Prénom" value={pivot?.firstName ?? ''} />
+            <Field label={pivot?.gender === 'F' ? 'Née le' : 'Né le'} value={pivot ? `${frDate(pivot.dateOfBirth)} à ${pivot.birthPlace}` : ''} />
+          </View>
+        </View>
+        <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.18)', marginVertical: 12 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: t.mono, fontSize: 10, letterSpacing: 1.2, color: '#BFDCC9' }}>NIP</Text>
+            {nip ? (
+              <Text style={{ marginTop: 2, fontFamily: t.mono, fontSize: 16, letterSpacing: 1.5, color: '#fff', fontWeight: '500' }}>
+                {showNip ? formatNip(nip) : maskNip(nip)}
+              </Text>
+            ) : (
+              <Text style={{ marginTop: 2, fontSize: 14, color: '#fff' }}>Attribué après la vérification d’identité</Text>
+            )}
+          </View>
+          {nip ? (
+            <Pressable
+              onPress={() => setShowNip((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={showNip ? 'Masquer le NIP' : 'Afficher le NIP'}
+              style={{ width: 40, height: 40, borderRadius: 9999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Icon name={showNip ? 'eyeOff' : 'eye'} size={18} color="#fff" />
+            </Pressable>
+          ) : null}
+        </View>
+        <LevelBadge level={loa} onGreen style={{ marginTop: 12 }} />
       </View>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26 }}>
-        <View style={{ backgroundColor: '#fff', padding: 18, borderRadius: 18, width: 240, height: 240, alignItems: 'center', justifyContent: 'center' }}>
-          {token ? (
-            <QRCode value={token} size={204} color="#0E110D" backgroundColor="#fff" />
-          ) : (
-            <Text style={{ color: '#0E110D', fontFamily: idnTokens.mono, fontSize: 11 }}>{error ?? 'Génération…'}</Text>
-          )}
+
+      <View style={{ marginTop: 12, borderRadius: 20, borderWidth: 1, borderColor: t.border, backgroundColor: t.surface, padding: 20, alignItems: 'center' }}>
+        <View
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel="QR code de présentation de ton identité, renouvelé toutes les 30 secondes"
+          style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#E6E4DD', backgroundColor: '#fff', width: 200, height: 200, alignItems: 'center', justifyContent: 'center' }}
+        >
+          {token ? <QRCode value={token} size={176} color="#16170F" backgroundColor="#FFFFFF" ecl="M" /> : <Icon name="qr" size={48} color="#C9C7BF" />}
         </View>
-        <Text style={{ fontFamily: idnTokens.mono, fontSize: 12, color: 'rgba(255,255,255,0.8)', letterSpacing: 2, marginTop: 22 }}>{idnId}</Text>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: '#fff', marginTop: 8 }}>{fullName}</Text>
-        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 4 }}>{profileLabel} {dobLabel ? `· ${dobLabel}` : ''}</Text>
-        <View style={{ marginTop: 12, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.18)' }}>
-          <Text style={{ fontSize: 10, fontWeight: '600', color: '#fff', letterSpacing: 0.4 }}>{loaLabel}</Text>
+        <Text selectable style={{ marginTop: 12, fontFamily: t.mono, fontSize: 13, letterSpacing: 2, color: t.ink }}>{shortCode}</Text>
+        <View style={{ alignSelf: 'stretch', height: 4, borderRadius: 9999, backgroundColor: t.border, marginTop: 12, overflow: 'hidden' }}>
+          <View style={{ width: `${progress * 100}%`, height: 4, backgroundColor: t.green }} />
         </View>
+        <View accessibilityLiveRegion="none" style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+          <Icon name="clock" size={14} color={t.muted} />
+          <Text style={{ fontSize: 13, color: t.muted }}>{token ? `Nouveau code dans ${secondsLeft} s` : minting ? 'Génération du code…' : 'Code indisponible'}</Text>
+        </View>
+        <Text style={{ marginTop: 10, fontSize: 13, lineHeight: 19, color: t.muted, textAlign: 'center' }}>
+          Présente ce code à un agent ou au vérificateur public. Il change toutes les 30 secondes pour empêcher les copies.
+        </Text>
+        <ErrorNote>{error}</ErrorNote>
+        <IdnButton t={t} variant="secondary" full onPress={refresh} loading={minting} leadIcon={<Icon name="refresh" size={16} color={t.ink} />} style={{ marginTop: 16 }}>
+          Régénérer maintenant
+        </IdnButton>
       </View>
-      <View style={{ paddingHorizontal: 26, paddingBottom: Math.max(insets.bottom, 24) }}>
-        <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', padding: 12, borderRadius: 12 }}>
-          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', lineHeight: 17, textAlign: 'center' }}>
-            {error
-              ? error
-              : token
-                ? `Présentez ce QR à un contrôleur d'identité. Renouvellement dans ${secondsLeft}s.`
-                : 'Présentez ce QR à un contrôleur d\'identité. Renouvellement automatique toutes les 30 s.'}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-          <Pressable onPress={share} style={{ flex: 1, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 12, alignItems: 'center' }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Partager</Text>
-          </Pressable>
-          <Pressable onPress={() => router.push('/consents' as never)} style={{ flex: 1, paddingVertical: 14, backgroundColor: '#fff', borderRadius: 12, alignItems: 'center' }}>
-            <Text style={{ color: '#0E110D', fontSize: 13, fontWeight: '600' }}>Gérer les accès</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
+    </Screen>
   );
 }

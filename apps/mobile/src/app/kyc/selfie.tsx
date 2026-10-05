@@ -1,171 +1,81 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import { Image } from 'expo-image';
-import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
-import * as ImagePicker from 'expo-image-picker';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useConvexAuth, useMutation, useQuery } from 'convex/react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { idnTokens } from '@/design/tokens';
-import { Icon } from '@/design/icons';
+import { Text } from '@/design/text';
+import { useIdnTheme } from '@/design/theme';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Stepper } from '@/design/components/stepper';
+import { IdnButton } from '@/design/components/idn-button';
+import { ErrorNote, ScreenTitle } from '@/design/components/list';
+import { IdnLottie } from '@/design/components/lottie';
+import { CaptureStep, type CapturedImage } from '@/components/kyc/capture-step';
 import { api } from '@/lib/api';
-import { kycPostSubmitRoute } from '@/lib/kyc-flow';
-import type { Id } from '@repo/backend/convex/_generated/dataModel';
+import { KYC_STEPS, kycPostSubmitRoute } from '@/lib/kyc-flow';
+import { uploadToStorage } from '@/lib/storage-upload';
 
+/** KYC · selfie puis envoi du dossier (prototype « kyc », étapes 3 et 4). */
 export default function KycSelfie() {
+  const t = useIdnTheme();
   const router = useRouter();
   const { target } = useLocalSearchParams<{ target?: string }>();
   const targetLoa = target === '3' ? 3 : 2;
-  const insets = useSafeAreaInsets();
   const { isAuthenticated } = useConvexAuth();
   const active = useQuery(api.kyc.getActiveRequest, isAuthenticated ? {} : 'skip');
   const generateUploadUrl = useMutation(api.kyc.generateUploadUrl);
   const setSelfie = useMutation(api.kyc.setSelfie);
   const submit = useMutation(api.kyc.submit);
   const respondComplement = useMutation(api.kyc.respondComplement);
-  const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
 
-  const kycRequestId = active?._id as Id<'kycRequest'> | undefined;
-  const selfieUploaded = !!active?.selfieUrl || !!preview;
-
-  async function pick() {
-    if (!kycRequestId) {
-      setError('Veuillez d\'abord prendre le recto de votre pièce d\'identité.');
-      return;
-    }
-    setError(null);
-    try {
-      const perm = await ImagePicker.requestCameraPermissionsAsync();
-      let res: ImagePicker.ImagePickerResult;
-      if (perm.granted) {
-        res = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.8,
-          cameraType: ImagePicker.CameraType.front,
-          allowsEditing: false,
-        });
-      } else {
-        res = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.8,
-        });
-      }
-      if (res.canceled || !res.assets?.[0]) return;
-      const asset = res.assets[0];
-      setUploading(true);
-      const uploadUrl = await generateUploadUrl({});
-      const blob = await (await fetch(asset.uri)).blob();
-      const upload = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': asset.mimeType ?? 'image/jpeg' },
-        body: blob,
-      });
-      if (!upload.ok) throw new Error('Échec de l\'upload du selfie.');
-      const { storageId } = (await upload.json()) as { storageId: string };
-      await setSelfie({ kycRequestId, storageRef: storageId as Id<'_storage'> });
-      setPreview(asset.uri);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la capture.');
-    } finally {
-      setUploading(false);
-    }
+  async function upload(image: CapturedImage) {
+    if (!active?._id) throw new Error('Prends d’abord le recto et le verso de ta pièce.');
+    const storageRef = await uploadToStorage(await generateUploadUrl({}), image.uri, image.mimeType);
+    await setSelfie({ kycRequestId: active._id, storageRef });
   }
 
-  async function handleSubmit() {
-    if (!kycRequestId) return;
-    setSubmitting(true);
+  async function send() {
+    if (!active?._id) return;
+    setSending(true);
     setError(null);
     try {
-      const wasComplement = active?.status === 'complement_required';
-      if (wasComplement) await respondComplement({ kycRequestId });
-      else await submit({ kycRequestId });
+      const wasComplement = active.status === 'complement_required';
+      if (wasComplement) await respondComplement({ kycRequestId: active._id });
+      else await submit({ kycRequestId: active._id });
       const destination = kycPostSubmitRoute(targetLoa, wasComplement);
       router.replace((destination === 'level3' ? '/kyc/level3' : '/kyc/review') as never);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Soumission impossible.');
-      setSubmitting(false);
+      const data = (err as { data?: { message?: string } })?.data;
+      setError(data?.message ?? (err instanceof Error ? err.message : 'Envoi du dossier impossible.'));
+      setSending(false);
     }
   }
 
-  const previewUri = preview ?? active?.selfieUrl ?? null;
-
   return (
-    <View style={{ flex: 1, backgroundColor: '#0E110D', paddingTop: insets.top }}>
-      <StatusBar style="light" />
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 18 }}>
-        <Pressable onPress={() => router.back()} style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="arrowL" size={18} color="#fff" />
-        </Pressable>
-        <Text style={{ flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '600', color: '#fff' }}>Selfie vivant</Text>
-        <View style={{ width: 32 }} />
-      </View>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 }}>
-        <View style={{ position: 'absolute', top: 18, left: 22, right: 22, padding: 12, paddingHorizontal: 14, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 12, alignItems: 'center' }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>
-            {previewUri ? 'Selfie capturé — vérifiez la netteté' : 'Placez votre visage dans le cadre'}
-          </Text>
+    <Screen
+      header={<AppBar title="Vérification d’identité" onBack={sending ? undefined : () => router.back()} />}
+      subHeader={<Stepper steps={KYC_STEPS} current={sending ? 3 : 2} />}
+    >
+      {sending ? (
+        <View style={{ alignItems: 'center', marginTop: 60 }}>
+          <IdnLottie name="loader" size={120} loop label="Envoi en cours" />
+          <Text style={{ marginTop: 12, fontSize: 18, fontWeight: '600', color: t.ink }}>Envoi chiffré…</Text>
+          <Text style={{ marginTop: 4, fontSize: 14, color: t.muted }}>Ne ferme pas l’application.</Text>
         </View>
-        <Pressable onPress={pick} style={{
-          width: 220, height: 280,
-          borderRadius: 140,
-          borderWidth: 3,
-          borderStyle: 'dashed',
-          borderColor: idnTokens.green,
-          alignItems: 'center', justifyContent: 'center',
-          overflow: 'hidden',
-          backgroundColor: '#0E110D',
-        }}>
-          {previewUri ? (
-            <Image source={{ uri: previewUri }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-          ) : (
-            <View style={{ width: 180, height: 220, opacity: 0.34 }}>
-              <Svg viewBox="0 0 100 120" width="100%" height="100%">
-                <Ellipse cx={50} cy={55} rx={28} ry={38} stroke="#fff" strokeWidth={1.4} fill="none" />
-                <Circle cx={40} cy={48} r={2.5} fill="#fff" />
-                <Circle cx={60} cy={48} r={2.5} fill="#fff" />
-                <Path d="M44 65c2 2 10 2 12 0" stroke="#fff" strokeWidth={1.4} strokeLinecap="round" fill="none" />
-              </Svg>
-            </View>
-          )}
-        </Pressable>
-        <View style={{ position: 'absolute', bottom: 18, left: 22, right: 22, alignItems: 'center' }}>
-          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 12, textAlign: 'center' }}>
-            {selfieUploaded
-              ? 'Selfie prêt — appuyez pour soumettre'
-              : 'Bonne lumière · visage bien visible · sans lunettes ni chapeau'}
-          </Text>
-        </View>
-      </View>
-      <View style={{ paddingHorizontal: 26, paddingBottom: Math.max(insets.bottom, 30), gap: 10 }}>
-        {error ? (
-          <Text style={{ fontSize: 12, color: '#FFD7D7', textAlign: 'center' }}>{error}</Text>
-        ) : null}
-        {selfieUploaded ? (
-          <Pressable onPress={handleSubmit} disabled={submitting || uploading} style={{
-            paddingVertical: 14, borderRadius: 12,
-            backgroundColor: submitting ? 'rgba(255,255,255,0.5)' : idnTokens.green,
-            alignItems: 'center',
-          }}>
-            {submitting ? <ActivityIndicator color="#fff" /> : (
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Soumettre ma vérification</Text>
-            )}
-          </Pressable>
-        ) : (
-          <Pressable onPress={pick} disabled={uploading} style={{
-            paddingVertical: 14, borderRadius: 12,
-            backgroundColor: uploading ? 'rgba(255,255,255,0.5)' : '#fff',
-            alignItems: 'center',
-          }}>
-            {uploading ? <ActivityIndicator color="#0E110D" /> : (
-              <Text style={{ color: '#0E110D', fontSize: 14, fontWeight: '600' }}>Capturer mon selfie</Text>
-            )}
-          </Pressable>
-        )}
-      </View>
-    </View>
+      ) : (
+        <>
+          <ScreenTitle title="Ton selfie" lead="Regarde l’objectif, visage dégagé, sans lunettes de soleil. Il sera comparé à la photo de ta pièce." />
+          <CaptureStep kind="face" existingUri={active?.selfieUrl} onUpload={upload} onContinue={send} continueLabel="Envoyer mon dossier" />
+          <ErrorNote>{error}</ErrorNote>
+          {!active?._id && active !== undefined ? (
+            <IdnButton t={t} variant="ghost" full onPress={() => router.replace(`/kyc/doc?target=${targetLoa}` as never)} style={{ marginTop: 8 }}>
+              Reprendre au recto
+            </IdnButton>
+          ) : null}
+        </>
+      )}
+    </Screen>
   );
 }

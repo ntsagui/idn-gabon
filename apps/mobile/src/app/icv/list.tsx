@@ -1,102 +1,70 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
-import { useAction, useMutation, useQuery } from 'convex/react';
+import { Alert, Pressable, View } from 'react-native';
+import { Text } from '@/design/text';
+import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '@/lib/api';
 import type { Id } from '@repo/backend/convex/_generated/dataModel';
-import { Icon } from '@/design/icons';
-import { idnTokens } from '@/design/tokens';
+import { Icon, type IconName } from '@/design/icons';
 import { useIdnTheme } from '@/design/theme';
-import { NLargeHeader } from '@/components/chrome/large-header';
-import {
-  ICV_ACCENT,
-  ICV_ACCENT_SOFT_DARK,
-  ICV_ACCENT_SOFT_LIGHT,
-  icvStrings,
-} from '@/data/cv';
+import { AppBar, IconButton } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Badge } from '@/design/components/badge';
+import { Card, Note, Row, ScreenTitle } from '@/design/components/list';
+import { IdnButton } from '@/design/components/idn-button';
+import { IdnLottie } from '@/design/components/lottie';
+import { useCvPdf } from '@/components/cv/pdf-button';
+
+const MAX_CVS = 10;
 
 const SOURCE_LABEL: Record<string, string> = {
-  onboarding: icvStrings.selector.sourceOnboarding,
-  manual: icvStrings.selector.sourceManual,
-  ai_optimize: icvStrings.selector.sourceAi,
-  import: icvStrings.selector.sourceImport,
+  onboarding: 'CV initial',
+  manual: 'Créé à la main',
+  ai_optimize: 'Variante IA',
+  import: 'Importé',
 };
 
 export default function ICVList() {
   const t = useIdnTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const cvs = useQuery(api.cv.cvs.listMine);
+  const full = !!cvs && cvs.length >= MAX_CVS;
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader
-        t={t}
-        title={icvStrings.list.title}
-        sub={cvs ? `${cvs.length}/10` : undefined}
-        onBack={() => router.back()}
-        right={
-          <Pressable
-            onPress={() => router.push('/icv/create' as never)}
-            disabled={!cvs || cvs.length >= 10}
-            hitSlop={6}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              borderRadius: 9999,
-              backgroundColor: idnTokens.green,
-              opacity: cvs && cvs.length >= 10 ? 0.5 : 1,
-            }}
-          >
-            <Icon name="plus" size={12} color="#fff" />
-            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 12 }}>
-              Nouveau
-            </Text>
-          </Pressable>
-        }
-      />
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 18,
-          paddingBottom: insets.bottom + 24,
-          gap: 12,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
-        {cvs === undefined ? (
-          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-            <ActivityIndicator color={idnTokens.green} />
-          </View>
-        ) : cvs.length === 0 ? (
-          <View style={{ paddingVertical: 30, alignItems: 'center' }}>
-            <Text style={{ fontSize: 14, color: t.ink2, fontWeight: '600' }}>
-              {icvStrings.list.empty}
-            </Text>
-            <Pressable
-              onPress={() => router.push('/icv/create' as never)}
-              style={{
-                marginTop: 12,
-                paddingHorizontal: 18,
-                paddingVertical: 10,
-                backgroundColor: idnTokens.green,
-                borderRadius: 9999,
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: '700' }}>
-                {icvStrings.list.emptyCta}
-              </Text>
-            </Pressable>
-          </View>
-        ) : (
-          cvs.map((cv) => <CvRow key={cv._id} cv={cv} canSafelyDelete={cvs.length > 1} />)
-        )}
-      </ScrollView>
-    </View>
+    <Screen
+      header={
+        <AppBar
+          title="Mes CV"
+          onBack={() => router.back()}
+          right={cvs && !full ? <IconButton icon="plus" label="Créer un CV" onPress={() => router.push('/icv/create' as never)} /> : null}
+        />
+      }
+    >
+      {cvs === undefined ? (
+        <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+          <IdnLottie name="loader" size={64} loop label="Chargement" />
+        </View>
+      ) : cvs.length === 0 ? (
+        <View style={{ alignItems: 'center', marginTop: 32 }}>
+          <IdnLottie name="icv" size={120} />
+          <ScreenTitle center title="Tu n’as pas encore de CV" lead="Crée ton premier CV pour le personnaliser et le partager." />
+          <IdnButton t={t} onPress={() => router.push('/icv/create' as never)} style={{ marginTop: 20, alignSelf: 'center' }}>
+            Crée ton premier CV
+          </IdnButton>
+        </View>
+      ) : (
+        <>
+          <Text style={{ marginTop: 16, fontSize: 14, color: t.muted }}>
+            {cvs.length} CV sur {MAX_CVS} possibles.
+          </Text>
+          {cvs.map((cv) => (
+            <CvCard key={cv._id} cv={cv} canSafelyDelete={cvs.length > 1} />
+          ))}
+          {full ? <Note>Tu as atteint la limite de {MAX_CVS} CV. Supprime un CV pour en créer un nouveau.</Note> : null}
+        </>
+      )}
+    </Screen>
   );
 }
 
@@ -109,248 +77,110 @@ interface CvSummary {
   updatedAt: number;
 }
 
-function CvRow({ cv, canSafelyDelete }: { cv: CvSummary; canSafelyDelete: boolean }) {
+function CvCard({ cv, canSafelyDelete }: { cv: CvSummary; canSafelyDelete: boolean }) {
   const t = useIdnTheme();
   const router = useRouter();
   const create = useMutation(api.cv.cvs.create);
   const setDefault = useMutation(api.cv.cvs.setDefault);
   const remove = useMutation(api.cv.cvs.remove);
-  const renderPdf = useAction(api.cv.export.renderPdf);
-  const [busy, setBusy] = useState(false);
+  const pdf = useCvPdf(cv._id, cv.name);
+  const [mutating, setMutating] = useState(false);
+  const busy = mutating || pdf.pending !== null;
 
   async function handleDuplicate() {
     if (busy) return;
-    setBusy(true);
+    setMutating(true);
     try {
       const id = await create({ name: `${cv.name} (copie)`, copyFromCvId: cv._id });
       router.push(`/icv?cv=${id}` as never);
     } catch (e) {
       const msg = (e as Error).message;
-      Alert.alert(
-        'Erreur',
-        msg.includes('CV_LIMIT_REACHED') ? icvStrings.list.limit : msg,
-      );
+      Alert.alert('Duplication impossible', msg.includes('CV_LIMIT_REACHED') ? `Tu as atteint la limite de ${MAX_CVS} CV.` : msg);
     } finally {
-      setBusy(false);
+      setMutating(false);
     }
   }
 
   async function handleSetDefault() {
     if (busy || cv.isDefault) return;
-    setBusy(true);
+    setMutating(true);
     try {
       await setDefault({ cvId: cv._id });
     } catch (e) {
-      Alert.alert('Erreur', (e as Error).message ?? 'Échec.');
+      Alert.alert('Action impossible', (e as Error).message || 'Réessaie dans un instant.');
     } finally {
-      setBusy(false);
+      setMutating(false);
     }
   }
 
   function handleDelete() {
     if (busy || cv.isDefault) {
-      Alert.alert('Info', icvStrings.list.cannotDeleteDefault);
+      Alert.alert('CV principal', 'Tu ne peux pas supprimer ton CV principal. Désigne d’abord un autre CV comme principal.');
       return;
     }
-    Alert.alert(
-      icvStrings.list.confirmRemoveTitle,
-      icvStrings.list.confirmRemove(cv.name),
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: icvStrings.list.actions.remove,
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              await remove({ cvId: cv._id });
-            } catch (e) {
-              Alert.alert('Erreur', (e as Error).message ?? 'Échec.');
-            } finally {
-              setBusy(false);
-            }
-          },
+    Alert.alert('Supprimer ce CV ?', `« ${cv.name} » sera supprimé de ta liste.`, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          setMutating(true);
+          try {
+            await remove({ cvId: cv._id });
+          } catch (e) {
+            Alert.alert('Suppression impossible', (e as Error).message || 'Réessaie dans un instant.');
+          } finally {
+            setMutating(false);
+          }
         },
-      ],
-    );
-  }
-
-  async function handlePdf() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const result = await renderPdf({ cvId: cv._id });
-      const { Linking } = await import('react-native');
-      await Linking.openURL(result.url);
-    } catch (e) {
-      const msg = (e as Error).message ?? '';
-      Alert.alert(
-        'Erreur',
-        msg.includes('cvExport') || msg.includes('RATE_LIMIT')
-          ? icvStrings.actions.pdfRateLimit
-          : icvStrings.actions.pdfFailed,
-      );
-    } finally {
-      setBusy(false);
-    }
+      },
+    ]);
   }
 
   return (
-    <View
-      style={{
-        backgroundColor: t.surface,
-        borderWidth: 1,
-        borderColor: t.border,
-        borderRadius: 14,
-        padding: 14,
-      }}
-    >
-      <Pressable
+    <Card style={{ marginTop: 12 }}>
+      <Row
+        icon="fileUser"
+        tone={cv.isDefault ? 'green' : 'neutral'}
+        title={
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 14, fontWeight: '500', color: t.ink }}>{cv.name}</Text>
+            {cv.isDefault ? <Badge tone="green">Principal</Badge> : null}
+          </View>
+        }
+        sub={`${SOURCE_LABEL[cv.source] ?? cv.source} · score ${cv.completionScore}/100`}
+        accessibilityLabel={`Ouvrir ${cv.name}`}
         onPress={() => router.push(`/icv?cv=${cv._id}` as never)}
         disabled={busy}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
-      >
-        <View
-          style={{
-            width: 38,
-            height: 50,
-            backgroundColor: t.dark ? '#1A1A1F' : '#F0F0EB',
-            borderRadius: 4,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon name="file" size={18} color={t.mutedSoft} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: t.ink, flexShrink: 1 }}
-              numberOfLines={1}
-            >
-              {cv.name}
-            </Text>
-            {cv.isDefault ? (
-              <View
-                style={{
-                  paddingHorizontal: 6,
-                  paddingVertical: 1,
-                  borderRadius: 9999,
-                  backgroundColor: t.dark ? ICV_ACCENT_SOFT_DARK : ICV_ACCENT_SOFT_LIGHT,
-                }}
-              >
-                <Text style={{ fontSize: 9, fontWeight: '700', color: ICV_ACCENT }}>
-                  {icvStrings.selector.principal}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <Text
-              style={{
-                fontSize: 10,
-                color: t.muted,
-                backgroundColor: t.surface2,
-                paddingHorizontal: 6,
-                paddingVertical: 1,
-                borderRadius: 4,
-              }}
-            >
-              {SOURCE_LABEL[cv.source] ?? cv.source}
-            </Text>
-            <Text style={{ fontSize: 11, color: t.muted }}>
-              Score {cv.completionScore}/100
-            </Text>
-          </View>
-        </View>
-      </Pressable>
-
-      <View style={{ height: 1, backgroundColor: t.borderSoft, marginVertical: 12 }} />
-
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        <ActionPill
-          icon="file"
-          label={icvStrings.list.actions.open}
-          onPress={() => router.push(`/icv?cv=${cv._id}` as never)}
-          disabled={busy}
-        />
-        <ActionPill
-          icon="edit"
-          label={icvStrings.list.actions.rename}
-          onPress={() => router.push(`/icv/rename?cv=${cv._id}&name=${encodeURIComponent(cv.name)}` as never)}
-          disabled={busy}
-        />
-        <ActionPill
-          icon="copy"
-          label={icvStrings.list.actions.duplicate}
-          onPress={handleDuplicate}
-          disabled={busy}
-        />
-        {!cv.isDefault ? (
-          <ActionPill
-            icon="check"
-            label={icvStrings.list.actions.setDefault}
-            onPress={handleSetDefault}
-            disabled={busy}
-          />
-        ) : null}
-        <ActionPill
-          icon="download"
-          label={icvStrings.list.actions.download}
-          onPress={handlePdf}
-          disabled={busy}
-        />
-        {canSafelyDelete && !cv.isDefault ? (
-          <ActionPill
-            icon="trash"
-            label={icvStrings.list.actions.remove}
-            onPress={handleDelete}
-            disabled={busy}
-            destructive
-          />
-        ) : null}
+        chevron
+      />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 12 }}>
+        <Action icon="edit" label="Renommer" disabled={busy} onPress={() => router.push(`/icv/rename?cv=${cv._id}&name=${encodeURIComponent(cv.name)}` as never)} />
+        <Action icon="copy" label="Dupliquer" disabled={busy} onPress={handleDuplicate} />
+        {!cv.isDefault ? <Action icon="check" label="Définir comme principal" disabled={busy} onPress={handleSetDefault} /> : null}
+        <Action icon="download" label={pdf.pending ? 'Préparation…' : 'PDF'} disabled={busy} onPress={pdf.open} />
+        {canSafelyDelete && !cv.isDefault ? <Action icon="trash" label="Supprimer" disabled={busy} onPress={handleDelete} danger /> : null}
       </View>
-    </View>
+    </Card>
   );
 }
 
-function ActionPill({
-  icon,
-  label,
-  onPress,
-  disabled,
-  destructive,
-}: {
-  icon: Parameters<typeof Icon>[0]['name'];
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  destructive?: boolean;
-}) {
+function Action({ icon, label, onPress, disabled, danger }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean; danger?: boolean }) {
   const t = useIdnTheme();
+  const fg = danger ? t.redText : t.ink2;
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 5,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 9999,
-        backgroundColor: destructive
-          ? t.dark
-            ? 'rgba(220,38,38,0.18)'
-            : '#FEE2E2'
-          : t.surface2,
-        opacity: disabled ? 0.5 : 1,
-      }}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 9999, borderWidth: 1,
+        borderColor: t.border, backgroundColor: pressed ? (danger ? t.redBadge : t.surface2) : t.surface, opacity: disabled ? 0.45 : 1,
+      })}
     >
-      <Icon name={icon} size={12} color={destructive ? '#DC2626' : t.ink2} />
-      <Text style={{ fontSize: 11, fontWeight: '600', color: destructive ? '#DC2626' : t.ink2 }}>
-        {label}
-      </Text>
+      <Icon name={icon} size={15} color={fg} />
+      <Text style={{ fontSize: 13, fontWeight: '600', color: fg }}>{label}</Text>
     </Pressable>
   );
 }

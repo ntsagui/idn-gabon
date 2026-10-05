@@ -75,7 +75,7 @@ export default function RichEmailEditor({ initialHtml, onChange, theme }: Props)
         className="editor"
         contentEditable
         suppressContentEditableWarning
-        data-placeholder="Votre message…"
+        data-placeholder="Ton message…"
         onInput={emitChange}
         aria-label="Rédiger le message"
       />

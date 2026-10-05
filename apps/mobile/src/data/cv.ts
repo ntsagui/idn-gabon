@@ -87,10 +87,10 @@ export interface AiToolMeta {
 }
 
 export const ICV_AI_TOOLS: AiToolMeta[] = [
-  { id: 'improve_summary', label: 'Améliorer le Profil', desc: 'Reformulez votre résumé', color: '#a855f7', bgLight: '#F3E8FF', bgDark: '#2A1542' },
-  { id: 'suggest_skills', label: 'Suggérer Compétences', desc: 'Basé sur vos expériences', color: '#3b82f6', bgLight: '#DBEAFE', bgDark: '#0F2640' },
-  { id: 'optimize_job', label: 'Optimiser pour Poste', desc: 'Adaptez à une offre', color: '#f97316', bgLight: '#FFEDD5', bgDark: '#2A1A0E' },
-  { id: 'generate_letter', label: 'Lettre de Motivation', desc: 'Générez automatiquement', color: '#22c55e', bgLight: '#DCFCE7', bgDark: '#0F2818' },
+  { id: 'improve_summary', label: 'Améliorer le Profil', desc: 'Reformule ton résumé', color: '#a855f7', bgLight: '#F3E8FF', bgDark: '#2A1542' },
+  { id: 'suggest_skills', label: 'Suggérer Compétences', desc: 'Basé sur tes expériences', color: '#3b82f6', bgLight: '#DBEAFE', bgDark: '#0F2640' },
+  { id: 'optimize_job', label: 'Optimiser pour Poste', desc: 'Adapte-le à une offre', color: '#f97316', bgLight: '#FFEDD5', bgDark: '#2A1A0E' },
+  { id: 'generate_letter', label: 'Lettre de Motivation', desc: 'Génère-la automatiquement', color: '#22c55e', bgLight: '#DCFCE7', bgDark: '#0F2818' },
   { id: 'ats_check', label: 'Score ATS', desc: 'Compatibilité recruteurs', color: '#f59e0b', bgLight: '#FEF3C7', bgDark: '#2A1F0A' },
 ];
 
@@ -100,13 +100,13 @@ export const ICV_AI_TOOLS: AiToolMeta[] = [
 
 export const icvStrings = {
   title: 'iCV',
-  subtitle: 'Créez et personnalisez votre CV professionnel',
+  subtitle: 'Crée et personnalise ton CV professionnel',
   loading: 'Chargement…',
   errors: {
     loadFailed: 'Impossible de charger ce CV.',
     saveFailed: 'Échec de l\'enregistrement.',
-    quotaIa: 'Quota IA quotidien atteint (10/jour). Réessayez demain.',
-    aiFailed: 'L\'outil IA a échoué. Réessayez.',
+    quotaIa: 'Quota IA quotidien atteint (10/jour). Réessaie demain.',
+    aiFailed: 'L’outil IA a échoué. Réessaie.',
   },
   selector: {
     principal: 'Principal',
@@ -130,11 +130,11 @@ export const icvStrings = {
       remove: 'Supprimer',
     },
     cannotDeleteDefault:
-      'Impossible de supprimer le CV principal. Désignez d\'abord un autre CV comme principal.',
+      'Impossible de supprimer le CV principal. Désigne d’abord un autre CV comme principal.',
     confirmRemoveTitle: 'Supprimer ce CV ?',
     confirmRemove: (name: string) =>
       `« ${name} » sera supprimé (soft delete — restaurable plus tard).`,
-    empty: 'Vous n\'avez pas encore de CV.',
+    empty: 'Tu n’as pas encore de CV.',
     emptyCta: 'Démarrer mon premier CV',
   },
   create: {
@@ -159,7 +159,7 @@ export const icvStrings = {
     preparing: 'Préparation…',
     pdfReady: 'PDF prêt',
     pdfReadyDesc: 'Le téléchargement va démarrer.',
-    pdfRateLimit: 'Limite d\'exports atteinte. Réessayez demain.',
+    pdfRateLimit: 'Limite d’exports atteinte. Réessaie demain.',
     pdfFailed: 'Échec de la génération.',
   },
   themes: {
@@ -182,7 +182,7 @@ export const icvStrings = {
     title: 'Optimiser pour un poste',
     desc: 'L\'IA crée un nouveau CV adapté à l\'offre.',
     offerLabel: 'Texte de l\'offre',
-    offerPh: 'Collez ici la description du poste visé…',
+    offerPh: 'Colle ici la description du poste visé…',
     nameLabel: 'Nom du nouveau CV (optionnel)',
     namePh: 'Variant — Chef de projet',
     cancel: 'Annuler',
@@ -214,7 +214,7 @@ export const icvStrings = {
     successDesc: 'Les données ont été importées.',
     failed: 'L\'import a échoué.',
     tooLarge: 'Le fichier dépasse 5 Mo.',
-    unsupported: 'Format non supporté. Utilisez un PDF ou une image.',
+    unsupported: 'Format non supporté. Utilise un PDF ou une image.',
   },
   dashboard: {
     title: 'Tableau de bord',

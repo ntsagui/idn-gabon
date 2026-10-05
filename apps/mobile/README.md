@@ -86,6 +86,8 @@ une mise à jour compatible, puis propose de redémarrer. Un téléchargement ne
 redémarre jamais l’application sans action de l’utilisateur. Expo recherche
 également les mises à jour à l’ouverture ; une mise à jour téléchargée sera
 utilisée au démarrage suivant.
+L’accueil la signale alors dans « À traiter » (« Mise à jour prête »), avec un
+lien vers cet écran.
 
 - Les builds TestFlight utilisent le profil, le canal et l’environnement EAS
   `preview`. Les builds de production utilisent `production`.

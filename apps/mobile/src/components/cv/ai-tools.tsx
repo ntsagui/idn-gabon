@@ -1,35 +1,28 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Alert } from 'react-native';
 import { useAction } from 'convex/react';
 import { useRouter } from 'expo-router';
 
 import { api } from '@/lib/api';
 import type { Id } from '@repo/backend/convex/_generated/dataModel';
-import { Icon, type IconName } from '@/design/icons';
-import { ICV_AI_TOOLS, icvStrings, type AiToolId } from '@/data/cv';
-import { useIdnTheme } from '@/design/theme';
+import type { IconName } from '@/design/icons';
+import type { AiToolId } from '@/data/cv';
+import { Card, Row, SectionTitle, type RowTone } from '@/design/components/list';
 
 /**
- * Section « Options IA » — 5 outils. Chacun déclenche l'action
- * correspondante. Optimize ouvre une route sheet dédiée.
+ * Section « Outils IA » — 5 outils, chacun branché sur l'action Convex
+ * correspondante (`cv.ai.*`). « Optimiser pour une offre » ouvre sa feuille.
+ * Libellés locaux : ceux de `@/data/cv` sont au vouvoiement.
  */
+const TOOLS: { id: AiToolId; label: string; desc: string; icon: IconName; tone: RowTone }[] = [
+  { id: 'improve_summary', label: 'Améliorer ton résumé', desc: 'Reformulation de ton profil professionnel', icon: 'sparkles', tone: 'green' },
+  { id: 'suggest_skills', label: 'Suggérer des compétences', desc: 'À partir de tes expériences', icon: 'star', tone: 'blue' },
+  { id: 'optimize_job', label: 'Optimiser pour une offre', desc: 'Un nouveau CV adapté au poste visé', icon: 'briefcase', tone: 'yellow' },
+  { id: 'generate_letter', label: 'Lettre de motivation', desc: 'Rédigée à partir de ton CV', icon: 'file', tone: 'neutral' },
+  { id: 'ats_check', label: 'Score ATS', desc: 'Compatibilité avec les logiciels de recrutement', icon: 'activity', tone: 'neutral' },
+];
 
-const ICON_BY_TOOL: Record<AiToolId, IconName> = {
-  improve_summary: 'sparkles',
-  suggest_skills: 'sparkles',
-  optimize_job: 'cap',
-  generate_letter: 'file',
-  ats_check: 'sparkles',
-};
-
-export function AiTools({
-  cvId,
-  onResult,
-}: {
-  cvId: Id<'citizenCv'>;
-  onResult: (feature: AiToolId) => void;
-}) {
-  const t = useIdnTheme();
+export function AiTools({ cvId, onResult }: { cvId: Id<'citizenCv'>; onResult: (feature: AiToolId) => void }) {
   const router = useRouter();
   const improveSummary = useAction(api.cv.ai.improveSummary);
   const suggestSkills = useAction(api.cv.ai.suggestSkills);
@@ -53,10 +46,10 @@ export function AiTools({
     } catch (e) {
       const msg = (e as Error).message ?? '';
       Alert.alert(
-        'Erreur',
+        'Outil IA indisponible',
         msg.includes('cvAi') || msg.includes('RATE_LIMIT')
-          ? icvStrings.errors.quotaIa
-          : icvStrings.errors.aiFailed,
+          ? 'Tu as atteint ton quota quotidien d’outils IA (10 par jour). Réessaie demain.'
+          : 'L’outil IA a échoué. Réessaie dans un instant.',
       );
     } finally {
       setPending(null);
@@ -64,72 +57,22 @@ export function AiTools({
   }
 
   return (
-    <View
-      style={{
-        borderWidth: 1,
-        borderColor: t.border,
-        borderRadius: 14,
-        padding: 14,
-        backgroundColor: t.surface,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          marginBottom: 10,
-        }}
-      >
-        <Icon name="sparkles" size={14} color="#a855f7" />
-        <Text style={{ fontSize: 13, fontWeight: '700', color: t.ink }}>
-          {icvStrings.ai.title}
-        </Text>
-      </View>
-      <View style={{ gap: 4 }}>
-        {ICV_AI_TOOLS.map((tool) => {
-          const isPending = pending === tool.id;
-          return (
-            <Pressable
-              key={tool.id}
-              onPress={() => run(tool.id)}
-              disabled={pending !== null}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-                padding: 8,
-                borderRadius: 8,
-                opacity: pending && pending !== tool.id ? 0.5 : 1,
-              }}
-            >
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  backgroundColor: t.dark ? tool.bgDark : tool.bgLight,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Icon name={ICON_BY_TOOL[tool.id]} size={14} color={tool.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: t.ink }}>
-                  {tool.label}
-                </Text>
-                <Text
-                  style={{ fontSize: 10, color: t.muted }}
-                  numberOfLines={1}
-                >
-                  {isPending ? icvStrings.ai.inProgress : tool.desc}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
+    <>
+      <SectionTitle>Outils IA</SectionTitle>
+      <Card>
+        {TOOLS.map((tool) => (
+          <Row
+            key={tool.id}
+            icon={tool.icon}
+            tone={tool.tone}
+            title={tool.label}
+            sub={pending === tool.id ? 'Envoi en cours…' : tool.desc}
+            onPress={() => run(tool.id)}
+            disabled={pending !== null}
+            chevron
+          />
+        ))}
+      </Card>
+    </>
   );
 }

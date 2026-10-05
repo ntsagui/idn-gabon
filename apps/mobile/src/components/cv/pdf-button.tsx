@@ -1,89 +1,75 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, Text } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import { useAction } from 'convex/react';
+import * as Sharing from 'expo-sharing';
+import { File, Paths } from 'expo-file-system';
 
 import { api } from '@/lib/api';
 import type { Id } from '@repo/backend/convex/_generated/dataModel';
-import { Icon } from '@/design/icons';
-import { idnTokens } from '@/design/tokens';
-import { icvStrings } from '@/data/cv';
+import { useIdnTheme } from '@/design/theme';
+import { IconButton } from '@/design/components/app-bar';
+
+function pdfError(e: unknown) {
+  const msg = (e as Error).message ?? '';
+  Alert.alert(
+    'PDF indisponible',
+    msg.includes('cvExport') || msg.includes('RATE_LIMIT')
+      ? 'Tu as atteint la limite d’exports pour aujourd’hui. Réessaie demain.'
+      : 'La génération du PDF a échoué. Réessaie dans un instant.',
+  );
+}
+
+function safeFileName(name: string | undefined) {
+  const base = (name ?? 'CV').replace(/[^\p{L}\p{N} _-]+/gu, '').trim().replace(/\s+/g, '-');
+  return `${base || 'CV'}.pdf`;
+}
 
 /**
- * Bouton « PDF » mobile : appelle `cv.export.renderPdf` puis ouvre l'URL
- * signée dans le navigateur natif (Linking.openURL). L'utilisateur peut
- * sauver / partager le PDF depuis là.
+ * Export PDF du CV via `cv.export.renderPdf` (URL signée du stockage Convex).
+ * - `open` : ouvre le PDF dans le lecteur du système ;
+ * - `share` : télécharge le PDF dans le cache puis ouvre la feuille de partage
+ *   du système (messagerie, e-mail, Fichiers…). Il n'existe pas de lien public
+ *   de CV côté backend : on partage le document lui-même.
  */
-export function PdfButton({
-  cvId,
-  size = 'md',
-  variant = 'primary',
-}: {
-  cvId: Id<'citizenCv'>;
-  size?: 'sm' | 'md';
-  variant?: 'primary' | 'outline';
-}) {
+export function useCvPdf(cvId: Id<'citizenCv'> | null | undefined, fileName?: string) {
   const renderPdf = useAction(api.cv.export.renderPdf);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<'open' | 'share' | null>(null);
 
-  async function handlePress() {
-    if (pending) return;
-    setPending(true);
+  async function run(mode: 'open' | 'share') {
+    if (!cvId || pending) return;
+    setPending(mode);
     try {
-      const result = await renderPdf({ cvId });
-      const ok = await Linking.canOpenURL(result.url);
-      if (!ok) {
-        Alert.alert('Erreur', "Impossible d'ouvrir le PDF.");
+      const { url } = await renderPdf({ cvId });
+      if (mode === 'share' && (await Sharing.isAvailableAsync())) {
+        const file = await File.downloadFileAsync(url, new File(Paths.cache, safeFileName(fileName)), { idempotent: true });
+        await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Partager mon CV' });
         return;
       }
-      await Linking.openURL(result.url);
+      if (!(await Linking.canOpenURL(url))) {
+        Alert.alert('PDF indisponible', 'Impossible d’ouvrir le PDF sur cet appareil.');
+        return;
+      }
+      await Linking.openURL(url);
     } catch (e) {
-      const msg = (e as Error).message ?? '';
-      Alert.alert(
-        'Erreur',
-        msg.includes('cvExport') || msg.includes('RATE_LIMIT')
-          ? icvStrings.actions.pdfRateLimit
-          : icvStrings.actions.pdfFailed,
-      );
+      pdfError(e);
     } finally {
-      setPending(false);
+      setPending(null);
     }
   }
 
-  const bg = variant === 'primary' ? idnTokens.green : 'transparent';
-  const fg = variant === 'primary' ? '#fff' : idnTokens.green;
-  const pad = size === 'sm' ? { x: 12, y: 6 } : { x: 14, y: 8 };
+  return { pending, open: () => run('open'), share: () => run('share') };
+}
 
+/** Bouton icône « Ouvrir le PDF » pour la barre d'application. */
+export function PdfButton({ cvId, fileName }: { cvId: Id<'citizenCv'>; fileName?: string }) {
+  const t = useIdnTheme();
+  const { pending, open } = useCvPdf(cvId, fileName);
   return (
-    <Pressable
-      onPress={handlePress}
-      disabled={pending}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: pad.x,
-        paddingVertical: pad.y,
-        backgroundColor: bg,
-        borderRadius: 9999,
-        opacity: pending ? 0.6 : 1,
-        borderWidth: variant === 'outline' ? 1 : 0,
-        borderColor: idnTokens.green,
-      }}
-    >
-      {pending ? (
-        <ActivityIndicator size="small" color={fg} />
-      ) : (
-        <Icon name="download" size={size === 'sm' ? 12 : 14} color={fg} />
-      )}
-      <Text
-        style={{
-          fontSize: size === 'sm' ? 12 : 13,
-          fontWeight: '600',
-          color: fg,
-        }}
-      >
-        {pending ? icvStrings.actions.preparing : icvStrings.actions.pdf}
-      </Text>
-    </Pressable>
+    <IconButton
+      icon={pending ? 'clock' : 'download'}
+      label={pending ? 'Préparation du PDF' : 'Ouvrir le PDF'}
+      onPress={open}
+      color={pending ? t.muted : t.ink}
+    />
   );
 }

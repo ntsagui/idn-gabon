@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /**
  * État partagé de la « boîte active » iBoîte.
  *
- * Le sélecteur de compte (`iboite/accounts`) et les écrans consommateurs
+ * Le sélecteur de compte (pastilles de l'onglet iBoîte) et les écrans consommateurs
  * (inbox, compose email, compose courrier) doivent pointer sur la même
  * boîte. On persiste l'id choisi dans AsyncStorage pour le retrouver après
  * relance (même pattern que `BIOMETRIC_KEY` ailleurs dans l'app).

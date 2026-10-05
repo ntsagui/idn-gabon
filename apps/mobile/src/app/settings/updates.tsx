@@ -1,20 +1,15 @@
 import React, { useRef, useState } from "react"
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native"
+import { ActivityIndicator, Alert, Platform, View } from "react-native"
+import { Text } from "@/design/text"
 import { useRouter } from "expo-router"
 import Constants from "expo-constants"
 import * as Updates from "expo-updates"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { NLargeHeader } from "@/components/chrome/large-header"
+import { AppBar } from "@/design/components/app-bar"
+import { Screen } from "@/design/components/screen"
+import { Badge } from "@/design/components/badge"
+import { Card, DetailRow, ErrorNote, IconTile, Note } from "@/design/components/list"
+import { IdnButton } from "@/design/components/idn-button"
 import { useIdnTheme } from "@/design/theme"
-import { idnTokens } from "@/design/tokens"
 import { prepareAppUpdate } from "@/lib/app-updates"
 
 type Phase =
@@ -25,10 +20,15 @@ type Phase =
   | "ready"
   | "restarting"
 
+/** Mise à jour actuellement exécutée, lue dans expo-updates. */
+function installedUpdate(): string {
+  if (Updates.isEmbeddedLaunch || !Updates.createdAt) return "Version d’origine"
+  return `Du ${Updates.createdAt.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`
+}
+
 export default function SettingsUpdates() {
   const t = useIdnTheme()
   const router = useRouter()
-  const insets = useSafeAreaInsets()
   const { isUpdatePending, isChecking, isDownloading } = Updates.useUpdates()
   const [phase, setPhase] = useState<Phase>("idle")
   const [error, setError] = useState<string | null>(null)
@@ -76,7 +76,7 @@ export default function SettingsUpdates() {
 
   function confirmRestart() {
     Alert.alert(
-      "Installer la mise à jour ?",
+      "Installer la mise à jour ?",
       "L’application va redémarrer. Termine et enregistre ce que tu fais avant de continuer.",
       [
         { text: "Plus tard", style: "cancel" },
@@ -100,87 +100,42 @@ export default function SettingsUpdates() {
               : "Recherche les dernières corrections et améliorations de l’application."
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader t={t} title="Mises à jour" onBack={() => router.back()} />
-      <ScrollView
-        contentContainerStyle={{
-          padding: 22,
-          paddingBottom: insets.bottom + 24,
-        }}
-      >
-        <View
-          style={{
-            backgroundColor: t.surface,
-            borderColor: t.border,
-            borderWidth: 1,
-            borderRadius: 14,
-            padding: 20,
-            gap: 16,
-          }}
-        >
-          <Text style={{ color: t.ink, fontSize: 18, fontWeight: "700" }}>
-            Identité Numérique
-          </Text>
-          <Text style={{ color: t.muted, fontSize: 14 }}>
-            Version {Constants.expoConfig?.version ?? "1.0.0"}
-          </Text>
-          <Text
-            accessibilityLiveRegion="polite"
-            style={{ color: t.ink2, fontSize: 16, lineHeight: 24 }}
-          >
+    <Screen
+      header={<AppBar title="Mises à jour" onBack={() => router.back()} />}
+      footer={enabled ? (
+        <IdnButton t={t} full loading={busy} onPress={ready ? confirmRestart : () => void check()}>
+          {ready ? "Redémarrer et installer" : "Rechercher une mise à jour"}
+        </IdnButton>
+      ) : undefined}
+    >
+      <Card padded style={{ marginTop: 16, gap: 14 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <IconTile icon="refresh" tone={ready ? "green" : "neutral"} size={40} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: t.ink }}>Identité Numérique</Text>
+            <Text style={{ fontSize: 13, color: t.muted, marginTop: 2, fontFamily: t.mono }}>
+              Version {Constants.expoConfig?.version ?? "inconnue"}
+            </Text>
+          </View>
+          {ready ? <Badge tone="green" icon="check">Prête</Badge> : phase === "current" ? <Badge tone="neutral">À jour</Badge> : null}
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          {busy ? <ActivityIndicator color={t.green} accessibilityLabel="Mise à jour en cours" /> : null}
+          <Text accessibilityLiveRegion="polite" style={{ flex: 1, fontSize: 14, lineHeight: 20, color: t.ink2 }}>
             {message}
           </Text>
-          {busy ? (
-            <ActivityIndicator
-              color={idnTokens.green}
-              accessibilityLabel="Mise à jour en cours"
-            />
-          ) : null}
-          {error ? (
-            <Text
-              accessibilityRole="alert"
-              style={{
-                color: t.dark ? "#FFB4AB" : idnTokens.danger,
-                fontSize: 15,
-                lineHeight: 22,
-              }}
-            >
-              {error}
-            </Text>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !enabled || busy, busy }}
-            disabled={!enabled || busy}
-            onPress={ready ? confirmRestart : () => void check()}
-            style={{
-              backgroundColor: idnTokens.green,
-              opacity: !enabled || busy ? 0.5 : 1,
-              padding: 16,
-              borderRadius: 10,
-              minHeight: 48,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>
-              {ready ? "Redémarrer et installer" : "Rechercher une mise à jour"}
-            </Text>
-          </Pressable>
         </View>
-        <Text
-          style={{
-            color: t.muted,
-            fontSize: 14,
-            lineHeight: 22,
-            marginTop: 18,
-          }}
-        >
-          L’application recherche aussi les mises à jour à l’ouverture. Une mise
-          à jour téléchargée s’applique au prochain démarrage. Certaines
-          nouvelles versions nécessitent une installation depuis TestFlight ou
-          le store.
-        </Text>
-      </ScrollView>
-    </View>
+      </Card>
+      <ErrorNote>{error}</ErrorNote>
+      {enabled ? (
+        <Card style={{ marginTop: 16 }}>
+          <DetailRow label="Mise à jour installée" value={installedUpdate()} />
+          {Updates.channel ? <DetailRow label="Canal" value={Updates.channel} mono /> : null}
+        </Card>
+      ) : null}
+      <Note>
+        L’application recherche aussi les mises à jour à l’ouverture. Une mise à jour téléchargée s’applique au prochain démarrage. Certaines nouvelles versions nécessitent une installation depuis TestFlight ou le store.
+      </Note>
+    </Screen>
   )
 }

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { ActivityIndicator, Alert, Modal, ScrollView, View } from 'react-native';
+import { Text } from '@/design/text';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useConvexAuth, useMutation, useQuery } from 'convex/react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIdnTheme } from '@/design/theme';
-import { idnTokens } from '@/design/tokens';
-import { NLargeHeader } from '@/components/chrome/large-header';
-import { SetMobileRow } from '@/components/rows/setting-row';
+import { AppBar } from '@/design/components/app-bar';
+import { Screen } from '@/design/components/screen';
+import { Card, ErrorNote, Row, SectionTitle } from '@/design/components/list';
 import { IdnButton } from '@/design/components/idn-button';
 import { IdnInput } from '@/design/components/idn-input';
 import { api } from '@/lib/api';
@@ -22,7 +23,7 @@ function DeleteAccountModal({ visible, onClose, currentEmail }: { visible: boole
 
   async function submit() {
     if (confirmEmail.trim().toLowerCase() !== currentEmail.toLowerCase()) {
-      setError('L\'adresse email ne correspond pas à votre compte.');
+      setError('Cette adresse ne correspond pas à ton compte.');
       return;
     }
     setSubmitting(true);
@@ -31,7 +32,7 @@ function DeleteAccountModal({ visible, onClose, currentEmail }: { visible: boole
       await requestDeletion({ confirmEmail: confirmEmail.trim().toLowerCase() });
       Alert.alert(
         'Demande enregistrée',
-        'Votre compte sera supprimé sous 30 jours. Vous pouvez annuler en vous reconnectant pendant ce délai.',
+        'Ton compte sera supprimé dans 30 jours. Tu peux annuler d’ici là depuis Confidentialité et données.',
       );
       setConfirmEmail('');
       onClose();
@@ -43,45 +44,32 @@ function DeleteAccountModal({ visible, onClose, currentEmail }: { visible: boole
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: t.borderSoft }}>
-          <Pressable onPress={onClose}><Text style={{ color: idnTokens.green, fontSize: 14, fontWeight: '500' }}>Annuler</Text></Pressable>
-          <Text style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '600', color: t.ink }}>Supprimer mon compte</Text>
-          <View style={{ width: 60 }} />
-        </View>
-        <ScrollView contentContainerStyle={{ padding: 22, gap: 14 }} keyboardShouldPersistTaps="handled">
-          <View style={{
-            padding: 16, borderRadius: 14,
-            backgroundColor: t.dark ? '#1F1216' : '#FBE5E5',
-            borderWidth: 1,
-            borderColor: t.dark ? '#3A1E1E' : '#F5C7C7',
-          }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#B83A3A' }}>Action irréversible</Text>
-            <Text style={{ fontSize: 12, color: t.muted, marginTop: 6, lineHeight: 18 }}>
-              Toutes vos données seront supprimées sous 30 jours. Les logs d’audit sont conservés 5 ans (obligation légale).
+      <View style={{ flex: 1, backgroundColor: t.bg, paddingBottom: Math.max(insets.bottom, 12) }}>
+        <AppBar title="Supprimer mon compte" onBack={onClose} backIcon="close" />
+        <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
+          <Card padded style={{ backgroundColor: t.redBadge, borderColor: t.redBadge }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: t.redText }}>Action définitive après 30 jours</Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: t.ink2, marginTop: 6 }}>
+              Ton identité numérique, tes cartes, ton iBoîte et tes documents seront supprimés au bout de 30 jours. Tu peux annuler pendant ce délai en te reconnectant. Le journal de sécurité est conservé 5 ans (obligation légale).
             </Text>
-          </View>
+          </Card>
           <IdnInput
             t={t}
-            label={`Saisissez votre adresse email pour confirmer (${currentEmail})`}
+            label="Pour confirmer, saisis ton adresse IDN"
+            hint={currentEmail}
             value={confirmEmail}
             onChangeText={setConfirmEmail}
             type="email"
+            mono
             autoFocus
+            error={error ?? undefined}
           />
-          {error ? (
-            <View style={{ backgroundColor: t.dark ? '#3A1212' : '#FBE5E5', borderRadius: 10, padding: 12 }}>
-              <Text style={{ color: '#B83A3A', fontSize: 12, lineHeight: 17 }}>{error}</Text>
-            </View>
-          ) : null}
-          <IdnButton t={t} variant="danger" size="lg" full onPress={submit} disabled={submitting}>
-            {submitting ? 'Envoi…' : 'Confirmer la suppression'}
+          <IdnButton t={t} variant="danger" full onPress={submit} loading={submitting} disabled={confirmEmail.trim().toLowerCase() !== currentEmail.toLowerCase()}>
+            Programmer la suppression
           </IdnButton>
-          <Pressable onPress={() => WebBrowser.openBrowserAsync('https://identite.ga/legal/delete-account')}>
-            <Text style={{ textAlign: 'center', fontSize: 12, color: idnTokens.green, paddingTop: 4 }}>
-              En savoir plus sur la suppression
-            </Text>
-          </Pressable>
+          <IdnButton t={t} variant="ghost" full onPress={() => void WebBrowser.openBrowserAsync('https://identite.ga/legal/delete-account')}>
+            En savoir plus sur la suppression
+          </IdnButton>
         </ScrollView>
       </View>
     </Modal>
@@ -91,13 +79,14 @@ function DeleteAccountModal({ visible, onClose, currentEmail }: { visible: boole
 export default function SettingsPrivacy() {
   const t = useIdnTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { isAuthenticated } = useConvexAuth();
   const user = useQuery(api.profile.getCurrentUser, isAuthenticated ? {} : 'skip');
   const deletionStatus = useQuery(api.privacy.getDeletionStatus, isAuthenticated ? {} : 'skip');
   const requestExport = useMutation(api.privacy.requestDataExport);
   const cancelDeletion = useMutation(api.privacy.cancelAccountDeletion);
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  // « Supprimer mon compte » depuis le Profil ouvre directement la confirmation.
+  const { action } = useLocalSearchParams<{ action?: string }>();
+  const [deleteOpen, setDeleteOpen] = useState(action === 'delete');
   const [exporting, setExporting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +96,7 @@ export default function SettingsPrivacy() {
     setError(null);
     try {
       await cancelDeletion({});
-      Alert.alert('Suppression annulée', 'Votre compte n\'est plus programmé pour la suppression.');
+      Alert.alert('Suppression annulée', 'Ton compte n’est plus programmé pour la suppression.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Annulation impossible.');
     } finally {
@@ -120,7 +109,7 @@ export default function SettingsPrivacy() {
     setError(null);
     try {
       await requestExport({});
-      Alert.alert('Export demandé', 'Votre archive ZIP sera disponible par email sous 24h.');
+      Alert.alert('Export demandé', 'Tu recevras dans ton iBoîte un e-mail avec le lien de ton archive, valable 24 h.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Demande impossible.');
     } finally {
@@ -129,61 +118,34 @@ export default function SettingsPrivacy() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NLargeHeader t={t} title="Confidentialité" sub="Visualisez, exportez ou supprimez vos données." onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 4, paddingBottom: 22 }}>
-        <Text style={{ fontSize: 10, color: t.muted, letterSpacing: 1.2, fontWeight: '600', paddingHorizontal: 4, paddingVertical: 6 }}>VOS DONNÉES</Text>
-        <View style={{ backgroundColor: t.surface, borderWidth: 1, borderColor: t.border, borderRadius: 14, overflow: 'hidden' }}>
-          <SetMobileRow
-            t={t}
-            label={exporting ? 'Demande en cours…' : 'Télécharger une copie'}
-            value="Archive ZIP · disponible sous 24h"
-            onPress={exporting ? undefined : handleExport}
-          />
-          <SetMobileRow t={t} label="Liste des partages actifs" value="Voir les applications autorisées" onPress={() => router.push('/consents' as never)} />
-        </View>
+    <Screen header={<AppBar title="Confidentialité et données" onBack={() => router.back()} />}>
+      <Text style={{ marginTop: 16, fontSize: 14, lineHeight: 20, color: t.muted }}>Consulte, exporte ou supprime les données de ton compte IDN.</Text>
+      <SectionTitle>Tes données</SectionTitle>
+      <Card>
+        <Row icon="download" title="Télécharger une copie" sub="Archive envoyée par e-mail dans ton iBoîte, lien valable 24 h" chevron={!exporting} right={exporting ? <ActivityIndicator color={t.green} /> : null} onPress={exporting ? undefined : handleExport} />
+        <Row icon="keyRound" title="Partages actifs" sub="Applications autorisées à lire tes informations" chevron onPress={() => router.push('/consents' as never)} />
+        <Row icon="activity" title="Journal d’activité" sub="Connexions et opérations sur ton compte" chevron onPress={() => router.push('/activity')} />
+      </Card>
+      <ErrorNote>{error}</ErrorNote>
 
-        {error ? (
-          <View style={{ marginTop: 12, backgroundColor: t.dark ? '#3A1212' : '#FBE5E5', borderRadius: 10, padding: 12 }}>
-            <Text style={{ color: '#B83A3A', fontSize: 12, lineHeight: 17 }}>{error}</Text>
-          </View>
-        ) : null}
-
-        {deletionStatus ? (
-          <View style={{
-            marginTop: 18, padding: 16, borderRadius: 14,
-            backgroundColor: t.dark ? '#1F1216' : '#FBE5E5',
-            borderWidth: 1,
-            borderColor: t.dark ? '#3A1E1E' : '#F5C7C7',
-          }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#B83A3A' }}>Suppression programmée</Text>
-            <Text style={{ fontSize: 11, color: t.muted, marginTop: 4, lineHeight: 17 }}>
-              Votre compte sera supprimé dans {deletionStatus.daysRemaining} jour{deletionStatus.daysRemaining > 1 ? 's' : ''}. Annulez maintenant si vous changez d’avis.
-            </Text>
-            <View style={{ marginTop: 14 }}>
-              <IdnButton t={t} variant="primary" size="md" full onPress={handleCancelDeletion} disabled={cancelling}>
-                {cancelling ? 'Annulation…' : 'Annuler la suppression'}
-              </IdnButton>
-            </View>
-          </View>
-        ) : (
-          <View style={{
-            marginTop: 18, padding: 16, borderRadius: 14,
-            backgroundColor: t.dark ? '#1F1216' : '#FBE5E5',
-            borderWidth: 1,
-            borderColor: t.dark ? '#3A1E1E' : '#F5C7C7',
-          }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#B83A3A' }}>Zone sensible</Text>
-            <Text style={{ fontSize: 11, color: t.muted, marginTop: 4, lineHeight: 17 }}>
-              Supprimer définitivement votre compte IDN. Les logs d’audit sont conservés 5 ans (obligation légale).
-            </Text>
-            <View style={{ gap: 8, marginTop: 14 }}>
-              <IdnButton t={t} variant="danger" size="md" full onPress={() => setDeleteOpen(true)}>Supprimer mon compte</IdnButton>
-            </View>
-          </View>
-        )}
-      </ScrollView>
+      <SectionTitle>Suppression du compte</SectionTitle>
+      {deletionStatus ? (
+        <Card padded style={{ backgroundColor: t.redBadge, borderColor: t.redBadge }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: t.redText }}>Suppression programmée</Text>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: t.ink2, marginTop: 4 }}>
+            {`Ton compte sera supprimé dans ${deletionStatus.daysRemaining} jour${deletionStatus.daysRemaining > 1 ? 's' : ''}. Tu peux encore changer d’avis.`}
+          </Text>
+          <IdnButton t={t} full onPress={handleCancelDeletion} loading={cancelling} style={{ marginTop: 12 }}>Annuler la suppression</IdnButton>
+        </Card>
+      ) : (
+        <Card padded>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: t.muted }}>
+            Supprime définitivement ton compte IDN après un délai de réflexion de 30 jours.
+          </Text>
+          <IdnButton t={t} variant="dangerGhost" full onPress={() => setDeleteOpen(true)} style={{ marginTop: 12 }}>Supprimer mon compte</IdnButton>
+        </Card>
+      )}
       <DeleteAccountModal visible={deleteOpen} onClose={() => setDeleteOpen(false)} currentEmail={user?.email ?? ''} />
-    </View>
+    </Screen>
   );
 }

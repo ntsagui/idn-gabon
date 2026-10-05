@@ -1,0 +1,47 @@
+import { authClient } from '@/lib/auth-client';
+import { BIOMETRIC } from './biometric-label';
+
+/**
+ * Gestion des clés d'accès (passkeys). Sur iOS/Android, le client
+ * `expo-better-auth-passkey` ne fournit que l'enrôlement et la connexion :
+ * `authClient.passkey.listUserPasskeys()` tombait dans le proxy générique de
+ * Better Auth avec la mauvaise méthode HTTP. On appelle donc les routes du
+ * plugin serveur explicitement.
+ *
+ * Constat du 05/10/2026 : le composant Convex Better Auth déployé n'a pas de
+ * table `passkey` (installation par défaut du composant) ; le serveur répond
+ * 500 à toute route passkey. On le signale par `PasskeyUnavailableError` pour
+ * afficher « indisponible » plutôt qu'un bouton qui échoue.
+ */
+export type Passkey = { id: string; name?: string | null; createdAt: string | number | Date; deviceType?: string };
+
+export class PasskeyUnavailableError extends Error {
+  constructor() {
+    super('Les clés d’accès ne sont pas encore activées sur le service IDN.');
+  }
+}
+
+type FetchResult<T> = { data?: T | null; error?: { message?: string; status?: number } | null } | null | undefined;
+
+export function isServerFailure(error: { status?: number } | null | undefined): boolean {
+  return !!error && typeof error.status === 'number' && error.status >= 500;
+}
+
+export async function listPasskeys(): Promise<Passkey[]> {
+  const res = (await authClient.$fetch('/passkey/list-user-passkeys', { method: 'GET' })) as FetchResult<Passkey[]>;
+  if (isServerFailure(res?.error)) throw new PasskeyUnavailableError();
+  if (res?.error) throw new Error(res.error.message || 'Chargement des clés impossible.');
+  return Array.isArray(res?.data) ? res.data : [];
+}
+
+export async function deletePasskey(id: string): Promise<void> {
+  const res = (await authClient.$fetch('/passkey/delete-passkey', { method: 'POST', body: { id } })) as FetchResult<unknown>;
+  if (isServerFailure(res?.error)) throw new PasskeyUnavailableError();
+  if (res?.error) throw new Error(res.error.message || 'Suppression impossible.');
+}
+
+/** Message à montrer quand une opération de clé d'accès (enrôlement, connexion) échoue. */
+export function passkeyErrorMessage(error: { message?: string; status?: number } | null | undefined, fallback: string): string {
+  if (isServerFailure(error)) return `La connexion par ${BIOMETRIC} n’est pas encore disponible sur le service IDN. Utilise ton code PIN.`;
+  return error?.message || fallback;
+}
