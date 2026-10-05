@@ -7,7 +7,6 @@ import {
   FolderIcon,
   HomeIcon,
   InboxIcon,
-  KeyRoundIcon,
   LogOutIcon,
   ShieldCheckIcon,
   UserIcon,
@@ -26,6 +25,7 @@ import {
 import { cn } from "@repo/ui/lib/utils"
 
 import { authClient } from "@/lib/auth-client"
+import { clearLastAccount } from "@/lib/citizen/last-account"
 
 type UserMenuUser = {
   email: string
@@ -53,7 +53,14 @@ export function UserMenu({ user, className, triggerLabel }: UserMenuProps) {
   const ariaLabel = triggerLabel ?? `Compte de ${fullName}`
 
   const handleSignOut = async () => {
-    await authClient.signOut()
+    // Comme « Se déconnecter » du Profil : l'accueil par le prénom est oublié.
+    clearLastAccount()
+    try {
+      await authClient.signOut()
+    } catch {
+      // Réseau coupé : le client efface quand même la session locale ; on
+      // quitte la page dans tous les cas plutôt que de laisser le menu figé.
+    }
     window.location.href = "/"
   }
 
@@ -119,19 +126,13 @@ export function UserMenu({ user, className, triggerLabel }: UserMenuProps) {
         <DropdownMenuItem asChild>
           <Link href="/profile">
             <UserIcon aria-hidden="true" />
-            <span>Mon profil</span>
+            <span>Sécurité et profil</span>
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/consents">
             <ShieldCheckIcon aria-hidden="true" />
-            <span>Mes consentements</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/settings">
-            <KeyRoundIcon aria-hidden="true" />
-            <span>Paramètres</span>
+            <span>Apps autorisées</span>
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

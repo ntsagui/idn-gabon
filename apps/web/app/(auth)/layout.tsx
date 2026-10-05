@@ -1,33 +1,26 @@
-import { PublicFooter } from "../(public)/_components/public-footer"
-import { PublicNav } from "../(public)/_components/public-nav"
-import { footer } from "../(public)/_content/fr"
+import { AuthAside } from "./_components/auth-aside"
 
 /**
- * Layout des pages d'auth (sign-up tunnel, sign-in, forgot/reset password).
+ * Écrans d'accès (connexion, inscription, PIN oublié…).
  *
- * - Mobile (< md) : plein écran, chaque page rend son OnboardingHeader
- *   sticky + sticky CTA bottom via WizardShell.
- * - Desktop (≥ md) : PublicNav + PublicFooter (mêmes que les pages
- *   publiques) wrap le contenu, l'OnboardingHeader n'est pas rendu.
+ * - Téléphone (< md) : plein écran, chaque page pose son `AppBar` comme
+ *   l'app mobile.
+ * - Grand écran (≥ md) : colonne verte à gauche (prototype web), parcours
+ *   centré à droite.
  */
-export default function AuthLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    <div className="flex min-h-svh bg-idn-bg">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-[10px] focus:bg-idn-green focus:px-4 focus:py-2 focus:text-white"
       >
-        {footer.skipToMain}
+        Aller au contenu principal
       </a>
-      <PublicNav className="hidden md:block" />
-      <main id="main" className="flex flex-1 flex-col">
+      <AuthAside className="hidden md:flex" />
+      <main id="main" className="flex min-h-svh min-w-0 flex-1 flex-col md:items-center md:justify-center md:px-8 md:py-10">
         {children}
       </main>
-      <PublicFooter className="hidden md:block" />
     </div>
   )
 }

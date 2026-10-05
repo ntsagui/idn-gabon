@@ -1,11 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useConvexAuth } from "convex/react";
 import { useEffect } from "react";
 
-import { CitizenHeader } from "./_components/citizen-header";
-import { CitizenMobileHeader } from "./_components/citizen-mobile-header";
+import { IdnLottie } from "@/app/_components/idn/lottie";
+
+import { PreferenceSync } from "./_components/account/preference-sync";
+import { CitizenShell } from "./_components/citizen-shell";
 import { PwaBootstrap } from "../_components/pwa-bootstrap";
 
 export default function CitizenLayout({
@@ -15,31 +17,30 @@ export default function CitizenLayout({
 }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace("/sign-in?redirect_to=/dashboard");
+      // La query est conservée (`/kyc?return_to=…&target=3`, liens d'e-mail) :
+      // après reconnexion, la personne reprend exactement où elle était.
+      const here = `${pathname || "/dashboard"}${window.location.search}`;
+      router.replace(`/sign-in?redirect_to=${encodeURIComponent(here)}`);
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, router, pathname]);
 
   if (isLoading || !isAuthenticated) {
-    return <div className="min-h-svh bg-background" />;
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-idn-bg">
+        <IdnLottie name="loader" size={64} label="Chargement de ton espace" />
+      </div>
+    );
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-background">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
-      >
-        Aller au contenu principal
-      </a>
-      <CitizenMobileHeader className="md:hidden" />
-      <CitizenHeader className="hidden md:flex" />
-      <main id="main" className="flex flex-1 flex-col">
-        {children}
-      </main>
+    <>
+      <CitizenShell>{children}</CitizenShell>
+      <PreferenceSync />
       <PwaBootstrap />
-    </div>
+    </>
   );
 }

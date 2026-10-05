@@ -1,13 +1,12 @@
+import { toInternalPath } from "@/lib/safe-path"
+
 /**
  * Helpers de redirection sûrs — anti open-redirect.
  *
- * On n'accepte qu'un chemin commençant par `/` qui ne tente pas de
- * sortir vers un autre site (`//evil.com` ou `/\evil.com`).
+ * On n'accepte qu'un chemin de cette origine (`toInternalPath` : refuse
+ * `//evil.com`, `/\evil.com`, les caractères de contrôle, et vérifie
+ * l'origine résolue).
  */
-
 export function safeRedirectTo(input: string | null, fallback: string): string {
-  if (!input) return fallback
-  if (!input.startsWith("/")) return fallback
-  if (input.startsWith("//") || input.startsWith("/\\")) return fallback
-  return input
+  return toInternalPath(input) ?? fallback
 }

@@ -1,340 +1,230 @@
 "use client"
 
 import * as React from "react"
-import { useQuery } from "convex/react"
-import { ShieldCheckIcon } from "lucide-react"
-
 import Link from "next/link"
+import { useMutation, useQuery } from "convex/react"
 
 import { api } from "@repo/backend/convex/_generated/api"
-import { Button } from "@repo/ui/components/button"
-import { LoABadge, type LoALevel } from "@repo/ui/components/loa-badge"
 
-import {
-  dashboard,
-  formatLongDate,
-  formatVerifiedDocuments,
-  profile,
-  PROFILE_TYPE_LABELS,
-} from "../_content/fr"
-import { InfoRow } from "../_components/info-row"
-import { PhotoUploader } from "../_components/photo-uploader"
+import { AppBar } from "@/app/_components/idn/app-bar"
+import { Badge, LevelBadge } from "@/app/_components/idn/badge"
+import { IdnButton } from "@/app/_components/idn/button"
+import { ConfirmDialog } from "@/app/_components/idn/dialog"
+import { Avatar, Card, Row, RowAction, SectionTitle } from "@/app/_components/idn/list"
+import { Screen } from "@/app/_components/idn/screen"
+import { authClient } from "@/lib/auth-client"
+import { deviceIcon } from "@/lib/citizen/display"
+import { deviceLabel } from "@/lib/citizen/device-label"
+import { clearLastAccount, initialsOf } from "@/lib/citizen/last-account"
+import { maskNip } from "@/lib/citizen/nip-format"
+import { PasskeyUnavailableError } from "@/lib/citizen/passkeys"
 
+import { loadPasskeys } from "../_components/account/passkey-list"
+
+type Confirm =
+  | { kind: "session"; id: string; device: string }
+  | { kind: "consent"; clientId: string; name: string }
+  | { kind: "signOut" }
+
+/** Onglet Profil : transposition de apps/mobile/src/app/(tabs)/profile.tsx. */
 export default function ProfilePage() {
-  const me = useQuery(api.profile.getCurrentUser)
+  const user = useQuery(api.profile.getCurrentUser)
   const sessions = useQuery(api.sessions.listMine)
+  const consents = useQuery(api.oauthConsents.listMine)
+  const accounts = useQuery(api.iboite.accounts.listMine)
+  const revokeSession = useMutation(api.sessions.revoke)
+  const revokeConsent = useMutation(api.oauthConsents.revokeForClient)
+  const [passkeys, setPasskeys] = React.useState<number | null>(null)
+  const [confirm, setConfirm] = React.useState<Confirm | null>(null)
 
-  if (me === undefined) {
-    return (
-      <section className="mx-auto w-full max-w-[1080px] px-5 py-6 md:px-7 md:py-8">
-        <div className="h-32 animate-pulse rounded-2xl bg-secondary" />
-      </section>
-    )
+  React.useEffect(() => {
+    let alive = true
+    void loadPasskeys()
+      .then((list) => alive && setPasskeys(list.length))
+      .catch((err) => alive && setPasskeys(err instanceof PasskeyUnavailableError ? -1 : null))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const profile = user?.profile
+  const pivot = profile?.pivot
+  const loa = (profile?.loa ?? 1) as 1 | 2 | 3
+  const address = accounts?.[0]
+  const residence = address?.isAddressConfigured ? [address.district, address.city].filter(Boolean).join(", ") : null
+
+  const named = (sessions ?? []).map((s) => ({ ...s, device: deviceLabel(s.device, s.userAgent) }))
+  const otherSessions = named.filter((s) => !s.isCurrent)
+  const current = named.find((s) => s.isCurrent)
+
+  async function signOut() {
+    clearLastAccount()
+    try {
+      await authClient.signOut()
+    } catch {
+      // La session locale est effacée de toute façon par le client.
+    }
+    // Rechargement complet : repart d'un client Convex sans session et
+    // l'emporte sur la redirection « ?redirect_to=/profile » de la coquille.
+    window.location.replace("/sign-in")
   }
 
-  if (me === null) {
-    return null
-  }
-
-  const userProfile = me.profile
-  const pivot = userProfile?.pivot
-  const loa = (userProfile?.loa ?? 1) as LoALevel
-  const firstName = pivot?.firstName ?? ""
-  const lastName = pivot?.lastName ?? ""
-  const fullName = [firstName, lastName].filter(Boolean).join(" ") || "—"
-  const profileLabel =
-    PROFILE_TYPE_LABELS[
-      (userProfile?.profileType ??
-        "citizen") as keyof typeof PROFILE_TYPE_LABELS
-    ] ?? userProfile?.profileType
-  const idnId = userProfile?.idnId ?? dashboard.idnIdEmpty
-  const photoUrl = userProfile?.photoUrl ?? null
-  const pinConfigured = userProfile?.pinConfigured ?? false
-  const phoneVerifiedAt = userProfile?.phoneVerifiedAt ?? null
-  const verifiedAt = userProfile?.verifiedAt ?? null
-  const verifiedDocs = userProfile?.verifiedDocumentTypes ?? []
-
-  const sessionCount = sessions?.length
-  const sessionsValue =
-    sessionCount === undefined
-      ? "…"
-      : sessionCount === 0
-        ? profile.security.rows.sessionsValueEmpty
-        : sessionCount === 1
-          ? profile.security.rows.sessionsValueSingle
-          : profile.security.rows.sessionsValueMany(sessionCount)
-
-  const showUpgrade = loa < 3
+  const passkeySub =
+    passkeys === -1
+      ? "Pas encore disponible sur le service IDN"
+      : passkeys === null
+        ? "Gérer la connexion biométrique"
+        : passkeys === 0
+          ? "Aucune clé d’accès enregistrée"
+          : `${passkeys} clé${passkeys > 1 ? "s" : ""} d’accès enregistrée${passkeys > 1 ? "s" : ""}`
 
   return (
-    <>
-      {/* DESKTOP (≥ md) — match CWProfile */}
-      <section className="mx-auto hidden w-full md:px-4 lg:px-20 py-8 md:block">
-        <div className="flex items-center gap-5">
-          <PhotoUploader
-            firstName={firstName}
-            lastName={lastName}
-            currentPhotoUrl={photoUrl}
-            size={72}
+    <Screen header={<AppBar title="Sécurité et profil" />}>
+      <Link
+        href="/profile/edit"
+        aria-label="Modifier mon profil"
+        className="-mx-1 mt-5 flex items-center gap-3.5 rounded-[14px] px-1 py-1 outline-none hover:bg-idn-surface-2/60 focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Avatar photoUrl={profile?.photoUrl} initials={initialsOf(pivot?.firstName, pivot?.lastName, user?.email)} size={64} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-lg font-semibold text-idn-ink">{pivot ? `${pivot.firstName} ${pivot.lastName}` : "…"}</span>
+          <span className="mt-0.5 block truncate text-[13px] text-idn-muted">{user?.email ?? ""}</span>
+          <LevelBadge level={loa} className="mt-1.5" />
+        </span>
+      </Link>
+
+      <SectionTitle>Identité</SectionTitle>
+      <Card>
+        <Row icon="pin" title="NIP" sub={pivot?.nip ? maskNip(pivot.nip) : "Non renseigné"} mono={!!pivot?.nip} chevron href="/settings/security" />
+        <Row icon="smartphone" title="Téléphone" sub={pivot?.phone ?? "Non renseigné"} chevron href="/profile/edit" />
+        <Row
+          icon="pinLoc"
+          title="Résidence"
+          sub={residence || "À renseigner dans iBoîte"}
+          chevron
+          href={address ? `/iboite/address-setup?accountId=${address._id}` : "/iboite"}
+        />
+        <Row icon="idCard" title="Ma carte d’identité" sub="Présenter mon QR" chevron href="/id-card" />
+      </Card>
+
+      <SectionTitle>Connexion</SectionTitle>
+      <Card>
+        <Row
+          icon="scanFace"
+          title="Biométrie et clés d’accès"
+          sub={passkeySub}
+          right={passkeys && passkeys > 0 ? <Badge tone="green" icon="check">Activé</Badge> : null}
+          chevron
+          href="/settings/security"
+        />
+        <Row icon="lock" title="Changer le code PIN" chevron href="/settings/security?action=pin" />
+        <Row icon="smartphone" title="Changer de téléphone" sub="Vérification par SMS du nouveau numéro" chevron href="/profile/edit" />
+      </Card>
+
+      <SectionTitle action={sessions && sessions.length > 3 ? "Tout voir" : undefined} actionHref="/settings/sessions">
+        Appareils
+      </SectionTitle>
+      <Card>
+        {sessions === undefined ? <Row title="Chargement…" /> : null}
+        {current ? <Row icon={deviceIcon(current.device)} tone="green" title={current.device} sub="Cet appareil" /> : null}
+        {otherSessions.slice(0, 3).map((s) => (
+          <Row
+            key={s.id}
+            icon={deviceIcon(s.device)}
+            title={s.device}
+            sub={`Connecté le ${new Date(s.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`}
+            right={
+              <RowAction danger ariaLabel={`Déconnecter ${s.device}`} onClick={() => setConfirm({ kind: "session", id: s.id, device: s.device })}>
+                Déconnecter
+              </RowAction>
+            }
           />
-          <div className="min-w-0 flex-1">
-            <p className="text-[26px] font-semibold leading-tight tracking-[-0.01em] text-foreground">
-              {fullName}
-            </p>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              {profileLabel}
-            </p>
-            <div className="mt-2">
-              <LoABadge level={loa} />
-            </div>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/profile/edit">{profile.edit}</Link>
-          </Button>
-        </div>
+        ))}
+        {sessions && sessions.length > 0 ? <Row icon="laptop" title="Gérer mes appareils" chevron href="/settings/sessions" /> : null}
+      </Card>
 
-        <div className="mt-7 grid grid-cols-2 gap-5">
-          <div className="rounded-xl border border-border bg-card p-5">
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-              {profile.pivot.eyebrow}
-            </p>
-            <div className="mt-3">
-              <InfoRow
-                label={profile.pivot.rows.firstName}
-                value={firstName || "—"}
-              />
-              <InfoRow
-                label={profile.pivot.rows.lastName}
-                value={lastName || "—"}
-              />
-              <InfoRow
-                label={profile.pivot.rows.dateOfBirth}
-                value={pivot?.dateOfBirth ?? "—"}
-              />
-              <InfoRow
-                label={profile.pivot.rows.birthPlace}
-                value={pivot?.birthPlace ?? "—"}
-              />
-              <InfoRow
-                label={profile.pivot.rows.nationality}
-                value={pivot?.nationality ?? "—"}
-              />
-              <InfoRow
-                label={profile.pivot.rows.phone}
-                value={
-                  pivot?.phone
-                    ? `${pivot.phone} · ${
-                        phoneVerifiedAt
-                          ? profile.pivot.rows.phoneVerified
-                          : profile.pivot.rows.phoneUnverified
-                      }`
-                    : profile.pivot.rows.phoneEmpty
-                }
-              />
-              <InfoRow
-                label={profile.pivot.rows.idnId}
-                value={idnId}
-                mono
-              />
-              <InfoRow
-                label={profile.pivot.rows.nip}
-                value={pivot?.nip ?? profile.pivot.rows.nipEmpty}
-                mono={Boolean(pivot?.nip)}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-5">
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                {profile.security.eyebrow}
-              </p>
-              <div className="mt-3">
-                <InfoRow
-                  label={profile.security.rows.password}
-                  value={profile.security.rows.passwordValue}
-                />
-                <InfoRow
-                  label={profile.security.rows.pin}
-                  value={
-                    pinConfigured
-                      ? profile.security.rows.pinConfiguredValue
-                      : profile.security.rows.pinNotConfiguredValue
-                  }
-                />
-                <InfoRow
-                  label={profile.security.rows.twoFactor}
-                  value={profile.security.rows.twoFactorValue}
-                />
-                <InfoRow
-                  label={profile.security.rows.sessions}
-                  value={sessionsValue}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                {profile.verification.eyebrow}
-              </p>
-              <div className="mt-3">
-                <InfoRow
-                  label={profile.verification.rows.currentLevel}
-                  value={profile.verification.rows.currentLevelValue(loa)}
-                />
-                <InfoRow
-                  label={profile.verification.rows.verifiedOn}
-                  value={
-                    verifiedAt
-                      ? formatLongDate(verifiedAt)
-                      : profile.verification.rows.verifiedOnEmpty
-                  }
-                />
-                <InfoRow
-                  label={profile.verification.rows.documents}
-                  value={formatVerifiedDocuments(verifiedDocs)}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* MOBILE (< md) — match MProfile */}
-      <section className="mx-auto flex w-full max-w-[480px] flex-1 flex-col gap-5 px-5 py-4 md:hidden">
-        <div className="flex items-center gap-3.5 rounded-2xl border border-border bg-card p-4">
-          <PhotoUploader
-            firstName={firstName}
-            lastName={lastName}
-            currentPhotoUrl={photoUrl}
-            size={60}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-[17px] font-semibold text-foreground">
-              {fullName}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {profileLabel}
-            </p>
-            <div className="mt-2">
-              <LoABadge level={loa} compact />
-            </div>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/profile/edit">{profile.edit}</Link>
-          </Button>
-        </div>
-
-        <section aria-labelledby="pivot-mobile">
-          <p
-            id="pivot-mobile"
-            className="font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
-          >
-            {profile.pivot.eyebrow}
-          </p>
-          <div className="mt-2 rounded-2xl border border-border bg-card px-4">
-            <InfoRow
-              label={profile.pivot.rows.firstName}
-              value={firstName || "—"}
-            />
-            <InfoRow
-              label={profile.pivot.rows.lastName}
-              value={lastName || "—"}
-            />
-            <InfoRow
-              label={profile.pivot.rows.dateOfBirth}
-              value={pivot?.dateOfBirth ?? "—"}
-            />
-            <InfoRow
-              label={profile.pivot.rows.birthPlace}
-              value={pivot?.birthPlace ?? "—"}
-            />
-            <InfoRow
-              label={profile.pivot.rows.nationality}
-              value={pivot?.nationality ?? "—"}
-            />
-            <InfoRow
-              label={profile.pivot.rows.phone}
-              value={
-                pivot?.phone
-                  ? `${pivot.phone} · ${
-                      phoneVerifiedAt
-                        ? profile.pivot.rows.phoneVerified
-                        : profile.pivot.rows.phoneUnverified
-                    }`
-                  : profile.pivot.rows.phoneEmpty
+      <SectionTitle action={consents && consents.length ? "Tout voir" : undefined} actionHref="/consents">
+        Apps autorisées
+      </SectionTitle>
+      <Card>
+        {consents === undefined ? (
+          <Row title="Chargement…" />
+        ) : consents.length === 0 ? (
+          <Row icon="keyRound" title="Aucune application autorisée" sub="Les services où tu te connectes avec IDN apparaîtront ici." />
+        ) : (
+          consents.slice(0, 4).map((c) => (
+            <Row
+              key={c.id}
+              icon="building"
+              tone="blue"
+              title={c.appName}
+              sub={`Depuis le ${new Date(c.grantedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`}
+              right={
+                <RowAction danger ariaLabel={`Révoquer ${c.appName}`} onClick={() => setConfirm({ kind: "consent", clientId: c.clientId, name: c.appName })}>
+                  Révoquer
+                </RowAction>
               }
             />
-            <InfoRow
-              label={profile.pivot.rows.idnId}
-              value={idnId}
-              mono
-            />
-            <InfoRow
-              label={profile.pivot.rows.nip}
-              value={pivot?.nip ?? profile.pivot.rows.nipEmpty}
-              mono={Boolean(pivot?.nip)}
-            />
-          </div>
-        </section>
-
-        <section aria-labelledby="security-mobile">
-          <p
-            id="security-mobile"
-            className="font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
-          >
-            {profile.security.eyebrow}
-          </p>
-          <div className="mt-2 rounded-2xl border border-border bg-card px-4">
-            <InfoRow
-              label={profile.security.rows.pin}
-              value={
-                pinConfigured
-                  ? profile.security.rows.pinConfiguredValue
-                  : profile.security.rows.pinNotConfiguredValue
-              }
-            />
-            <InfoRow
-              label={profile.security.rows.sessions}
-              value={sessionsValue}
-            />
-          </div>
-        </section>
-
-        {showUpgrade && (
-          // Les niveaux ne s'enchaînent plus : depuis le LoA 1, le Niveau 3
-          // est demandable directement (les pièces sont collectées dans le même
-          // parcours, cf. verification/requestPolicy.ts). On propose donc les
-          // deux cibles côte à côte plutôt qu'un unique « niveau suivant ».
-          <div className="flex flex-col gap-2 sm:flex-row">
-            {loa < 2 && (
-              <Button
-                asChild
-                variant="outline"
-                size="lg"
-                className="h-12 w-full"
-              >
-                <Link href="/kyc?target=2">
-                  <ShieldCheckIcon
-                    className="text-idn-green dark:text-idn-green-on-dark"
-                    aria-hidden="true"
-                  />
-                  {profile.upgradeCta(2)}
-                </Link>
-              </Button>
-            )}
-            <Button asChild variant="outline" size="lg" className="h-12 w-full">
-              <Link href="/kyc?target=3">
-                <ShieldCheckIcon
-                  className="text-idn-green dark:text-idn-green-on-dark"
-                  aria-hidden="true"
-                />
-                {profile.upgradeCta(3)}
-              </Link>
-            </Button>
-          </div>
+          ))
         )}
-      </section>
-    </>
+      </Card>
+
+      <SectionTitle>Préférences</SectionTitle>
+      <Card>
+        <Row icon="bell" title="Notifications" chevron href="/settings/notifications" />
+        <Row icon="palette" title="Apparence" chevron href="/settings/appearance" />
+        <Row icon="globe" title="Langue" chevron href="/settings/language" />
+        <Row icon="activity" title="Journal d’activité" chevron href="/activity" />
+        <Row icon="file" title="Mes pièces justificatives" chevron href="/settings/documents" />
+      </Card>
+
+      <SectionTitle>Aide et informations</SectionTitle>
+      <Card>
+        <Row icon="shieldPlain" title="Confidentialité et données" sub="Export de tes données, suppression du compte" chevron href="/settings/privacy" />
+        <Row icon="chat" title="Aide et contact" chevron href="/settings/support" />
+        <Row icon="fingerprint" title="À propos d’Identité Numérique" chevron href="/settings/about" />
+      </Card>
+
+      <div className="mt-7 flex flex-col gap-2">
+        <IdnButton variant="ghost" full onClick={() => setConfirm({ kind: "signOut" })}>
+          Se déconnecter
+        </IdnButton>
+        <IdnButton variant="dangerGhost" full href="/settings/privacy?action=delete">
+          Supprimer mon compte
+        </IdnButton>
+      </div>
+
+      <ConfirmDialog
+        open={confirm?.kind === "session"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title="Déconnecter cet appareil ?"
+        description={confirm?.kind === "session" ? `${confirm.device} devra se reconnecter avec ton code PIN.` : undefined}
+        confirmLabel="Déconnecter"
+        destructive
+        onConfirm={async () => {
+          if (confirm?.kind === "session") await revokeSession({ sessionId: confirm.id })
+        }}
+      />
+      <ConfirmDialog
+        open={confirm?.kind === "consent"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={confirm?.kind === "consent" ? `Révoquer l’accès de ${confirm.name} ?` : ""}
+        description="L’application ne pourra plus lire tes informations. Tu devras l’autoriser à nouveau pour t’y connecter."
+        confirmLabel="Révoquer"
+        destructive
+        onConfirm={async () => {
+          if (confirm?.kind === "consent") await revokeConsent({ clientId: confirm.clientId })
+        }}
+      />
+      <ConfirmDialog
+        open={confirm?.kind === "signOut"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title="Se déconnecter ?"
+        description="Tu devras saisir ton adresse IDN et ton code PIN pour revenir."
+        confirmLabel="Se déconnecter"
+        destructive
+        onConfirm={signOut}
+      />
+    </Screen>
   )
 }

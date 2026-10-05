@@ -15,7 +15,7 @@ export function EmailTextBody({ text }: { text: string }) {
   const parts = normalized.split(LINK_PATTERN)
 
   return (
-    <div className="whitespace-pre-wrap p-5 text-sm leading-7 text-foreground/90">
+    <div className="whitespace-pre-wrap break-words p-4 text-sm leading-6 text-idn-ink md:p-5">
       {parts.map((part, index) => {
         if (!/^(?:https?:\/\/|www\.)/i.test(part)) {
           return <React.Fragment key={index}>{part}</React.Fragment>
@@ -28,7 +28,7 @@ export function EmailTextBody({ text }: { text: string }) {
               href={target}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-idn-green underline decoration-idn-green/35 underline-offset-2 hover:decoration-idn-green"
+              className="break-all font-medium text-c-green-text underline underline-offset-2"
             >
               {href}
             </a>

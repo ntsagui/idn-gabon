@@ -35,6 +35,7 @@ export async function exportLetterToPdf(
       const html = clone as HTMLElement
       html.style.boxShadow = "none"
       html.style.borderRadius = "0"
+      html.style.border = "0"
       html.style.margin = "0"
     },
   })

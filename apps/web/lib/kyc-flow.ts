@@ -12,18 +12,19 @@ export type KycTargetLoa = 2 | 3
  * Ne JAMAIS élargir à un joker : `endsWith(".ga")` accepterait n'importe quel
  * domaine gabonais, y compris un domaine hostile fraîchement déposé.
  */
-const ALLOWED_RETURN_HOSTS = [
-  "identite.ga",
-  "demarche.ga",
-  "localhost",
-  "127.0.0.1",
-] as const
+const ALLOWED_RETURN_HOSTS = ["identite.ga", "demarche.ga"] as const
+
+/** Postes de développement : acceptés hors production uniquement, en http. */
+const DEV_RETURN_HOSTS = ["localhost", "127.0.0.1"] as const
 
 export function isAllowedReturnTo(raw: string): boolean {
   try {
     const url = new URL(raw)
-    if (url.protocol !== "https:" && url.protocol !== "http:") return false
     const host = url.hostname
+    if (process.env.NODE_ENV !== "production" && (DEV_RETURN_HOSTS as readonly string[]).includes(host)) {
+      return url.protocol === "http:" || url.protocol === "https:"
+    }
+    if (url.protocol !== "https:") return false
     return ALLOWED_RETURN_HOSTS.some(
       (allowed) => host === allowed || host.endsWith(`.${allowed}`),
     )

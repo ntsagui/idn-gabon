@@ -113,7 +113,7 @@ export const LetterEditor = React.forwardRef<
         // etc.). Le fond blanc et la couleur foncée viennent du parent
         // `.letter-paper` — pas de couleur ici pour éviter toute surcharge
         // dark mode involontaire.
-        class: "letter-content min-h-[200mm] focus:outline-none",
+        class: "letter-content min-h-[50vh] focus:outline-none md:min-h-[200mm]",
       },
     },
   })
@@ -267,7 +267,6 @@ export const LetterEditor = React.forwardRef<
           const previous = editor.getAttributes("link").href as
             | string
             | undefined
-          // eslint-disable-next-line no-alert
           const url = window.prompt(letterEditorContent.linkPrompt, previous ?? "")
           if (url === null) return
           if (url === "") {
@@ -290,21 +289,21 @@ export const LetterEditor = React.forwardRef<
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden rounded-md border border-border bg-card",
+        "flex flex-col overflow-hidden rounded-[10px] border border-idn-border bg-idn-surface",
         className,
       )}
     >
       <div
         role="toolbar"
         aria-label={letterEditorContent.toolbarLabel}
-        className="flex flex-wrap items-center gap-0.5 border-b border-border bg-secondary/50 px-1.5 py-1"
+        className="flex flex-wrap items-center gap-0.5 border-b border-idn-border bg-idn-surface-2 px-1.5 py-1"
       >
         {items.map((item, i) =>
           item.kind === "separator" ? (
             <div
               key={`sep-${i}`}
               aria-hidden="true"
-              className="mx-1 h-5 w-px bg-border"
+              className="mx-1 h-5 w-px bg-idn-border"
             />
           ) : (
             <ToolbarButtonView key={`${item.label}-${i}`} item={item} />
@@ -319,12 +318,12 @@ export const LetterEditor = React.forwardRef<
         />
       </div>
 
-      <div className="flex-1 overflow-auto bg-neutral-200/60 p-6 dark:bg-neutral-800/60">
+      <div className="flex-1 overflow-auto bg-idn-surface-2 p-2 md:p-6">
         {/* Feuille A4 stricte (210×297mm min). `.letter-paper` impose les
             dimensions, le fond blanc et la couleur foncée — peu importe le
             thème de l'app. Indispensable pour que l'export PDF capture une
             feuille papier propre, pas une capture en dark mode. */}
-        <div className="letter-paper">
+        <div className="letter-paper focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-idn-green">
           <EditorContent editor={editor} />
         </div>
       </div>
@@ -345,14 +344,36 @@ function ToolbarButtonView({ item }: { item: ToolbarButton }) {
       disabled={disabled}
       title={item.label}
       className={cn(
-        "inline-flex h-7 w-7 items-center justify-center rounded text-foreground/80 transition-colors",
+        "inline-flex size-8 items-center justify-center rounded-md text-idn-ink-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "bg-idn-green text-white hover:bg-idn-green/90"
-          : "hover:bg-secondary hover:text-foreground",
+          ? "bg-idn-green text-white hover:bg-idn-green-dark"
+          : "hover:bg-idn-surface hover:text-idn-ink",
         disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
       )}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
     </button>
   )
+}
+
+/**
+ * Lecture d’un courrier rédigé avec l’éditeur (HTML). Le contenu est relu par
+ * le schéma de l’éditeur, en lecture seule : seules les balises et attributs
+ * connus (paragraphes, titres, listes, liens http, images) sont rendus, ce qui
+ * neutralise tout script ou attribut d’événement venu d’un expéditeur.
+ */
+export function LetterBody({ html, className }: { html: string; className?: string }) {
+  const editor = useEditor({
+    immediatelyRender: false,
+    editable: false,
+    extensions: [
+      StarterKit.configure({ link: false }),
+      TextAlign.configure({ types: ["heading", "paragraph"], alignments: ["left", "center", "right", "justify"] }),
+      Image.configure({ inline: false, allowBase64: false }),
+      Link.configure({ openOnClick: true, autolink: false, HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" } }),
+    ],
+    content: html,
+    editorProps: { attributes: { class: "letter-content focus:outline-none" } },
+  })
+  return <EditorContent editor={editor} className={className} />
 }

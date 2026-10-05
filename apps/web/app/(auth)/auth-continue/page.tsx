@@ -4,8 +4,12 @@ import { useEffect, useState } from "react"
 import { ConvexHttpClient } from "convex/browser"
 
 import { api } from "@repo/backend/convex/_generated/api"
+import { ErrorNote } from "@/app/_components/idn/list"
 import { authClient } from "@/lib/auth-client"
 import { syncCrossDomainCookiesForProxy } from "@/lib/auth-cookie"
+
+import { AuthScreen } from "../_components/auth-screen"
+import { Spinner } from "../_components/pin-login"
 
 /**
  * Reprise de session générique pour une application partenaire.
@@ -147,7 +151,7 @@ export default function AuthContinuePage() {
       } catch {
         if (!cancelled) {
           setError(
-            "La connexion automatique a échoué. Revenez à l'application et connectez-vous.",
+            "La connexion automatique a échoué. Reviens à l’application et connecte-toi.",
           )
         }
       }
@@ -160,14 +164,18 @@ export default function AuthContinuePage() {
   }, [])
 
   return (
-    <main className="flex min-h-dvh items-center justify-center p-6">
-      {error ? (
-        <p role="alert" className="max-w-sm text-center text-sm text-destructive">
-          {error}
-        </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">Connexion en cours…</p>
-      )}
-    </main>
+    <AuthScreen>
+      <div className="flex flex-col items-center pt-24 text-center md:pt-0">
+        <h1 className="sr-only">Connexion</h1>
+        {error ? (
+          <ErrorNote className="self-stretch text-left">{error}</ErrorNote>
+        ) : (
+          <>
+            <Spinner label="Connexion en cours" />
+            <p className="mt-4 text-sm text-idn-muted">Connexion en cours…</p>
+          </>
+        )}
+      </div>
+    </AuthScreen>
   )
 }

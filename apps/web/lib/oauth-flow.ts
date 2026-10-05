@@ -8,8 +8,9 @@
  * (jeton de handoff, paramètre `sso_checked`) n'est nécessaire.
  */
 
-const isInternalPath = (value: string): boolean =>
-  value.startsWith("/") && !value.startsWith("//")
+import { toInternalPath } from "./safe-path"
+
+const isInternalPath = (value: string): boolean => toInternalPath(value) !== null
 
 /**
  * Un login fédéré peut arriver directement depuis oidcProvider (paramètres
@@ -38,8 +39,7 @@ export function isFederatedSignIn(params: URLSearchParams): boolean {
  */
 export function buildPostLoginRedirect(params: URLSearchParams): string {
   if (!params.get("client_id") || !params.get("response_type")) {
-    const redirectTo = params.get("redirect_to")
-    return redirectTo && isInternalPath(redirectTo) ? redirectTo : "/"
+    return toInternalPath(params.get("redirect_to")) ?? "/"
   }
 
   const oauthParams = new URLSearchParams(params)

@@ -2,340 +2,190 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { Controller, useForm } from "react-hook-form"
-import { toast } from "sonner"
-import { z } from "zod"
 
-import { Button } from "@repo/ui/components/button"
-import { Input } from "@repo/ui/components/input"
-import { Label } from "@repo/ui/components/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@repo/ui/components/select"
+import { cn } from "@repo/ui/lib/utils"
 
-import { identity, onboardingHeader, STEP_TOTAL } from "../../_content/fr"
-import { WizardShell } from "../wizard-shell"
-import {
-  getOnboardingPivot,
-  getOnboardingProfile,
-  setOnboardingPivot,
-} from "../../_hooks/use-onboarding-state"
+import { IdnButton } from "@/app/_components/idn/button"
+import { Icon } from "@/app/_components/idn/icons"
+import { IdnInput } from "@/app/_components/idn/input"
+import { ErrorNote, ScreenTitle } from "@/app/_components/idn/list"
 
-const TODAY_ISO = new Date().toISOString().slice(0, 10)
+import { SignupScreen } from "../auth-screen"
+import { getOnboardingPivot, getOnboardingProfile, setOnboardingPivot } from "../../_hooks/use-onboarding-state"
 
-const schema = z.object({
-  firstName: z.string().trim().min(1, identity.validation.required),
-  lastName: z.string().trim().min(1, identity.validation.required),
-  dateOfBirth: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, identity.validation.dateInvalid)
-    .refine((d) => d < TODAY_ISO, identity.validation.dateFuture),
-  gender: z.enum(["F", "M"]),
-  birthPlace: z.string().trim().min(1, identity.validation.required),
-  nationality: z.string().trim().min(2, identity.validation.required),
-  phone: z.string().trim().optional(),
-  nip: z
-    .string()
-    .trim()
-    .optional()
-    .refine(
-      (v) => !v || /^[A-Za-z0-9]{14}$/.test(v),
-      identity.validation.nipInvalid,
-    ),
-})
+const GENDERS: { v: "M" | "F"; label: string }[] = [
+  { v: "M", label: "Masculin" },
+  { v: "F", label: "Féminin" },
+]
 
-type FormValues = z.infer<typeof schema>
+/**
+ * Nationalités proposées. Le mobile saisit un texte libre (« Gabonaise ») ;
+ * le web garde le code ISO, que le backend sait interpréter (préfixe
+ * téléphonique de la récupération du PIN, cf. `lib/phone.ts`).
+ */
+const NATIONALITIES: { value: string; label: string }[] = [
+  { value: "GA", label: "Gabonaise" },
+  { value: "CG", label: "Congolaise (Brazzaville)" },
+  { value: "CD", label: "Congolaise (RDC)" },
+  { value: "CM", label: "Camerounaise" },
+  { value: "GQ", label: "Équato-guinéenne" },
+  { value: "ST", label: "Santoméenne" },
+  { value: "FR", label: "Française" },
+  { value: "SN", label: "Sénégalaise" },
+  { value: "CI", label: "Ivoirienne" },
+  { value: "ML", label: "Malienne" },
+  { value: "BJ", label: "Béninoise" },
+  { value: "TG", label: "Togolaise" },
+  { value: "BF", label: "Burkinabé" },
+  { value: "NG", label: "Nigériane" },
+  { value: "MA", label: "Marocaine" },
+  { value: "CN", label: "Chinoise" },
+  { value: "US", label: "Américaine" },
+  { value: "GB", label: "Britannique" },
+  { value: "JP", label: "Japonaise" },
+]
 
+function isIsoDate(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s)
+}
+
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+/** Identité pivot (apps/mobile/src/app/(auth)/signup/pivot.tsx). */
 export function IdentityStep() {
   const router = useRouter()
-  const profile = React.useMemo(() => getOnboardingProfile(), [])
+  const [ready, setReady] = React.useState(false)
+  const [firstName, setFirstName] = React.useState("")
+  const [lastName, setLastName] = React.useState("")
+  const [dob, setDob] = React.useState("")
+  const [gender, setGender] = React.useState<"M" | "F">("F")
+  const [nat, setNat] = React.useState("")
+  const [birthPlace, setBirthPlace] = React.useState("")
+  const [phone, setPhone] = React.useState("")
+  const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    const profile = getOnboardingProfile()
     if (!profile) {
       router.replace("/sign-up?step=profile")
+      return
     }
-  }, [profile, router])
-
-  const saved = React.useMemo(() => getOnboardingPivot(), [])
-  // Pré-remplit la nationalité gabonaise pour les citoyens — modifiable.
-  const defaultNationality =
-    saved?.nationality ?? (profile === "citizen" ? "GA" : "")
-  const savedGender = saved?.gender === "F" || saved?.gender === "M" ? saved.gender : undefined
-
-  const {
-    register,
-    handleSubmit,
-    control,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      firstName: saved?.firstName ?? "",
-      lastName: saved?.lastName ?? "",
-      dateOfBirth: saved?.dateOfBirth ?? "",
-      gender: savedGender,
-      birthPlace: saved?.birthPlace ?? "",
-      nationality: defaultNationality,
-      phone: saved?.phone ?? "",
-      nip: saved?.nip ?? "",
-    },
-    mode: "onTouched",
-  })
-
-  const onSubmit = handleSubmit((values) => {
-    try {
-      setOnboardingPivot({
-        firstName: values.firstName.trim(),
-        lastName: values.lastName.trim(),
-        dateOfBirth: values.dateOfBirth,
-        gender: values.gender,
-        birthPlace: values.birthPlace.trim(),
-        nationality: values.nationality.trim(),
-        phone: values.phone?.trim() || undefined,
-        nip: values.nip?.trim() || undefined,
-      })
-      router.push("/sign-up?step=idn")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur")
+    const saved = getOnboardingPivot()
+    if (saved) {
+      setFirstName(saved.firstName)
+      setLastName(saved.lastName)
+      setDob(saved.dateOfBirth)
+      if (saved.gender === "M" || saved.gender === "F") setGender(saved.gender)
+      setBirthPlace(saved.birthPlace)
+      setNat(saved.nationality)
+      if (saved.phone) setPhone(saved.phone)
+    } else if (profile === "citizen") {
+      setNat("GA")
     }
-  })
+    setReady(true)
+  }, [router])
+
+  const dobValid = isIsoDate(dob) && dob <= todayIso()
+  const canSubmit = !!(firstName.trim() && lastName.trim() && dobValid && birthPlace.trim() && nat.trim())
+
+  function next(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!canSubmit) {
+      setError("Tous les champs sont obligatoires.")
+      return
+    }
+    setError(null)
+    setOnboardingPivot({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      dateOfBirth: dob,
+      gender,
+      birthPlace: birthPlace.trim(),
+      nationality: nat.trim(),
+      phone: phone.trim() || undefined,
+    })
+    router.push("/sign-up?step=idn")
+  }
+
+  if (!ready) return null
 
   return (
-    <WizardShell
-      step={identity.step}
-      total={STEP_TOTAL}
-      title={identity.title}
-      sub={identity.sub}
-      backHref="/sign-up?step=profile"
-      backLabel={onboardingHeader.backToProfile}
+    <SignupScreen
+      step={0}
+      back="/sign-up?step=profile"
       footer={
-        <Button
-          type="submit"
-          form="identity-form"
-          size="lg"
-          disabled={isSubmitting}
-          className="h-14 w-full text-base"
-        >
-          {isSubmitting ? "…" : identity.primary}
-        </Button>
+        <IdnButton type="submit" form="signup-identity" full disabled={!canSubmit}>
+          Continuer
+        </IdnButton>
       }
     >
-      <form id="identity-form" onSubmit={onSubmit} noValidate className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="id-firstName">{identity.fields.firstName.label}</Label>
-            <Input
-              id="id-firstName"
-              autoComplete="given-name"
-              placeholder={identity.fields.firstName.placeholder}
+      <ScreenTitle
+        title="Ton identité"
+        lead="Telle qu’elle figure sur tes documents officiels. Tu la feras vérifier ensuite pour passer au Niveau 2."
+      />
+      <form id="signup-identity" onSubmit={next} className="mt-2">
+        <IdnInput label="Prénom" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Awa" autoCapitalize="words" autoComplete="given-name" autoFocus required />
+        <IdnInput label="Nom" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Mboumba" autoCapitalize="words" autoComplete="family-name" required />
+        <IdnInput label="Date de naissance" type="date" value={dob} onChange={(e) => setDob(e.target.value)} max={todayIso()} autoComplete="bday" required />
+        <fieldset className="mt-4">
+          <legend className="mb-1.5 text-sm font-semibold text-idn-ink">Sexe</legend>
+          <div className="flex gap-2">
+            {GENDERS.map((g) => {
+              const sel = g.v === gender
+              return (
+                <label
+                  key={g.v}
+                  className={cn(
+                    "flex h-[50px] flex-1 cursor-pointer items-center justify-center rounded-[10px] text-[15px] text-idn-ink focus-within:ring-2 focus-within:ring-ring",
+                    sel ? "border-2 border-idn-green bg-c-green-badge font-semibold" : "border border-idn-muted bg-idn-surface"
+                  )}
+                >
+                  <input type="radio" name="gender" value={g.v} checked={sel} onChange={() => setGender(g.v)} className="sr-only" />
+                  {g.label}
+                </label>
+              )
+            })}
+          </div>
+        </fieldset>
+        <IdnInput label="Lieu de naissance" value={birthPlace} onChange={(e) => setBirthPlace(e.target.value)} placeholder="Libreville" autoCapitalize="words" required />
+        <div className="mt-4">
+          <label htmlFor="signup-nationality" className="mb-1.5 block text-sm font-semibold text-idn-ink">
+            Nationalité
+          </label>
+          <div className="relative">
+            <select
+              id="signup-nationality"
+              value={nat}
+              onChange={(e) => setNat(e.target.value)}
               required
-              aria-required="true"
-              aria-invalid={Boolean(errors.firstName)}
-              aria-describedby={
-                errors.firstName ? "id-firstName-error" : undefined
-              }
-              className="h-12 text-base"
-              {...register("firstName")}
-            />
-            {errors.firstName && (
-              <p
-                id="id-firstName-error"
-                role="alert"
-                className="text-xs text-destructive"
-              >
-                {errors.firstName.message}
-              </p>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="id-lastName">{identity.fields.lastName.label}</Label>
-            <Input
-              id="id-lastName"
-              autoComplete="family-name"
-              placeholder={identity.fields.lastName.placeholder}
-              required
-              aria-required="true"
-              aria-invalid={Boolean(errors.lastName)}
-              aria-describedby={
-                errors.lastName ? "id-lastName-error" : undefined
-              }
-              className="h-12 text-base"
-              {...register("lastName")}
-            />
-            {errors.lastName && (
-              <p
-                id="id-lastName-error"
-                role="alert"
-                className="text-xs text-destructive"
-              >
-                {errors.lastName.message}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="id-dob">{identity.fields.dateOfBirth.label}</Label>
-          <Input
-            id="id-dob"
-            type="date"
-            autoComplete="bday"
-            max={TODAY_ISO}
-            required
-            aria-required="true"
-            aria-invalid={Boolean(errors.dateOfBirth)}
-            aria-describedby={errors.dateOfBirth ? "id-dob-error" : undefined}
-            className="h-12 text-base"
-            {...register("dateOfBirth")}
-          />
-          {errors.dateOfBirth && (
-            <p
-              id="id-dob-error"
-              role="alert"
-              className="text-xs text-destructive"
+              className="h-[50px] w-full appearance-none rounded-[10px] border border-[#8a8c80] bg-idn-surface px-3.5 pr-10 text-base text-idn-ink outline-none focus:border-2 focus:border-idn-green focus:px-[13px] dark:border-idn-muted-soft"
             >
-              {errors.dateOfBirth.message}
-            </p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="id-gender">{identity.fields.gender.label}</Label>
-            <Controller
-              control={control}
-              name="gender"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger id="id-gender" className="!h-12 w-full !text-base">
-                    <SelectValue placeholder="—" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {identity.fields.gender.options.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.gender && (
-              <p
-                id="id-gender-error"
-                role="alert"
-                className="text-xs text-destructive"
-              >
-                {errors.gender.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="id-nationality">
-              {identity.fields.nationality.label}
-            </Label>
-            <Controller
-              control={control}
-              name="nationality"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger id="id-nationality" className="!h-12 w-full !text-base">
-                    <SelectValue placeholder="—" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {identity.fields.nationality.options.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.nationality && (
-              <p
-                id="id-nationality-error"
-                role="alert"
-                className="text-xs text-destructive"
-              >
-                {errors.nationality.message}
-              </p>
-            )}
+              <option value="" disabled>
+                Choisis ta nationalité
+              </option>
+              {NATIONALITIES.map((n) => (
+                <option key={n.value} value={n.value}>
+                  {n.label}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevDn" size={18} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-idn-muted" />
           </div>
         </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="id-birthPlace">{identity.fields.birthPlace.label}</Label>
-          <Input
-            id="id-birthPlace"
-            autoComplete="address-level2"
-            placeholder={identity.fields.birthPlace.placeholder}
-            required
-            aria-required="true"
-            aria-invalid={Boolean(errors.birthPlace)}
-            aria-describedby={
-              errors.birthPlace ? "id-birthPlace-error" : undefined
-            }
-            className="h-12 text-base"
-            {...register("birthPlace")}
-          />
-          {errors.birthPlace && (
-            <p
-              id="id-birthPlace-error"
-              role="alert"
-              className="text-xs text-destructive"
-            >
-              {errors.birthPlace.message}
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="id-phone">{identity.fields.phone.label}</Label>
-          <Input
-            id="id-phone"
-            type="tel"
-            autoComplete="tel"
-            placeholder={identity.fields.phone.placeholder}
-            className="h-12 text-base"
-            {...register("phone")}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="id-nip">{identity.fields.nip.label}</Label>
-          <Input
-            id="id-nip"
-            inputMode="text"
-            autoComplete="off"
-            maxLength={14}
-            placeholder={identity.fields.nip.placeholder}
-            aria-invalid={Boolean(errors.nip)}
-            aria-describedby={errors.nip ? "id-nip-error" : "id-nip-help"}
-            className="h-12 text-base"
-            {...register("nip")}
-          />
-          {errors.nip ? (
-            <p
-              id="id-nip-error"
-              role="alert"
-              className="text-xs text-destructive"
-            >
-              {errors.nip.message}
-            </p>
-          ) : (
-            <p id="id-nip-help" className="text-xs text-muted-foreground">
-              {identity.fields.nip.help}
-            </p>
-          )}
-        </div>
+        <IdnInput
+          label="Téléphone (facultatif)"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="+241 77 12 34 56"
+          type="tel"
+          autoComplete="tel"
+          hint="Il sert à récupérer ton code PIN par SMS."
+        />
       </form>
-    </WizardShell>
+      <ErrorNote>{error}</ErrorNote>
+    </SignupScreen>
   )
 }

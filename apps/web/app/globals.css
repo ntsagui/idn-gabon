@@ -1,1 +1,44 @@
 @import "@repo/ui/globals.css";
+
+/* Espace citoyen : jetons de statut repris de l'app mobile
+   (apps/mobile/src/design/tokens.ts) pour que badges, tuiles d'icônes et
+   textes colorés soient identiques sur les deux supports. Contrastes
+   texte/fond ≥ 4,5:1 dans les deux thèmes (ADR-0009). */
+:root {
+  --c-green-text: #0e7c3a;
+  --c-blue-text: #2563ac;
+  --c-red-text: #b3261e;
+  --c-yellow-text: #6b5600;
+  --c-green-badge: #e6f2ea;
+  --c-blue-badge: #e6eef7;
+  --c-yellow-badge: #fcf4d6;
+  --c-yellow-border: #ebd98a;
+  --c-red-badge: #fbeae8;
+  --c-neutral-badge: #ecebe5;
+}
+
+.dark {
+  --c-green-text: #5bc57f;
+  --c-blue-text: #6ba4e0;
+  --c-red-text: #f2b8b5;
+  --c-yellow-text: #f2c811;
+  --c-green-badge: #0f2a18;
+  --c-blue-badge: #10243a;
+  --c-yellow-badge: #332b0a;
+  --c-yellow-border: #5c4d0f;
+  --c-red-badge: #3a1414;
+  --c-neutral-badge: #2c3128;
+}
+
+@theme inline {
+  --color-c-green-text: var(--c-green-text);
+  --color-c-blue-text: var(--c-blue-text);
+  --color-c-red-text: var(--c-red-text);
+  --color-c-yellow-text: var(--c-yellow-text);
+  --color-c-green-badge: var(--c-green-badge);
+  --color-c-blue-badge: var(--c-blue-badge);
+  --color-c-yellow-badge: var(--c-yellow-badge);
+  --color-c-yellow-border: var(--c-yellow-border);
+  --color-c-red-badge: var(--c-red-badge);
+  --color-c-neutral-badge: var(--c-neutral-badge);
+}

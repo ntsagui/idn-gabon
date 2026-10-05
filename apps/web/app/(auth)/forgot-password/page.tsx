@@ -1,144 +1,98 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import { toast } from "sonner"
-import { z } from "zod"
 
-import { Button } from "@repo/ui/components/button"
-import { Card } from "@repo/ui/components/card"
-import { Input } from "@repo/ui/components/input"
-import { Label } from "@repo/ui/components/label"
-
+import { IdnButton } from "@/app/_components/idn/button"
+import { IdnInput } from "@/app/_components/idn/input"
+import { ErrorNote, Note, ScreenTitle } from "@/app/_components/idn/list"
 import { authClient } from "@/lib/auth-client"
 
-import { forgotPassword } from "../_content/fr"
+import { AuthAppBar, AuthScreen } from "../_components/auth-screen"
 import { setOnboardingEmail } from "../_hooks/use-onboarding-state"
 
-const schema = z.object({
-  email: z.string().trim().email("Adresse email invalide."),
-})
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-type FormValues = z.infer<typeof schema>
-
+/**
+ * Mot de passe oublié — comptes à mot de passe (créés par un organisme puis
+ * récupérés). Envoie un code à 6 chiffres par e-mail, ou passe directement à
+ * la saisie d'un code provisoire déjà remis par un agent.
+ */
 export default function ForgotPasswordPage() {
   const router = useRouter()
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { email: "" },
-    mode: "onTouched",
-  })
+  const [email, setEmail] = React.useState("")
+  const [error, setError] = React.useState<string | null>(null)
+  const [submitting, setSubmitting] = React.useState(false)
+  const valid = EMAIL_REGEX.test(email.trim())
 
-  const onSubmit = handleSubmit(async (values) => {
+  async function send(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!valid) {
+      setError("Saisis une adresse e-mail valide.")
+      return
+    }
+    setSubmitting(true)
+    setError(null)
     try {
-      const result = await authClient.emailOtp.sendVerificationOtp({
-        email: values.email,
-        type: "forget-password",
-      })
+      const result = await authClient.emailOtp.sendVerificationOtp({ email: email.trim(), type: "forget-password" })
       if (result?.error) {
-        toast.error(forgotPassword.errorGeneric)
+        setError("Envoi impossible pour le moment. Réessaie.")
+        setSubmitting(false)
         return
       }
-      setOnboardingEmail(values.email)
-      toast.success(forgotPassword.successToast)
-      router.push("/reset-password")
+      setOnboardingEmail(email.trim())
+      router.push("/reset-password?sent=1")
     } catch {
-      toast.error(forgotPassword.errorGeneric)
+      setError("Envoi impossible pour le moment. Réessaie.")
+      setSubmitting(false)
     }
-  })
+  }
 
-  // Voie de secours : l'opérateur a déjà remis un code au titulaire.
-  // On conserve uniquement l'email en session locale et on évite l'appel
-  // d'envoi, qui remplacerait le code provisoire tout juste généré.
-  const onUseExistingCode = handleSubmit((values) => {
-    setOnboardingEmail(values.email)
+  // Voie de secours : l'agent a déjà remis un code. Pas d'envoi, qui
+  // remplacerait le code provisoire tout juste généré.
+  function goToExistingCode() {
+    if (!valid) {
+      setError("Saisis une adresse e-mail valide.")
+      return
+    }
+    setOnboardingEmail(email.trim())
     router.push("/reset-password")
-  })
+  }
 
   return (
-    <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-center px-6 py-10">
-      <Card className="p-7">
-        <h1 className="text-xl font-semibold text-foreground">
-          {forgotPassword.title}
-        </h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {forgotPassword.sub}
-        </p>
-
-        <form onSubmit={onSubmit} noValidate className="mt-5 space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="fp-email">{forgotPassword.emailLabel}</Label>
-            <Input
-              id="fp-email"
-              type="email"
-              autoComplete="email"
-              required
-              aria-required="true"
-              aria-invalid={Boolean(errors.email)}
-              aria-describedby={errors.email ? "fp-email-error" : undefined}
-              {...register("email")}
-            />
-            {errors.email && (
-              <p
-                id="fp-email-error"
-                role="alert"
-                className="text-xs text-destructive"
-              >
-                {errors.email.message}
-              </p>
-            )}
-          </div>
-
-          <Button
-            type="submit"
-            size="lg"
-            disabled={isSubmitting}
-            className="w-full"
-          >
-            {isSubmitting
-              ? forgotPassword.primarySubmitting
-              : forgotPassword.primary}
-          </Button>
-
-          <div className="flex items-center gap-3" aria-hidden>
-            <span className="h-px flex-1 bg-border" />
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              ou
-            </span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-
-          <div className="space-y-1.5">
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              disabled={isSubmitting}
-              onClick={() => void onUseExistingCode()}
-              className="w-full"
-            >
-              {forgotPassword.existingCode}
-            </Button>
-            <p className="text-center text-xs leading-relaxed text-muted-foreground">
-              {forgotPassword.existingCodeHint}
-            </p>
-          </div>
-
-          <Link
-            href="/sign-in"
-            className="block text-center text-xs text-muted-foreground hover:text-foreground"
-          >
-            {forgotPassword.back}
-          </Link>
-        </form>
-      </Card>
-    </div>
+    <AuthScreen
+      header={<AuthAppBar title="Mot de passe oublié" back="/sign-in" />}
+      footer={
+        <>
+          <IdnButton type="submit" form="forgot-password" full disabled={!valid} loading={submitting}>
+            Recevoir un code
+          </IdnButton>
+          <IdnButton variant="ghost" full onClick={goToExistingCode} disabled={!valid || submitting}>
+            J’ai déjà un code provisoire
+          </IdnButton>
+        </>
+      }
+    >
+      <ScreenTitle
+        title="Réinitialiser ton mot de passe"
+        lead="Saisis l’adresse e-mail associée à ton compte. Tu recevras un code à 6 chiffres pour choisir un nouveau mot de passe."
+      />
+      <form id="forgot-password" onSubmit={send} className="mt-6">
+        <IdnInput
+          label="Adresse e-mail"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => {
+            setError(null)
+            setEmail(e.target.value)
+          }}
+          autoFocus
+          required
+        />
+      </form>
+      <ErrorNote>{error}</ErrorNote>
+      <Note>Si un agent habilité t’a remis un code provisoire, choisis « J’ai déjà un code provisoire ».</Note>
+    </AuthScreen>
   )
 }

@@ -7,7 +7,7 @@
  *
  * Deux classes complémentaires :
  *  - `.letter-paper` : conteneur fixe au format A4 (210×297mm min), fond
- *    blanc, scrollable verticalement si le contenu déborde, ombre légère.
+ *    blanc, scrollable verticalement si le contenu déborde.
  *  - `.letter-content` : styles tags HTML (p, h1, listes, hr, blockquote…)
  *    appliqués sur le conteneur du HTML émis par TipTap.
  */
@@ -18,19 +18,48 @@
   color: #1a1a1a;
   color-scheme: light;
 
-  /* Format A4 portrait — 210mm × 297mm. `min-height` permet aux courriers
-   * longs de pousser la hauteur (multi-pages PDF). */
-  width: 210mm;
-  min-height: 297mm;
+  /* Téléphone : la feuille épouse la largeur de l’écran (aucun débordement
+   * horizontal à 360 px). À partir de 860 px : format A4 portrait, 210 mm
+   * de large, `min-height` laissant les courriers longs pousser la hauteur. */
+  width: 100%;
   margin: 0 auto;
-  padding: 25mm 22mm;
+  padding: 20px 18px;
   box-sizing: border-box;
+  overflow-wrap: anywhere;
 
-  /* Aspect "feuille flottante" — ombre douce qui distingue du fond gris. */
-  border-radius: 2px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  /* Charte : bordure fine, aucune ombre portée (ADR-0008). */
+  border: 1px solid #e5e1d4;
+  border-radius: 4px;
 
   font-family: Georgia, "Times New Roman", serif;
+}
+
+@media (min-width: 860px) {
+  .letter-paper {
+    width: 210mm;
+    max-width: 100%;
+    min-height: 297mm;
+    padding: 25mm 22mm;
+  }
+}
+
+/* Impression : seule la feuille du courrier sort sur le papier. */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .letter-paper,
+  .letter-paper * {
+    visibility: visible !important;
+  }
+  .letter-paper {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 210mm;
+    min-height: 0;
+    border: 0;
+    padding: 18mm 20mm;
+  }
 }
 
 .letter-content {

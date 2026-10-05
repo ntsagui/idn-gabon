@@ -2,96 +2,106 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { UserIcon } from "lucide-react"
 
-import { Button } from "@repo/ui/components/button"
-import { LoABadge } from "@repo/ui/components/loa-badge"
+import { IdnMark } from "@repo/ui/components/idn-mark"
 import { cn } from "@repo/ui/lib/utils"
 
-import { onboardingHeader, profile, STEP_TOTAL } from "../../_content/fr"
-import {
-  getOnboardingProfile,
-  setOnboardingProfile,
-  type OnboardingProfile,
-} from "../../_hooks/use-onboarding-state"
-import { WizardShell } from "../wizard-shell"
+import { IdnButton } from "@/app/_components/idn/button"
+import { type IconName } from "@/app/_components/idn/icons"
+import { IconTile } from "@/app/_components/idn/list"
 
+import { AuthScreen } from "../auth-screen"
+import { getOnboardingProfile, setOnboardingProfile, type OnboardingProfile } from "../../_hooks/use-onboarding-state"
+
+/** apps/mobile/src/data/profils.ts — les développeurs s'inscrivent sur leur portail. */
+const PROFILS: { id: OnboardingProfile; label: string; sub: string; icon: IconName }[] = [
+  { id: "citizen", label: "Citoyen gabonais", sub: "CNI ou acte de naissance", icon: "idCard" },
+  { id: "resident", label: "Résident", sub: "Carte de séjour et passeport", icon: "home" },
+  { id: "visitor", label: "Visiteur", sub: "Passeport et visa", icon: "plane" },
+]
+
+/** Bienvenue et choix du profil (apps/mobile/src/app/(auth)/hub.tsx). */
 export function ProfileStep() {
   const router = useRouter()
-  const [selected, setSelected] = React.useState<OnboardingProfile | null>(null)
+  const [profile, setProfile] = React.useState<OnboardingProfile>("citizen")
 
   React.useEffect(() => {
-    setSelected(getOnboardingProfile())
+    const saved = getOnboardingProfile()
+    if (saved && saved !== "developer") setProfile(saved)
   }, [])
 
-  const onSubmit = () => {
-    if (!selected) return
-    setOnboardingProfile(selected)
+  function createAccount() {
+    setOnboardingProfile(profile)
     router.push("/sign-up?step=identity")
   }
 
   return (
-    <WizardShell
-      title={profile.title}
-      sub={profile.sub}
-      step={profile.step}
-      total={STEP_TOTAL}
-      backHref="/"
-      backLabel={onboardingHeader.backToHome}
+    <AuthScreen
       footer={
-        <Button
-          type="button"
-          size="lg"
-          disabled={!selected}
-          onClick={onSubmit}
-          className="h-14 w-full text-base"
-        >
-          {profile.primary}
-        </Button>
+        <>
+          <IdnButton full onClick={createAccount}>
+            Créer mon compte
+          </IdnButton>
+          <IdnButton variant="ghost" full href="/sign-in">
+            J’ai déjà un compte
+          </IdnButton>
+        </>
       }
     >
-      <ul className="flex flex-col gap-2.5" role="radiogroup" aria-label={profile.title}>
-        {profile.options.map((opt) => {
-          const isSelected = selected === opt.value
-          return (
-            <li key={opt.value}>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={isSelected}
-                onClick={() => setSelected(opt.value)}
+      <div className="mt-5 flex items-center gap-3 md:hidden">
+        <IdnMark size={40} />
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-idn-muted">République gabonaise</p>
+          <p className="text-[15px] font-semibold text-idn-ink">Identité Numérique</p>
+        </div>
+      </div>
+      <h1 className="mt-8 text-[28px] md:mt-0 font-semibold leading-[33px] tracking-[-0.02em] text-idn-ink">
+        Ton identité, reconnue par l’État, <span className="text-c-green-text">dans ta poche.</span>
+      </h1>
+      <p className="mt-3 text-[15px] leading-[22px] text-idn-ink-2">
+        Un seul compte pour te connecter aux services publics, présenter ta carte et recevoir tes courriers officiels.
+      </p>
+
+      <fieldset className="mt-7">
+        <legend className="mb-2 text-sm font-semibold text-idn-ink">Choisis ton profil</legend>
+        <div className="flex flex-col gap-2">
+          {PROFILS.map((p) => {
+            const sel = p.id === profile
+            return (
+              <label
+                key={p.id}
                 className={cn(
-                  "flex w-full items-center gap-3.5 rounded-md border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                  isSelected
-                    ? "border-idn-green bg-idn-green-soft dark:bg-[#0F2A18]"
-                    : "border-border bg-card hover:border-idn-green/40",
+                  "flex cursor-pointer items-center gap-3 rounded-[14px] border p-3 transition-colors focus-within:ring-2 focus-within:ring-ring",
+                  sel ? "border-idn-green bg-c-green-badge" : "border-idn-border bg-idn-surface hover:bg-idn-surface-2"
                 )}
               >
-                <div
+                <input
+                  type="radio"
+                  name="profile"
+                  value={p.id}
+                  checked={sel}
+                  onChange={() => setProfile(p.id)}
+                  className="sr-only"
+                />
+                <IconTile icon={p.icon} tone={sel ? "green" : "neutral"} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-idn-ink">{p.label}</span>
+                  <span className="mt-0.5 block text-[13px] text-idn-muted">{p.sub}</span>
+                </span>
+                <span
+                  aria-hidden
                   className={cn(
-                    "flex size-10 shrink-0 items-center justify-center rounded-md transition-colors",
-                    isSelected
-                      ? "bg-idn-green text-white"
-                      : "bg-secondary text-muted-foreground",
+                    "inline-flex size-5 shrink-0 items-center justify-center rounded-full border-[1.5px]",
+                    sel ? "border-idn-green" : "border-idn-muted"
                   )}
-                  aria-hidden="true"
                 >
-                  <UserIcon className="size-5" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-foreground">
-                    {opt.label}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {opt.sub}
-                  </p>
-                </div>
-                {opt.loa !== null && <LoABadge level={opt.loa} compact />}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-    </WizardShell>
+                  {sel ? <span className="size-2.5 rounded-full bg-idn-green" /> : null}
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </fieldset>
+    </AuthScreen>
   )
 }

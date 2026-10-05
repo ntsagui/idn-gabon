@@ -2,21 +2,47 @@
 
 import * as React from "react"
 import { useMutation, useQuery } from "convex/react"
-import { Check, Copy, Loader2, Sparkles, X } from "lucide-react"
-import { toast } from "sonner"
 
 import { api } from "@repo/backend/convex/_generated/api"
 import type { Id } from "@repo/backend/convex/_generated/dataModel"
-import { Button } from "@repo/ui/components/button"
 
-import { icv } from "../_content/fr"
+import { IconButton } from "@/app/_components/idn/app-bar"
+import { Badge } from "@/app/_components/idn/badge"
+import { IdnButton } from "@/app/_components/idn/button"
+import { cleanError } from "@/app/_components/idn/dialog"
+import { Card, ErrorNote, Overline } from "@/app/_components/idn/list"
+import { IdnLottie } from "@/app/_components/idn/lottie"
 
 type Feature = "improve_summary" | "suggest_skills" | "generate_letter"
+type SkillLevel = "Débutant" | "Intermédiaire" | "Avancé" | "Expert"
+
+const TITLES: Record<Feature, string> = {
+  improve_summary: "Résumé proposé",
+  suggest_skills: "Compétences suggérées",
+  generate_letter: "Lettre de motivation",
+}
+
+function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <Card padded className="mt-4">
+      <section aria-label={title}>
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Badge tone="green" icon="sparkles">Suggestion de l’IA</Badge>
+            <h3 className="text-base font-semibold text-idn-ink">{title}</h3>
+          </div>
+          <IconButton icon="close" label="Fermer la suggestion" onClick={onClose} size={36} />
+        </div>
+        <div className="mt-3">{children}</div>
+      </section>
+    </Card>
+  )
+}
 
 /**
- * Carte verte « Suggestion de l'IA » — affichée après un appel à
- * `improve_summary`, `suggest_skills` ou `generate_letter`. Lit le dernier
- * job correspondant (via `getLastResult`) et expose les actions adéquates.
+ * Résultat d'un outil IA (apps/mobile/src/components/cv/ai-result-card.tsx) :
+ * lit le dernier job (`cv.ai.getLastResult`) et propose l'action adaptée
+ * (remplacer le résumé, ajouter une compétence, copier la lettre).
  */
 export function AiResultCard({
   cvId,
@@ -33,194 +59,137 @@ export function AiResultCard({
   const upsert = useMutation(api.cv.profile.upsert)
   const addSkill = useMutation(api.cv.skills.add)
   const [busy, setBusy] = React.useState(false)
+  const [added, setAdded] = React.useState<string[]>([])
+  const [error, setError] = React.useState<string | null>(null)
+  const [copied, setCopied] = React.useState(false)
 
-  // Exécution asynchrone (pool IA) : on affiche un état « en cours » tant que
-  // le job n'est pas terminé, puis le résultat dès qu'il est disponible.
   if (job && (job.status === "queued" || job.status === "running")) {
     return (
-      <CardShell onClose={onClose} title={icv.aiTools.cardTitle}>
-        <div className="flex items-center gap-2 text-sm italic text-emerald-900 dark:text-emerald-100">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {icv.aiTools.inProgress}
+      <Shell title={TITLES[feature]} onClose={onClose}>
+        <div className="flex items-center gap-3" aria-live="polite">
+          <IdnLottie name="loader" size={40} loop label="Rédaction en cours" />
+          <p className="flex-1 text-sm text-idn-muted">Rédaction en cours…</p>
         </div>
-      </CardShell>
+      </Shell>
     )
   }
 
-  if (!job || job.status !== "completed" || !job.result) {
-    return null
+  if (job && job.status === "failed") {
+    return (
+      <Shell title={TITLES[feature]} onClose={onClose}>
+        <ErrorNote className="mt-0">{job.errorMessage || "L’outil IA a échoué. Réessaie dans un instant."}</ErrorNote>
+      </Shell>
+    )
   }
 
-  // ── Feature 1: improve_summary
+  if (!job || job.status !== "completed" || !job.result) return null
+  const result = job.result as Record<string, unknown>
+
   if (feature === "improve_summary") {
-    const rewritten = (job.result.rewrittenSummary as string | undefined) ?? ""
-    async function accept() {
+    const rewritten = (result.rewrittenSummary as string | undefined) ?? ""
+    const accept = async () => {
       if (busy) return
       setBusy(true)
+      setError(null)
       try {
         await upsert({ cvId, patch: { summary: rewritten } })
-        toast.success("Résumé mis à jour.")
         onClose()
       } catch (e) {
-        toast.error("Échec.", { description: (e as Error).message })
+        setError(e instanceof Error && e.message ? cleanError(e.message) : "Réessaie dans un instant.")
       } finally {
         setBusy(false)
       }
     }
     return (
-      <CardShell onClose={onClose} title={icv.aiTools.cardTitle}>
+      <Shell title={TITLES[feature]} onClose={onClose}>
         {currentSummary ? (
-          <div className="mb-3 rounded-lg bg-white/40 p-3 text-xs text-emerald-900/70 dark:bg-white/5 dark:text-emerald-100/70">
-            <p className="font-bold uppercase tracking-wider">Actuel</p>
-            <p className="mt-1 italic">{currentSummary || "—"}</p>
+          <div className="mb-2.5 rounded-[10px] bg-idn-surface-2 p-3">
+            <Overline>Actuel</Overline>
+            <p className="mt-1 text-[13px] leading-[19px] text-idn-ink-2">{currentSummary}</p>
           </div>
         ) : null}
-        <p className="text-sm italic text-emerald-900 dark:text-emerald-100">
-          « {rewritten} »
-        </p>
-        <div className="mt-3 flex gap-2">
-          <Button
-            size="sm"
-            onClick={accept}
-            disabled={busy}
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
-          >
-            <Check className="h-4 w-4" />
-            {icv.aiTools.accept}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            {icv.aiTools.ignore}
-          </Button>
+        <p className="text-sm leading-[21px] text-idn-ink">{rewritten}</p>
+        <ErrorNote>{error}</ErrorNote>
+        <div className="mt-3.5 flex flex-wrap gap-2">
+          <IdnButton size="sm" onClick={accept} loading={busy}>Remplacer mon résumé</IdnButton>
+          <IdnButton size="sm" variant="ghost" onClick={onClose} disabled={busy}>Ignorer</IdnButton>
         </div>
-      </CardShell>
+      </Shell>
     )
   }
 
-  // ── Feature 2: suggest_skills
   if (feature === "suggest_skills") {
-    const suggestions = (job.result.suggestions as Array<{
-      name: string
-      level: "Débutant" | "Intermédiaire" | "Avancé" | "Expert"
-      rationale: string
-    }> | undefined) ?? []
-    async function add(name: string, level: "Débutant" | "Intermédiaire" | "Avancé" | "Expert") {
+    const suggestions = (result.suggestions as { name: string; level: SkillLevel; rationale: string }[] | undefined) ?? []
+    const add = async (name: string, level: SkillLevel) => {
       if (busy) return
       setBusy(true)
+      setError(null)
       try {
         await addSkill({ cvId, data: { name, level } })
-        toast.success(`« ${name} » ajouté aux compétences.`)
+        setAdded((a) => [...a, name])
       } catch (e) {
-        toast.error("Échec.", { description: (e as Error).message })
+        setError(e instanceof Error && e.message ? cleanError(e.message) : "Réessaie dans un instant.")
       } finally {
         setBusy(false)
       }
     }
     return (
-      <CardShell onClose={onClose} title="Compétences suggérées par l'IA">
+      <Shell title={TITLES[feature]} onClose={onClose}>
         {suggestions.length === 0 ? (
-          <p className="text-sm italic text-emerald-900 dark:text-emerald-100">
-            Aucune suggestion (votre CV couvre déjà les principales compétences).
-          </p>
+          <p className="text-sm text-idn-muted">Aucune suggestion : ton CV couvre déjà les compétences principales.</p>
         ) : (
-          <ul className="space-y-2">
-            {suggestions.map((s, i) => (
-              <li
-                key={i}
-                className="flex items-start justify-between gap-3 rounded-lg bg-white/40 px-3 py-2 dark:bg-white/5"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-emerald-900 dark:text-emerald-100">
-                      {s.name}
-                    </span>
-                    <span className="rounded-full bg-emerald-500/20 px-2 py-[1px] text-[10px] font-medium text-emerald-800 dark:text-emerald-200">
-                      {s.level}
-                    </span>
+          <ul className="divide-y divide-idn-border">
+            {suggestions.map((s, i) => {
+              const done = added.includes(s.name)
+              return (
+                <li key={i} className="flex items-center gap-2.5 py-3 first:pt-0">
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-semibold text-idn-ink">{s.name}</span>
+                      <Badge tone="neutral">{s.level}</Badge>
+                    </div>
+                    <p className="text-[13px] leading-[18px] text-idn-muted">{s.rationale}</p>
                   </div>
-                  <p className="mt-0.5 text-xs italic text-emerald-900/70 dark:text-emerald-100/70">
-                    {s.rationale}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => add(s.name, s.level)}
-                  disabled={busy}
-                  className="shrink-0 border-emerald-300 bg-white/40 text-emerald-900 hover:bg-white/70"
-                >
-                  Ajouter
-                </Button>
-              </li>
-            ))}
+                  {done ? (
+                    <Badge tone="green" icon="check">Ajoutée</Badge>
+                  ) : (
+                    <IdnButton size="sm" variant="secondary" onClick={() => add(s.name, s.level)} disabled={busy} aria-label={`Ajouter ${s.name}`}>
+                      Ajouter
+                    </IdnButton>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
-        <div className="mt-3 flex justify-end">
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            Fermer
-          </Button>
-        </div>
-      </CardShell>
+        <ErrorNote>{error}</ErrorNote>
+      </Shell>
     )
   }
 
-  // ── Feature 3: generate_letter
-  const letter = (job.result.letter as string | undefined) ?? ""
-  async function copy() {
-    if (busy) return
-    setBusy(true)
+  const letter = (result.letter as string | undefined) ?? ""
+  const copy = async () => {
     try {
       await navigator.clipboard.writeText(letter)
-      toast.success("Lettre copiée dans le presse-papier.")
-    } catch (e) {
-      toast.error("Impossible de copier.", { description: (e as Error).message })
-    } finally {
-      setBusy(false)
+      setCopied(true)
+    } catch {
+      setError("Copie impossible : sélectionne le texte et copie-le à la main.")
     }
   }
   return (
-    <CardShell onClose={onClose} title="Lettre de motivation générée">
-      <div className="max-h-[420px] overflow-auto whitespace-pre-line rounded-lg bg-white/40 p-3 text-sm text-emerald-900 dark:bg-white/5 dark:text-emerald-100">
+    <Shell title={TITLES[feature]} onClose={onClose}>
+      <div tabIndex={0} aria-label="Texte de la lettre" className="max-h-[280px] overflow-y-auto whitespace-pre-wrap rounded-[10px] text-sm leading-[21px] text-idn-ink outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {letter}
       </div>
-      <div className="mt-3 flex gap-2">
-        <Button size="sm" onClick={copy} disabled={busy}>
-          <Copy className="h-4 w-4" />
-          Copier
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onClose}>
-          Fermer
-        </Button>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+        <IdnButton size="sm" variant="secondary" onClick={copy}>Copier la lettre</IdnButton>
+        {copied ? (
+          <p role="status" className="text-[13px] text-c-green-text">
+            Lettre copiée. Tu peux la coller dans ton e-mail ou ton traitement de texte.
+          </p>
+        ) : null}
       </div>
-    </CardShell>
-  )
-}
-
-function CardShell({
-  title,
-  children,
-  onClose,
-}: {
-  title: string
-  children: React.ReactNode
-  onClose: () => void
-}) {
-  return (
-    <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-      <div className="mb-3 flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-emerald-600" />
-        <p className="flex-1 text-sm font-bold text-emerald-800 dark:text-emerald-200">
-          {title}
-        </p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full p-1 text-emerald-800/70 transition-colors hover:bg-white/40 dark:text-emerald-200/70"
-          aria-label="Fermer"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      {children}
-    </div>
+    </Shell>
   )
 }

@@ -159,10 +159,10 @@ export function appReturnUrl(redirectUris: readonly string[]): string | null {
 export function consentFailureMessage(reason: ConsentFailure): string {
   switch (reason) {
     case "session_missing":
-      return "Votre session Identité Numérique n'a pas été reconnue. Reconnectez-vous pour poursuivre la connexion."
+      return "Ta session IDN n’a pas été reconnue. Reconnecte-toi pour poursuivre la connexion."
     case "request_expired":
-      return "Cette demande de connexion a expiré ou a déjà été traitée. Relancez la connexion depuis l'application."
+      return "La demande a expiré ou a déjà été traitée. Relance la connexion depuis l’application partenaire."
     case "provider_error":
-      return "Votre décision n'a pas pu être enregistrée. Réessayez dans un instant."
+      return "Décision non transmise. Vérifie ta connexion et réessaie."
   }
 }

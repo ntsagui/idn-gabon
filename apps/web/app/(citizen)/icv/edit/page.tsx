@@ -1,408 +1,271 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery } from "convex/react"
-import { ArrowLeft, Loader2, Pencil, Save, Sparkles, Trash2 } from "lucide-react"
-import { toast } from "sonner"
+import type { FunctionReturnType } from "convex/server"
 
 import { api } from "@repo/backend/convex/_generated/api"
 import type { Id } from "@repo/backend/convex/_generated/dataModel"
-import type { FunctionReturnType } from "convex/server"
-import { Button } from "@repo/ui/components/button"
-import { Input } from "@repo/ui/components/input"
-import { Label } from "@repo/ui/components/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@repo/ui/components/select"
-import { Textarea } from "@repo/ui/components/textarea"
+import { cn } from "@repo/ui/lib/utils"
 
-import { AiResultCard } from "../_components/ai-result-card"
-import { icv } from "../_content/fr"
-import { ICV_ACCENT } from "../_content/themes"
+import { AppBar, IconButton } from "@/app/_components/idn/app-bar"
+import { IdnButton } from "@/app/_components/idn/button"
+import { ConfirmDialog, cleanError } from "@/app/_components/idn/dialog"
+import { Card, ErrorNote, Row, SectionTitle } from "@/app/_components/idn/list"
+import { Screen } from "@/app/_components/idn/screen"
 
-type SectionKind =
-  | "info"
-  | "experience"
-  | "education"
-  | "skill"
-  | "language"
-  | "hobby"
+import { CvChips, CvField, CvLoading } from "../_components/cv-ui"
 
-const VALID_SECTIONS: SectionKind[] = [
-  "info",
-  "experience",
-  "education",
-  "skill",
-  "language",
-  "hobby",
-]
+type SectionKind = "info" | "experience" | "education" | "skill" | "language" | "hobby"
+const VALID_SECTIONS: SectionKind[] = ["info", "experience", "education", "skill", "language", "hobby"]
+const SKILL_LEVELS = ["Débutant", "Intermédiaire", "Avancé", "Expert"] as const
+const LANG_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2", "Natif"] as const
 
-export default function IcvEditPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const sectionParam = searchParams.get("section") ?? "info"
-  const cvParam = searchParams.get("cv") as Id<"citizenCv"> | null
-  const idParam = searchParams.get("id")
+type CvFull = NonNullable<FunctionReturnType<typeof api.cv.profile.get>>
 
-  if (!VALID_SECTIONS.includes(sectionParam as SectionKind) || !cvParam) {
-    return <InvalidParams />
-  }
+/**
+ * Cadre d'écran fourni par l'éditeur à chaque formulaire : le formulaire
+ * garde son état et ses actions, l'éditeur fournit la barre et la liste.
+ */
+type Frame = (children: React.ReactNode, footer: React.ReactNode) => React.ReactElement
 
-  return (
-    <Editor
-      section={sectionParam as SectionKind}
-      cvId={cvParam}
-      entryId={idParam}
-      onClose={() => router.push("/icv")}
-    />
-  )
+const SAVE_FAILED = "L’enregistrement a échoué. Réessaie dans un instant."
+
+function errText(e: unknown): string {
+  return e instanceof Error && e.message ? cleanError(e.message) : SAVE_FAILED
 }
 
-function InvalidParams() {
-  return (
-    <section className="mx-auto max-w-md p-8 text-center">
-      <p className="text-sm font-bold text-muted-foreground">
-        Paramètres invalides.
-      </p>
-      <Button asChild className="mt-4">
-        <Link href="/icv">Retour</Link>
-      </Button>
-    </section>
-  )
-}
+/** Éditeur d'une rubrique du CV (apps/mobile/src/app/icv/edit.tsx). */
+export default function ICVEdit() {
+  const params = useSearchParams()
+  const section = params.get("section") as SectionKind | null
+  const cvParam = params.get("cv") as Id<"citizenCv"> | null
+  const idParam = params.get("id")
 
-function Editor({
-  section,
-  cvId,
-  entryId,
-  onClose,
-}: {
-  section: SectionKind
-  cvId: Id<"citizenCv">
-  entryId: string | null
-  onClose: () => void
-}) {
-  const cv = useQuery(api.cv.profile.get, { cvId })
-  const isEditing = entryId !== null
-
-  if (cv === undefined) {
+  if (!section || !VALID_SECTIONS.includes(section) || !cvParam) {
     return (
-      <section className="mx-auto w-full max-w-3xl px-5 py-10">
-        <div className="h-96 animate-pulse rounded-2xl bg-secondary" />
-      </section>
+      <Screen header={<AppBar title="iCV" back="/icv" />} footer={<IdnButton href="/icv" variant="ghost" full>Retour</IdnButton>}>
+        <ErrorNote>Cette rubrique est introuvable. Reviens à ton CV et réessaie.</ErrorNote>
+      </Screen>
     )
   }
-  if (cv === null) {
-    return <InvalidParams />
-  }
-
-  // Pour les sections multi-entrées sans `?id=` : on affiche la liste
-  // existante au-dessus du formulaire d'ajout.
-  const showList =
-    !isEditing &&
-    section !== "info" &&
-    sectionItems(cv, section).length > 0
-
-  return (
-    <section className="mx-auto w-full max-w-3xl px-5 py-8 md:px-7 md:py-10">
-      <header className="mb-6 flex items-center gap-3">
-        <Button
-          asChild
-          variant="outline"
-          size="icon"
-          className="rounded-full"
-        >
-          <Link href="/icv">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-        </Button>
-        <div className="flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            {icv.editor.eyebrow}
-          </p>
-          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">
-            {showList ? listTitleFor(section) : titleFor(section, isEditing)}
-          </h1>
-        </div>
-      </header>
-
-      {showList ? (
-        <SectionList section={section} cv={cv} cvId={cvId} />
-      ) : null}
-
-      <div className="rounded-2xl border border-border bg-card p-6 md:p-7">
-        {showList ? (
-          <p className="mb-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            {addTitleFor(section)}
-          </p>
-        ) : null}
-        {section === "info" ? (
-          <InfoForm cv={cv} onClose={onClose} />
-        ) : section === "experience" ? (
-          <ExperienceForm
-            cvId={cvId}
-            entry={findEntry(cv.experiences, entryId)}
-            onClose={onClose}
-          />
-        ) : section === "education" ? (
-          <EducationForm
-            cvId={cvId}
-            entry={findEntry(cv.education, entryId)}
-            onClose={onClose}
-          />
-        ) : section === "skill" ? (
-          <SkillForm
-            cvId={cvId}
-            entry={findEntry(cv.skills, entryId)}
-            onClose={onClose}
-          />
-        ) : section === "language" ? (
-          <LanguageForm
-            cvId={cvId}
-            entry={findEntry(cv.languages, entryId)}
-            onClose={onClose}
-          />
-        ) : (
-          <HobbyForm cv={cv} cvId={cvId} onClose={onClose} />
-        )}
-      </div>
-    </section>
-  )
+  return <Editor key={`${section}-${idParam ?? "new"}`} section={section} cvId={cvParam} entryId={idParam} />
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Liste des entrées existantes (au-dessus du formulaire d'ajout)
-// ─────────────────────────────────────────────────────────────────────────
+function Editor({ section, cvId, entryId }: { section: SectionKind; cvId: Id<"citizenCv">; entryId: string | null }) {
+  const router = useRouter()
+  const cv = useQuery(api.cv.profile.get, { cvId })
 
-type Entry = { id: string }
-
-function sectionItems(cv: CvFull, section: SectionKind): Entry[] {
-  switch (section) {
-    case "experience":
-      return cv.experiences
-    case "education":
-      return cv.education
-    case "skill":
-      return cv.skills
-    case "language":
-      return cv.languages
-    default:
-      return []
+  if (cv === undefined) return <CvLoading title="iCV" />
+  if (cv === null) {
+    return (
+      <Screen header={<AppBar title="iCV" back="/icv" />}>
+        <ErrorNote>Impossible de charger ce CV.</ErrorNote>
+      </Screen>
+    )
   }
+
+  const isEditing = entryId !== null
+  const listUrl = `/icv/edit?section=${section}&cv=${cvId}`
+  const back = isEditing ? listUrl : "/icv"
+  const onDone = () => router.push(back)
+  const showList = !isEditing && section !== "info" && section !== "hobby" && sectionItems(cv, section).length > 0
+  const title = showList ? listTitleFor(section) : computeTitle(section, isEditing)
+
+  const frame: Frame = (children, footer) => (
+    <Screen header={<AppBar title={title} back={back} />} footer={footer}>
+      {showList ? <SectionList section={section} cv={cv} cvId={cvId} /> : null}
+      {showList ? <SectionTitle>{addTitleFor(section)}</SectionTitle> : null}
+      {children}
+    </Screen>
+  )
+
+  if (section === "info") return <InfoForm cv={cv} onDone={onDone} frame={frame} />
+  if (section === "experience") return <ExperienceForm cvId={cvId} entry={findEntry(cv.experiences, entryId)} onDone={onDone} frame={frame} />
+  if (section === "education") return <EducationForm cvId={cvId} entry={findEntry(cv.education, entryId)} onDone={onDone} frame={frame} />
+  if (section === "skill") return <SkillForm cvId={cvId} entry={findEntry(cv.skills, entryId)} onDone={onDone} frame={frame} />
+  if (section === "language") return <LanguageForm cvId={cvId} entry={findEntry(cv.languages, entryId)} onDone={onDone} frame={frame} />
+  return <HobbyForm cv={cv} cvId={cvId} onDone={onDone} frame={frame} />
+}
+
+// ── Liste des entrées existantes (au-dessus du formulaire d'ajout) ──────────
+
+function sectionItems(cv: CvFull, section: SectionKind): { id: string }[] {
+  if (section === "experience") return cv.experiences
+  if (section === "education") return cv.education
+  if (section === "skill") return cv.skills
+  if (section === "language") return cv.languages
+  return []
 }
 
 function listTitleFor(section: SectionKind): string {
-  switch (section) {
-    case "experience":
-      return "Mes expériences"
-    case "education":
-      return "Mes formations"
-    case "skill":
-      return "Mes compétences"
-    case "language":
-      return "Mes langues"
-    default:
-      return ""
-  }
+  if (section === "experience") return "Tes expériences"
+  if (section === "education") return "Tes formations"
+  if (section === "skill") return "Tes compétences"
+  if (section === "language") return "Tes langues"
+  return ""
 }
 
 function addTitleFor(section: SectionKind): string {
-  switch (section) {
-    case "experience":
-      return "Ajouter une expérience"
-    case "education":
-      return "Ajouter une formation"
-    case "skill":
-      return "Ajouter une compétence"
-    case "language":
-      return "Ajouter une langue"
-    default:
-      return ""
-  }
+  if (section === "experience") return "Ajouter une expérience"
+  if (section === "education") return "Ajouter une formation"
+  if (section === "skill") return "Ajouter une compétence"
+  if (section === "language") return "Ajouter une langue"
+  return ""
 }
 
-function SectionList({
-  section,
-  cv,
-  cvId,
-}: {
-  section: SectionKind
-  cv: CvFull
-  cvId: Id<"citizenCv">
-}) {
+function SectionList({ section, cv, cvId }: { section: SectionKind; cv: CvFull; cvId: Id<"citizenCv"> }) {
   const removeExperience = useMutation(api.cv.experiences.remove)
   const removeEducation = useMutation(api.cv.education.remove)
   const removeSkill = useMutation(api.cv.skills.remove)
   const removeLanguage = useMutation(api.cv.languages.remove)
+  const [pending, setPending] = React.useState<{ label: string; exec: () => Promise<unknown> } | null>(null)
 
-  async function handleDelete(entryId: string) {
-    if (!confirm("Supprimer cette entrée ?")) return
-    try {
-      if (section === "experience") {
-        await removeExperience({ cvId, id: entryId })
-      } else if (section === "education") {
-        await removeEducation({ cvId, id: entryId })
-      } else if (section === "skill") {
-        await removeSkill({ cvId, id: entryId })
-      } else if (section === "language") {
-        await removeLanguage({ cvId, id: entryId })
-      }
-      toast.success("Supprimé.")
-    } catch (e) {
-      toast.error("Échec.", { description: (e as Error).message })
-    }
-  }
+  const href = (id: string) => `/icv/edit?section=${section}&cv=${cvId}&id=${id}`
+  const rows: { id: string; primary: string; secondary?: string; del: () => void }[] =
+    section === "experience"
+      ? cv.experiences.map((e) => ({
+          id: e.id,
+          primary: e.title || "Poste sans intitulé",
+          secondary: [e.company, formatRange(e.startDate, e.endDate, e.current)].filter(Boolean).join(" · "),
+          del: () => setPending({ label: "cette expérience", exec: () => removeExperience({ cvId, id: e.id }) }),
+        }))
+      : section === "education"
+        ? cv.education.map((e) => ({
+            id: e.id,
+            primary: e.degree || "Diplôme sans intitulé",
+            secondary: [e.school, e.year].filter(Boolean).join(" · "),
+            del: () => setPending({ label: "cette formation", exec: () => removeEducation({ cvId, id: e.id }) }),
+          }))
+        : section === "skill"
+          ? cv.skills.map((e) => ({
+              id: e.id,
+              primary: e.name,
+              secondary: e.level,
+              del: () => setPending({ label: "cette compétence", exec: () => removeSkill({ cvId, id: e.id }) }),
+            }))
+          : cv.languages.map((e) => ({
+              id: e.id,
+              primary: e.name,
+              secondary: e.level,
+              del: () => setPending({ label: "cette langue", exec: () => removeLanguage({ cvId, id: e.id }) }),
+            }))
 
   return (
-    <ul className="mb-6 space-y-2">
-      {section === "experience" &&
-        cv.experiences.map((e) => (
-          <SectionListItem
-            key={e.id}
-            primary={e.title || "(sans titre)"}
-            secondary={[e.company, formatRange(e.startDate, e.endDate, e.current)]
-              .filter(Boolean)
-              .join(" · ")}
-            editHref={`/icv/edit?section=experience&cv=${cvId}&id=${e.id}`}
-            onDelete={() => handleDelete(e.id)}
+    <>
+      <Card className="mt-4">
+        {rows.map((r) => (
+          <Row
+            key={r.id}
+            title={r.primary}
+            sub={r.secondary || undefined}
+            href={href(r.id)}
+            ariaLabel={`Modifier ${r.primary}`}
+            right={<IconButton icon="trash" label={`Supprimer ${r.primary}`} onClick={r.del} plain className="text-c-red-text" />}
           />
         ))}
-      {section === "education" &&
-        cv.education.map((e) => (
-          <SectionListItem
-            key={e.id}
-            primary={e.degree || "(sans diplôme)"}
-            secondary={[e.school, e.year].filter(Boolean).join(" · ")}
-            editHref={`/icv/edit?section=education&cv=${cvId}&id=${e.id}`}
-            onDelete={() => handleDelete(e.id)}
-          />
-        ))}
-      {section === "skill" &&
-        cv.skills.map((e) => (
-          <SectionListItem
-            key={e.id}
-            primary={e.name}
-            secondary={e.level}
-            editHref={`/icv/edit?section=skill&cv=${cvId}&id=${e.id}`}
-            onDelete={() => handleDelete(e.id)}
-          />
-        ))}
-      {section === "language" &&
-        cv.languages.map((e) => (
-          <SectionListItem
-            key={e.id}
-            primary={e.name}
-            secondary={e.level}
-            editHref={`/icv/edit?section=language&cv=${cvId}&id=${e.id}`}
-            onDelete={() => handleDelete(e.id)}
-          />
-        ))}
-    </ul>
+      </Card>
+      <ConfirmDialog
+        open={!!pending}
+        onOpenChange={(o) => !o && setPending(null)}
+        title={`Supprimer ${pending?.label ?? ""} ?`}
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={async () => {
+          await pending?.exec()
+        }}
+      />
+    </>
   )
 }
 
-function SectionListItem({
-  primary,
-  secondary,
-  editHref,
-  onDelete,
-}: {
-  primary: string
-  secondary?: string
-  editHref: string
-  onDelete: () => void
-}) {
-  return (
-    <li className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:bg-muted/40">
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">{primary}</p>
-        {secondary ? (
-          <p className="truncate text-xs text-muted-foreground">{secondary}</p>
-        ) : null}
-      </div>
-      <Button asChild variant="ghost" size="icon" className="h-8 w-8">
-        <Link href={editHref} aria-label="Modifier">
-          <Pencil className="h-4 w-4" />
-        </Link>
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 text-destructive hover:text-destructive"
-        aria-label="Supprimer"
-        onClick={onDelete}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
-    </li>
-  )
-}
-
-function formatRange(
-  start: string,
-  end: string | undefined,
-  current: boolean,
-): string {
-  if (current) return `${start} → Aujourd'hui`
+function formatRange(start: string, end: string | undefined, current: boolean): string {
+  if (current) return `${start} → aujourd’hui`
   if (!end) return start
   return `${start} → ${end}`
 }
 
-function titleFor(section: SectionKind, editing: boolean): string {
-  switch (section) {
-    case "info":
-      return "Mes informations"
-    case "experience":
-      return editing
-        ? icv.editor.sections.experience.editTitle
-        : icv.editor.sections.experience.addTitle
-    case "education":
-      return editing
-        ? icv.editor.sections.education.editTitle
-        : icv.editor.sections.education.addTitle
-    case "skill":
-      return editing
-        ? icv.editor.sections.skill.editTitle
-        : icv.editor.sections.skill.addTitle
-    case "language":
-      return editing
-        ? icv.editor.sections.language.editTitle
-        : icv.editor.sections.language.addTitle
-    case "hobby":
-      return "Centres d'intérêt"
-  }
+function computeTitle(s: SectionKind, editing: boolean): string {
+  if (s === "info") return "Tes informations"
+  if (s === "experience") return editing ? "Modifier l’expérience" : "Ajouter une expérience"
+  if (s === "education") return editing ? "Modifier la formation" : "Ajouter une formation"
+  if (s === "skill") return editing ? "Modifier la compétence" : "Ajouter une compétence"
+  if (s === "language") return editing ? "Modifier la langue" : "Ajouter une langue"
+  return "Centres d’intérêt"
 }
 
-function findEntry<T extends { id: string }>(
-  arr: T[],
-  id: string | null,
-): T | null {
+function findEntry<T extends { id: string }>(arr: T[], id: string | null): T | null {
   if (!id) return null
   return arr.find((e) => e.id === id) ?? null
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Formulaire INFO (champs racine)
-// ─────────────────────────────────────────────────────────────────────────
-
-type CvFull = NonNullable<FunctionReturnType<typeof api.cv.profile.get>>
-
-function InfoForm({
-  cv,
-  onClose,
+/** Pied d'écran : enregistrer (et supprimer en modification). */
+function SaveBar({
+  onSave,
+  onDelete,
+  busy,
+  error,
+  deleteTitle,
 }: {
-  cv: CvFull
-  onClose: () => void
+  onSave: () => void
+  onDelete?: () => Promise<unknown>
+  busy: boolean
+  error: string | null
+  deleteTitle?: string
 }) {
+  const [confirm, setConfirm] = React.useState(false)
+  return (
+    <>
+      <ErrorNote className="mt-0">{error}</ErrorNote>
+      <IdnButton full onClick={onSave} loading={busy}>
+        Enregistrer
+      </IdnButton>
+      {onDelete ? (
+        <>
+          <IdnButton full variant="dangerGhost" onClick={() => setConfirm(true)} disabled={busy}>
+            Supprimer
+          </IdnButton>
+          <ConfirmDialog
+            open={confirm}
+            onOpenChange={setConfirm}
+            title={deleteTitle ?? "Supprimer ?"}
+            confirmLabel="Supprimer"
+            destructive
+            onConfirm={async () => {
+              await onDelete()
+            }}
+          />
+        </>
+      ) : null}
+    </>
+  )
+}
+
+/** Le hook commun : état d'envoi, erreur, exécution. */
+function useSave(onDone: () => void) {
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  async function run(fn: () => Promise<unknown>) {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await fn()
+      onDone()
+    } catch (e) {
+      setError(errText(e))
+      setBusy(false)
+    }
+  }
+  return { busy, error, run }
+}
+
+// ── Tes informations ───────────────────────────────────────────────────────
+
+function InfoForm({ cv, onDone, frame }: { cv: CvFull; onDone: () => void; frame: Frame }) {
   const upsert = useMutation(api.cv.profile.upsert)
-  const [pending, setPending] = React.useState(false)
+  const { busy, error, run } = useSave(onDone)
   const [form, setForm] = React.useState({
     firstName: cv.firstName,
     lastName: cv.lastName,
@@ -410,141 +273,46 @@ function InfoForm({
     phone: cv.phone,
     address: cv.address,
     summary: cv.summary,
-    portfolioUrl: cv.portfolioUrl ?? "",
     linkedinUrl: cv.linkedinUrl ?? "",
+    portfolioUrl: cv.portfolioUrl ?? "",
   })
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (pending) return
-    setPending(true)
-    try {
-      await upsert({
+  const save = () =>
+    run(() =>
+      upsert({
         cvId: cv._id,
-        patch: {
-          firstName: form.firstName,
-          lastName: form.lastName,
-          email: form.email,
-          phone: form.phone,
-          address: form.address,
-          summary: form.summary,
-          portfolioUrl: form.portfolioUrl || undefined,
-          linkedinUrl: form.linkedinUrl || undefined,
-        },
+        patch: { ...form, linkedinUrl: form.linkedinUrl || undefined, portfolioUrl: form.portfolioUrl || undefined },
       })
-      toast.success("Informations enregistrées.")
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Prénom">
-          <Input
-            value={form.firstName}
-            onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-            maxLength={80}
-          />
-        </Field>
-        <Field label="Nom">
-          <Input
-            value={form.lastName}
-            onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-            maxLength={80}
-          />
-        </Field>
+    )
+  return frame(
+    <>
+      <div className="grid gap-x-3 sm:grid-cols-2">
+        <CvField label="Prénom" value={form.firstName} onChange={(v) => setForm({ ...form, firstName: v })} autoComplete="given-name" />
+        <CvField label="Nom" value={form.lastName} onChange={(v) => setForm({ ...form, lastName: v })} autoComplete="family-name" />
+        <CvField label="E-mail" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} autoComplete="email" />
+        <CvField label="Téléphone" type="tel" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} autoComplete="tel" />
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Email">
-          <Input
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-        </Field>
-        <Field label="Téléphone">
-          <Input
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            maxLength={30}
-          />
-        </Field>
-      </div>
-      <Field label="Adresse">
-        <Input
-          value={form.address}
-          onChange={(e) => setForm({ ...form, address: e.target.value })}
-        />
-      </Field>
-      <Field
+      <CvField label="Adresse" value={form.address} onChange={(v) => setForm({ ...form, address: v })} autoComplete="street-address" />
+      <CvField
         label="Résumé professionnel"
-        hint="50-300 caractères pour un score optimal."
-      >
-        <Textarea
-          rows={4}
-          value={form.summary}
-          onChange={(e) => setForm({ ...form, summary: e.target.value })}
-          maxLength={2000}
-        />
-      </Field>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="LinkedIn (URL)">
-          <Input
-            type="url"
-            placeholder="https://linkedin.com/in/..."
-            value={form.linkedinUrl}
-            onChange={(e) =>
-              setForm({ ...form, linkedinUrl: e.target.value })
-            }
-          />
-        </Field>
-        <Field label="Portfolio (URL)">
-          <Input
-            type="url"
-            placeholder="https://..."
-            value={form.portfolioUrl}
-            onChange={(e) =>
-              setForm({ ...form, portfolioUrl: e.target.value })
-            }
-          />
-        </Field>
-      </div>
-      <FormActions onCancel={onClose} pending={pending} />
-    </form>
+        hint="Entre 50 et 300 caractères pour un score optimal."
+        value={form.summary}
+        onChange={(v) => setForm({ ...form, summary: v })}
+        multiline
+      />
+      <CvField label="LinkedIn (adresse du profil)" type="url" value={form.linkedinUrl} onChange={(v) => setForm({ ...form, linkedinUrl: v })} />
+      <CvField label="Portfolio (adresse du site)" type="url" value={form.portfolioUrl} onChange={(v) => setForm({ ...form, portfolioUrl: v })} />
+    </>,
+    <SaveBar onSave={save} busy={busy} error={error} />
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Formulaire EXPÉRIENCE (avec bouton IA)
-// ─────────────────────────────────────────────────────────────────────────
+// ── Expérience ─────────────────────────────────────────────────────────────
 
-function ExperienceForm({
-  cvId,
-  entry,
-  onClose,
-}: {
-  cvId: Id<"citizenCv">
-  entry: {
-    id: string
-    title: string
-    company: string
-    startDate: string
-    endDate?: string
-    current: boolean
-    description: string
-  } | null
-  onClose: () => void
-}) {
+function ExperienceForm({ cvId, entry, onDone, frame }: { cvId: Id<"citizenCv">; entry: CvFull["experiences"][number] | null; onDone: () => void; frame: Frame }) {
   const add = useMutation(api.cv.experiences.add)
   const update = useMutation(api.cv.experiences.update)
   const remove = useMutation(api.cv.experiences.remove)
-  const [pending, setPending] = React.useState(false)
-  const [aiVisible, setAiVisible] = React.useState(false)
+  const { busy, error, run } = useSave(onDone)
   const [form, setForm] = React.useState({
     title: entry?.title ?? "",
     company: entry?.company ?? "",
@@ -553,12 +321,8 @@ function ExperienceForm({
     current: entry?.current ?? false,
     description: entry?.description ?? "",
   })
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (pending) return
-    setPending(true)
-    try {
+  const save = () =>
+    run(() => {
       const data = {
         title: form.title,
         company: form.company,
@@ -567,557 +331,206 @@ function ExperienceForm({
         current: form.current,
         description: form.description,
       }
-      if (entry) {
-        await update({ cvId, id: entry.id, patch: data })
-        toast.success("Expérience mise à jour.")
-      } else {
-        await add({ cvId, data })
-        toast.success("Expérience ajoutée.")
-      }
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!entry || pending) return
-    if (!window.confirm("Supprimer cette expérience ?")) return
-    setPending(true)
-    try {
-      await remove({ cvId, id: entry.id })
-      toast.success("Expérience supprimée.")
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <Field label={icv.editor.sections.experience.fields.title}>
-        <Input
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          placeholder={icv.editor.sections.experience.fields.titlePh}
+      return entry ? update({ cvId, id: entry.id, patch: data }) : add({ cvId, data })
+    })
+  return frame(
+    <>
+      <CvField label="Intitulé du poste" value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="Par exemple : Chef de projet numérique" />
+      <CvField label="Entreprise ou organisme" value={form.company} onChange={(v) => setForm({ ...form, company: v })} />
+      <div className="grid grid-cols-2 gap-2.5">
+        <CvField label="Début" value={form.startDate} onChange={(v) => setForm({ ...form, startDate: v })} placeholder="01/2022" />
+        <CvField
+          label="Fin"
+          value={form.current ? "" : form.endDate}
+          onChange={(v) => setForm({ ...form, endDate: v })}
+          placeholder={form.current ? "En cours" : "06/2024"}
+          disabled={form.current}
         />
-      </Field>
-      <Field label={icv.editor.sections.experience.fields.company}>
-        <Input
-          value={form.company}
-          onChange={(e) => setForm({ ...form, company: e.target.value })}
-          placeholder={icv.editor.sections.experience.fields.companyPh}
-        />
-      </Field>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label={icv.editor.sections.experience.fields.startDate}>
-          <Input
-            value={form.startDate}
-            onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-            placeholder="01/2022"
-          />
-        </Field>
-        <Field label={icv.editor.sections.experience.fields.endDate}>
-          <Input
-            value={form.endDate}
-            onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-            placeholder={
-              form.current
-                ? "—"
-                : icv.editor.sections.experience.fields.endDatePh
-            }
-            disabled={form.current}
-          />
-        </Field>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={form.current}
-          onChange={(e) => setForm({ ...form, current: e.target.checked })}
-          className="h-4 w-4 accent-emerald-600"
+      <Card className="mt-4">
+        <Row
+          title="J’occupe ce poste actuellement"
+          right={<Switch checked={form.current} onChange={(v) => setForm({ ...form, current: v })} label="J’occupe ce poste actuellement" />}
         />
-        {icv.editor.sections.experience.fields.current}
-      </label>
-
-      <div>
-        <div className="mb-1.5 flex items-center justify-between">
-          <Label>{icv.editor.sections.experience.fields.description}</Label>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-auto rounded-full px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300"
-            onClick={() => setAiVisible(true)}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            {icv.editor.sections.experience.aiImprove}
-          </Button>
-        </div>
-        <Textarea
-          rows={5}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          maxLength={5000}
-        />
-        {aiVisible ? (
-          <div className="mt-3">
-            <AiResultCard
-              cvId={cvId}
-              feature="improve_summary"
-              currentSummary={undefined}
-              onClose={() => setAiVisible(false)}
-            />
-          </div>
-        ) : null}
-      </div>
-
-      <FormActions
-        onCancel={onClose}
-        onDelete={entry ? handleDelete : undefined}
-        pending={pending}
+      </Card>
+      <CvField
+        label="Description"
+        value={form.description}
+        onChange={(v) => setForm({ ...form, description: v })}
+        multiline
+        minHeight={120}
+        hint="Tes missions et tes résultats, en quelques lignes."
       />
-    </form>
+    </>,
+    <SaveBar
+      onSave={save}
+      busy={busy}
+      error={error}
+      deleteTitle="Supprimer cette expérience ?"
+      onDelete={entry ? async () => { await remove({ cvId, id: entry.id }); onDone() } : undefined}
+    />
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Formulaire FORMATION
-// ─────────────────────────────────────────────────────────────────────────
+// ── Formation ──────────────────────────────────────────────────────────────
 
-function EducationForm({
-  cvId,
-  entry,
-  onClose,
-}: {
-  cvId: Id<"citizenCv">
-  entry: {
-    id: string
-    degree: string
-    school: string
-    year: string
-    description?: string
-  } | null
-  onClose: () => void
-}) {
+function EducationForm({ cvId, entry, onDone, frame }: { cvId: Id<"citizenCv">; entry: CvFull["education"][number] | null; onDone: () => void; frame: Frame }) {
   const add = useMutation(api.cv.education.add)
   const update = useMutation(api.cv.education.update)
   const remove = useMutation(api.cv.education.remove)
-  const [pending, setPending] = React.useState(false)
+  const { busy, error, run } = useSave(onDone)
   const [form, setForm] = React.useState({
     degree: entry?.degree ?? "",
     school: entry?.school ?? "",
     year: entry?.year ?? "",
     description: entry?.description ?? "",
   })
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (pending) return
-    setPending(true)
-    try {
-      const data = {
-        degree: form.degree,
-        school: form.school,
-        year: form.year,
-        description: form.description || undefined,
-      }
-      if (entry) {
-        await update({ cvId, id: entry.id, patch: data })
-        toast.success("Formation mise à jour.")
-      } else {
-        await add({ cvId, data })
-        toast.success("Formation ajoutée.")
-      }
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!entry || pending) return
-    if (!window.confirm("Supprimer cette formation ?")) return
-    setPending(true)
-    try {
-      await remove({ cvId, id: entry.id })
-      toast.success("Formation supprimée.")
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <Field label={icv.editor.sections.education.fields.degree}>
-        <Input
-          value={form.degree}
-          onChange={(e) => setForm({ ...form, degree: e.target.value })}
-        />
-      </Field>
-      <Field label={icv.editor.sections.education.fields.school}>
-        <Input
-          value={form.school}
-          onChange={(e) => setForm({ ...form, school: e.target.value })}
-        />
-      </Field>
-      <Field label={icv.editor.sections.education.fields.year}>
-        <Input
-          value={form.year}
-          onChange={(e) => setForm({ ...form, year: e.target.value })}
-          placeholder="2024"
-        />
-      </Field>
-      <Field label={icv.editor.sections.education.fields.description}>
-        <Textarea
-          rows={3}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          maxLength={2000}
-        />
-      </Field>
-      <FormActions
-        onCancel={onClose}
-        onDelete={entry ? handleDelete : undefined}
-        pending={pending}
-      />
-    </form>
+  const save = () =>
+    run(() => {
+      const data = { degree: form.degree, school: form.school, year: form.year, description: form.description || undefined }
+      return entry ? update({ cvId, id: entry.id, patch: data }) : add({ cvId, data })
+    })
+  return frame(
+    <>
+      <CvField label="Diplôme" value={form.degree} onChange={(v) => setForm({ ...form, degree: v })} placeholder="Par exemple : Master en droit des affaires" />
+      <CvField label="Établissement" value={form.school} onChange={(v) => setForm({ ...form, school: v })} />
+      <CvField label="Année d’obtention" value={form.year} onChange={(v) => setForm({ ...form, year: v })} placeholder="2024" inputMode="numeric" />
+      <CvField label="Description (facultatif)" value={form.description} onChange={(v) => setForm({ ...form, description: v })} multiline />
+    </>,
+    <SaveBar
+      onSave={save}
+      busy={busy}
+      error={error}
+      deleteTitle="Supprimer cette formation ?"
+      onDelete={entry ? async () => { await remove({ cvId, id: entry.id }); onDone() } : undefined}
+    />
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Formulaire COMPÉTENCE
-// ─────────────────────────────────────────────────────────────────────────
+// ── Compétence ─────────────────────────────────────────────────────────────
 
-const SKILL_LEVELS = ["Débutant", "Intermédiaire", "Avancé", "Expert"] as const
-
-function SkillForm({
-  cvId,
-  entry,
-  onClose,
-}: {
-  cvId: Id<"citizenCv">
-  entry: {
-    id: string
-    name: string
-    level: "Débutant" | "Intermédiaire" | "Avancé" | "Expert"
-  } | null
-  onClose: () => void
-}) {
+function SkillForm({ cvId, entry, onDone, frame }: { cvId: Id<"citizenCv">; entry: CvFull["skills"][number] | null; onDone: () => void; frame: Frame }) {
   const add = useMutation(api.cv.skills.add)
   const update = useMutation(api.cv.skills.update)
   const remove = useMutation(api.cv.skills.remove)
-  const [pending, setPending] = React.useState(false)
-  const [form, setForm] = React.useState<{
-    name: string
-    level: (typeof SKILL_LEVELS)[number]
-  }>({
+  const { busy, error, run } = useSave(onDone)
+  const [form, setForm] = React.useState<{ name: string; level: (typeof SKILL_LEVELS)[number] }>({
     name: entry?.name ?? "",
     level: entry?.level ?? "Intermédiaire",
   })
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (pending) return
-    setPending(true)
-    try {
-      if (entry) {
-        await update({ cvId, id: entry.id, patch: form })
-        toast.success("Compétence mise à jour.")
-      } else {
-        await add({ cvId, data: form })
-        toast.success("Compétence ajoutée.")
-      }
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!entry || pending) return
-    if (!window.confirm("Supprimer cette compétence ?")) return
-    setPending(true)
-    try {
-      await remove({ cvId, id: entry.id })
-      toast.success("Compétence supprimée.")
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <Field label={icv.editor.sections.skill.fields.name}>
-        <Input
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          maxLength={60}
-          placeholder="ex. TypeScript, Communication…"
-        />
-      </Field>
-      <Field label={icv.editor.sections.skill.fields.level}>
-        <Select
-          value={form.level}
-          onValueChange={(v) =>
-            setForm({ ...form, level: v as (typeof SKILL_LEVELS)[number] })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SKILL_LEVELS.map((l) => (
-              <SelectItem key={l} value={l}>
-                {l}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      <FormActions
-        onCancel={onClose}
-        onDelete={entry ? handleDelete : undefined}
-        pending={pending}
-      />
-    </form>
+  const save = () => run(() => (entry ? update({ cvId, id: entry.id, patch: form }) : add({ cvId, data: form })))
+  return frame(
+    <>
+      <CvField label="Compétence" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Par exemple : Gestion de projet" />
+      <LevelPicker label="Niveau" value={form.level} options={[...SKILL_LEVELS]} onChange={(v) => setForm({ ...form, level: v as (typeof SKILL_LEVELS)[number] })} />
+    </>,
+    <SaveBar
+      onSave={save}
+      busy={busy}
+      error={error}
+      deleteTitle="Supprimer cette compétence ?"
+      onDelete={entry ? async () => { await remove({ cvId, id: entry.id }); onDone() } : undefined}
+    />
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Formulaire LANGUE
-// ─────────────────────────────────────────────────────────────────────────
+// ── Langue ─────────────────────────────────────────────────────────────────
 
-const LANG_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2", "Natif"] as const
-
-function LanguageForm({
-  cvId,
-  entry,
-  onClose,
-}: {
-  cvId: Id<"citizenCv">
-  entry: {
-    id: string
-    name: string
-    level: (typeof LANG_LEVELS)[number]
-  } | null
-  onClose: () => void
-}) {
+function LanguageForm({ cvId, entry, onDone, frame }: { cvId: Id<"citizenCv">; entry: CvFull["languages"][number] | null; onDone: () => void; frame: Frame }) {
   const add = useMutation(api.cv.languages.add)
   const update = useMutation(api.cv.languages.update)
   const remove = useMutation(api.cv.languages.remove)
-  const [pending, setPending] = React.useState(false)
-  const [form, setForm] = React.useState<{
-    name: string
-    level: (typeof LANG_LEVELS)[number]
-  }>({
+  const { busy, error, run } = useSave(onDone)
+  const [form, setForm] = React.useState<{ name: string; level: (typeof LANG_LEVELS)[number] }>({
     name: entry?.name ?? "",
     level: entry?.level ?? "B2",
   })
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (pending) return
-    setPending(true)
-    try {
-      if (entry) {
-        await update({ cvId, id: entry.id, patch: form })
-        toast.success("Langue mise à jour.")
-      } else {
-        await add({ cvId, data: form })
-        toast.success("Langue ajoutée.")
-      }
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!entry || pending) return
-    if (!window.confirm("Supprimer cette langue ?")) return
-    setPending(true)
-    try {
-      await remove({ cvId, id: entry.id })
-      toast.success("Langue supprimée.")
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <Field label={icv.editor.sections.language.fields.name}>
-        <Input
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          maxLength={40}
-          placeholder="ex. Anglais, Fang…"
-        />
-      </Field>
-      <Field label={icv.editor.sections.language.fields.level}>
-        <Select
-          value={form.level}
-          onValueChange={(v) =>
-            setForm({ ...form, level: v as (typeof LANG_LEVELS)[number] })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LANG_LEVELS.map((l) => (
-              <SelectItem key={l} value={l}>
-                {l}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      <FormActions
-        onCancel={onClose}
-        onDelete={entry ? handleDelete : undefined}
-        pending={pending}
+  const save = () => run(() => (entry ? update({ cvId, id: entry.id, patch: form }) : add({ cvId, data: form })))
+  return frame(
+    <>
+      <CvField label="Langue" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Par exemple : Anglais" />
+      <LevelPicker
+        label="Niveau"
+        hint="Cadre européen : de A1 (débutant) à C2 (maîtrise)."
+        value={form.level}
+        options={[...LANG_LEVELS]}
+        onChange={(v) => setForm({ ...form, level: v as (typeof LANG_LEVELS)[number] })}
       />
-    </form>
+    </>,
+    <SaveBar
+      onSave={save}
+      busy={busy}
+      error={error}
+      deleteTitle="Supprimer cette langue ?"
+      onDelete={entry ? async () => { await remove({ cvId, id: entry.id }); onDone() } : undefined}
+    />
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Centres d'intérêt — édités en bloc (un par ligne dans un textarea).
-// ─────────────────────────────────────────────────────────────────────────
+// ── Centres d'intérêt, édités en bloc (un par ligne) ───────────────────────
 
-function HobbyForm({
-  cv,
-  cvId,
-  onClose,
-}: {
-  cv: CvFull
-  cvId: Id<"citizenCv">
-  onClose: () => void
-}) {
+function HobbyForm({ cv, cvId, onDone, frame }: { cv: CvFull; cvId: Id<"citizenCv">; onDone: () => void; frame: Frame }) {
   const upsert = useMutation(api.cv.profile.upsert)
-  const [pending, setPending] = React.useState(false)
+  const { busy, error, run } = useSave(onDone)
   const [value, setValue] = React.useState(cv.hobbies.join("\n"))
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (pending) return
-    setPending(true)
-    try {
-      const hobbies = value
-        .split("\n")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
-      await upsert({ cvId, patch: { hobbies } })
-      toast.success("Centres d'intérêt mis à jour.")
-      onClose()
-    } catch (e) {
-      toast.error(icv.errors.saveFailed, { description: (e as Error).message })
-    } finally {
-      setPending(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <Field
-        label="Vos centres d'intérêt"
-        hint="Un par ligne (ex. Photographie, Course à pied, Échecs)"
-      >
-        <Textarea
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          rows={6}
-          placeholder={"Photographie\nCourse à pied\nÉchecs"}
-        />
-      </Field>
-      <FormActions onCancel={onClose} pending={pending} />
-    </form>
+  const save = () =>
+    run(() =>
+      upsert({
+        cvId,
+        patch: {
+          hobbies: value
+            .split("\n")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0),
+        },
+      })
+    )
+  return frame(
+    <CvField
+      label="Tes centres d’intérêt"
+      hint="Un par ligne (par exemple : photographie, course à pied, échecs)."
+      value={value}
+      onChange={setValue}
+      multiline
+      minHeight={140}
+      placeholder={"Photographie\nCourse à pied\nÉchecs"}
+    />,
+    <SaveBar onSave={save} busy={busy} error={error} />
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Helpers partagés
-// ─────────────────────────────────────────────────────────────────────────
+// ── Briques ────────────────────────────────────────────────────────────────
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string
-  hint?: string
-  children: React.ReactNode
-}) {
+function LevelPicker({ label, hint, value, options, onChange }: { label: string; hint?: string; value: string; options: string[]; onChange: (v: string) => void }) {
   return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      {children}
-      {hint ? (
-        <p className="text-[11px] text-muted-foreground">{hint}</p>
-      ) : null}
+    <div className="mt-4">
+      <p className="mb-2 text-sm font-semibold text-idn-ink">{label}</p>
+      <CvChips wrap label={label} items={options.map((o) => ({ id: o, label: o }))} value={value} onChange={onChange} />
+      {hint ? <p className="mt-2 text-[13px] leading-[18px] text-idn-muted">{hint}</p> : null}
     </div>
   )
 }
 
-function FormActions({
-  onCancel,
-  onDelete,
-  pending,
-}: {
-  onCancel: () => void
-  onDelete?: () => void
-  pending: boolean
-}) {
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <div className="flex flex-wrap justify-end gap-2 pt-2">
-      {onDelete ? (
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onDelete}
-          disabled={pending}
-          className="mr-auto text-destructive"
-        >
-          Supprimer
-        </Button>
-      ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={onCancel}
-        disabled={pending}
-      >
-        {icv.editor.cancel}
-      </Button>
-      <Button type="submit" disabled={pending}>
-        {pending ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Save className="h-4 w-4" />
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-[30px] w-[50px] shrink-0 items-center rounded-full border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+        checked ? "border-idn-green bg-idn-green" : "border-idn-border bg-idn-surface-2"
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "inline-block size-6 rounded-full bg-white transition-transform motion-reduce:transition-none",
+          checked ? "translate-x-[22px]" : "translate-x-[2px]"
         )}
-        {icv.editor.save}
-      </Button>
-    </div>
+      />
+    </button>
   )
 }

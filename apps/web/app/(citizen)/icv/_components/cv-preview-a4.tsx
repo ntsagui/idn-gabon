@@ -57,6 +57,7 @@ export function CvPreviewA4({
   scale,
   targetWidth,
   className,
+  label,
 }: {
   cv: PreviewCv
   /** Si non fourni, utilise `cv.activeTheme`. */
@@ -69,6 +70,8 @@ export function CvPreviewA4({
    */
   targetWidth?: number
   className?: string
+  /** Nom accessible de l'aperçu (l'intérieur est une image du document). */
+  label?: string
 }) {
   const id = themeId ?? cv.activeTheme ?? "modern"
   const effectiveScale =
@@ -78,10 +81,9 @@ export function CvPreviewA4({
 
   return (
     <div
-      className={cn(
-        "relative overflow-hidden bg-white shadow-[0_14px_30px_rgba(20,20,30,0.18)]",
-        className,
-      )}
+      role="img"
+      aria-label={label ?? "Aperçu du CV"}
+      className={cn("relative overflow-hidden border border-idn-border bg-white", className)}
       style={{ width: renderedW, height: renderedH }}
     >
       <div

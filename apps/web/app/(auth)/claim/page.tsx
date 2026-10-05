@@ -2,21 +2,18 @@
 
 import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { toast } from "sonner"
 
-import { Button } from "@repo/ui/components/button"
-import { Input } from "@repo/ui/components/input"
-import { Label } from "@repo/ui/components/label"
+import { LevelBadge } from "@/app/_components/idn/badge"
+import { IdnButton } from "@/app/_components/idn/button"
+import { IdnInput } from "@/app/_components/idn/input"
+import { Card, DetailRow, ErrorNote, ScreenTitle } from "@/app/_components/idn/list"
+import { IdnLottie } from "@/app/_components/idn/lottie"
+import { Stepper } from "@/app/_components/idn/stepper"
 
-import {
-  claim,
-  CLAIM_STEP_TOTAL,
-  onboardingHeader,
-} from "../_content/fr"
-import { WizardShell } from "../_components/wizard-shell"
+import { AuthAppBar, AuthScreen } from "../_components/auth-screen"
 
-const CONVEX_SITE =
-  process.env.NEXT_PUBLIC_CONVEX_SITE_URL ?? ""
+const CONVEX_SITE = process.env.NEXT_PUBLIC_CONVEX_SITE_URL ?? ""
+const CLAIM_STEPS = ["Recherche", "Confirmation", "Configuration"]
 
 type ClaimResult = {
   found: boolean
@@ -48,69 +45,29 @@ export default function ClaimPage() {
   )
 }
 
+/** Récupération d'une identité créée par un organisme : recherche → confirmation → mot de passe et PIN. */
 function ClaimDispatcher() {
   const router = useRouter()
   const params = useSearchParams()
   const raw = params.get("step")
-
   const [result, setResult] = React.useState<ClaimResult | null>(null)
 
   React.useEffect(() => {
-    if (!isStep(raw)) {
-      router.replace("/claim?step=search")
-    }
+    if (!isStep(raw)) router.replace("/claim?step=search")
   }, [raw, router])
 
   if (!isStep(raw)) return null
 
-  switch (raw) {
-    case "search":
-      return (
-        <SearchStep
-          onFound={(r) => {
-            setResult(r)
-            router.push("/claim?step=confirm")
-          }}
-        />
-      )
-    case "confirm":
-      return result ? (
-        <ConfirmStep
-          result={result}
-          onConfirm={() => router.push("/claim?step=setup")}
-        />
-      ) : (
-        <SearchStep
-          onFound={(r) => {
-            setResult(r)
-            router.push("/claim?step=confirm")
-          }}
-        />
-      )
-    case "setup":
-      return result ? (
-        <SetupStep result={result} />
-      ) : (
-        <SearchStep
-          onFound={(r) => {
-            setResult(r)
-            router.push("/claim?step=confirm")
-          }}
-        />
-      )
+  const onFound = (r: ClaimResult) => {
+    setResult(r)
+    router.push("/claim?step=confirm")
   }
+  if (raw === "confirm" && result) return <ConfirmStep result={result} onConfirm={() => router.push("/claim?step=setup")} />
+  if (raw === "setup" && result) return <SetupStep result={result} />
+  return <SearchStep onFound={onFound} />
 }
 
-// ---------------------------------------------------------------------------
-// Step 1 — Recherche
-// ---------------------------------------------------------------------------
-
-function SearchStep({
-  onFound,
-}: {
-  onFound: (r: ClaimResult) => void
-}) {
-  const t = claim.search
+function SearchStep({ onFound }: { onFound: (r: ClaimResult) => void }) {
   const [mode, setMode] = React.useState<"nip" | "name">("nip")
   const [claimCode, setClaimCode] = React.useState("")
   const [nip, setNip] = React.useState("")
@@ -124,371 +81,207 @@ function SearchStep({
   // possession, sans elle un NIP (imprimé sur la carte) suffirait à revendiquer
   // l'identité de quelqu'un d'autre.
   const codeFilled = claimCode.replace(/[^0-9A-Za-z]/g, "").length === 12
-  const canSubmit =
-    codeFilled &&
-    (mode === "nip"
-      ? nip.trim().length === 14
-      : Boolean(firstName.trim() && lastName.trim() && dob))
+  const canSubmit = codeFilled && (mode === "nip" ? nip.trim().length === 14 : Boolean(firstName.trim() && lastName.trim() && dob))
+  const notFound =
+    "Aucune identité réclamable ne correspond à ce code et à ces informations. Vérifie ton code de réclamation, ou rapproche-toi de l’agent qui t’a enrôlé."
 
-  const submit = async () => {
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!canSubmit || busy) return
     setError(null)
     setBusy(true)
     try {
-      const identity =
-        mode === "nip"
-          ? { nip: nip.trim() }
-          : {
-              firstName: firstName.trim(),
-              lastName: lastName.trim(),
-              dateOfBirth: dob,
-            }
-
+      const identity = mode === "nip" ? { nip: nip.trim() } : { firstName: firstName.trim(), lastName: lastName.trim(), dateOfBirth: dob }
       const res = await fetch(`${CONVEX_SITE}/api/claim/lookup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...identity, claimCode: claimCode.trim() }),
       })
-
       const data = (await res.json()) as ClaimResult
       if (!data.found) {
-        setError(t.notFound)
+        setError(notFound)
         return
       }
       onFound({ ...data, claimCode: claimCode.trim() })
     } catch {
-      setError(t.notFound)
+      setError(notFound)
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <WizardShell
-      step={t.step}
-      total={CLAIM_STEP_TOTAL}
-      title={t.title}
-      sub={t.sub}
-      backHref="/sign-in"
-      backLabel={t.backLabel}
+    <AuthScreen
+      header={<AuthAppBar title="Récupérer mon compte" back="/sign-in" />}
+      subHeader={<Stepper steps={CLAIM_STEPS} current={0} />}
       footer={
-        <Button
-          type="button"
-          size="lg"
-          disabled={!canSubmit || busy}
-          onClick={submit}
-          className="h-14 w-full text-base"
-        >
-          {busy ? t.primarySearching : t.primary}
-        </Button>
+        <IdnButton type="submit" form="claim-search" full disabled={!canSubmit} loading={busy}>
+          Rechercher
+        </IdnButton>
       }
     >
-      <div className="flex flex-col gap-5">
-        <div>
-          <Label htmlFor="claimCode">{t.claimCodeLabel}</Label>
-          <Input
-            id="claimCode"
-            value={claimCode}
-            onChange={(e) => setClaimCode(e.target.value)}
-            placeholder={t.claimCodePlaceholder}
-            autoComplete="off"
-            spellCheck={false}
-            aria-describedby="claimCode-hint"
-            className="mt-2 font-mono tracking-widest uppercase"
-          />
-          <p
-            id="claimCode-hint"
-            className="text-muted-foreground mt-2 text-sm"
-          >
-            {t.claimCodeHint}
-          </p>
-        </div>
-
+      <ScreenTitle
+        title="Retrouver mon identité"
+        lead="Saisis le code de réclamation remis par l’agent, puis ton NIP ou tes nom et date de naissance."
+      />
+      <form id="claim-search" onSubmit={submit} className="mt-2">
+        <IdnInput
+          label="Code de réclamation"
+          value={claimCode}
+          onChange={(e) => setClaimCode(e.target.value)}
+          placeholder="Ex : K7M2-9XQ4-B3TF"
+          hint="Ce code figure sur le document que l’agent t’a remis lors de ton enrôlement. Il prouve que cette identité est bien la tienne."
+          autoComplete="off"
+          spellCheck={false}
+          mono
+          inputClassName="uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal"
+        />
         {mode === "nip" ? (
-          <div>
-            <Label htmlFor="nip">{t.nipLabel}</Label>
-            <Input
-              id="nip"
-              value={nip}
-              onChange={(e) => setNip(e.target.value.toUpperCase())}
-              placeholder={t.nipPlaceholder}
-              maxLength={14}
-              className="mt-1.5 font-mono"
-              autoFocus
-            />
-          </div>
+          <IdnInput
+            label="NIP (14 caractères)"
+            value={nip}
+            onChange={(e) => setNip(e.target.value.toUpperCase())}
+            placeholder="Ex : A1B2C3D4E5F6G7"
+            maxLength={14}
+            mono
+          />
         ) : (
           <>
-            <div>
-              <Label htmlFor="firstName">{t.firstNameLabel}</Label>
-              <Input
-                id="firstName"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="mt-1.5"
-                autoFocus
-              />
-            </div>
-            <div>
-              <Label htmlFor="lastName">{t.lastNameLabel}</Label>
-              <Input
-                id="lastName"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <Label htmlFor="dob">{t.dateOfBirthLabel}</Label>
-              <Input
-                id="dob"
-                type="date"
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                className="mt-1.5"
-              />
-            </div>
+            <IdnInput label="Prénom" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="given-name" />
+            <IdnInput label="Nom" value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="family-name" />
+            <IdnInput label="Date de naissance" type="date" value={dob} onChange={(e) => setDob(e.target.value)} autoComplete="bday" />
           </>
         )}
-
-        <button
-          type="button"
-          onClick={() => setMode(mode === "nip" ? "name" : "nip")}
-          className="text-left text-sm text-primary underline-offset-4 hover:underline"
-        >
-          {mode === "nip" ? t.orDivider : t.nipLabel}
-        </button>
-
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-      </div>
-    </WizardShell>
+      </form>
+      <button
+        type="button"
+        onClick={() => setMode(mode === "nip" ? "name" : "nip")}
+        className="mt-4 rounded-[6px] text-sm font-semibold text-c-green-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {mode === "nip" ? "Rechercher plutôt par nom" : "Rechercher plutôt par NIP"}
+      </button>
+      <ErrorNote>{error}</ErrorNote>
+    </AuthScreen>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Step 2 — Confirmation
-// ---------------------------------------------------------------------------
-
-function ConfirmStep({
-  result,
-  onConfirm,
-}: {
-  result: ClaimResult
-  onConfirm: () => void
-}) {
-  const t = claim.confirm
-
-  const LOA_LABEL: Record<number, string> = {
-    1: "1 — Faible",
-    2: "2 — Substantiel",
-    3: "3 — Élevé",
-  }
-
+function ConfirmStep({ result, onConfirm }: { result: ClaimResult; onConfirm: () => void }) {
+  const loa = (result.loa === 2 || result.loa === 3 ? result.loa : 1) as 1 | 2 | 3
   return (
-    <WizardShell
-      step={t.step}
-      total={CLAIM_STEP_TOTAL}
-      title={t.title}
-      sub={t.sub}
-      backHref="/claim?step=search"
-      backLabel={t.backLabel}
+    <AuthScreen
+      header={<AuthAppBar title="Récupérer mon compte" back="/claim?step=search" />}
+      subHeader={<Stepper steps={CLAIM_STEPS} current={1} />}
       footer={
-        <Button
-          type="button"
-          size="lg"
-          onClick={onConfirm}
-          className="h-14 w-full text-base"
-        >
-          {t.primary}
-        </Button>
+        <IdnButton full onClick={onConfirm}>
+          C’est bien moi
+        </IdnButton>
       }
     >
-      <div className="flex flex-col gap-4 rounded-xl border border-border bg-muted/30 p-5">
-        <Row label={t.idnIdLabel} value={result.idnId ?? "—"} mono />
-        <Row
-          label={t.nameLabel}
-          value={
-            result.firstName && result.lastName
-              ? `${result.firstName} ${result.lastName}`
-              : "—"
-          }
-        />
-        <Row
-          label={t.loaLabel}
-          value={LOA_LABEL[result.loa ?? 1] ?? "—"}
-        />
-      </div>
-    </WizardShell>
+      <ScreenTitle title="Confirmer mon identité" lead="Vérifie que les informations ci-dessous correspondent bien à ton identité." />
+      <Card className="mt-6">
+        <dl className="divide-y divide-idn-border">
+          <DetailRow label="Identifiant IDN" value={result.idnId ?? "—"} mono />
+          <DetailRow label="Nom" value={result.firstName && result.lastName ? `${result.firstName} ${result.lastName}` : "—"} />
+          <DetailRow label="Niveau de garantie" value={<LevelBadge level={loa} />} />
+        </dl>
+      </Card>
+    </AuthScreen>
   )
 }
-
-function Row({
-  label,
-  value,
-  mono,
-}: {
-  label: string
-  value: string
-  mono?: boolean
-}) {
-  return (
-    <div className="flex items-center justify-between border-b border-border/50 pb-2 last:border-0 last:pb-0">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span
-        className={
-          "text-sm font-medium text-foreground" + (mono ? " font-mono" : "")
-        }
-      >
-        {value}
-      </span>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Step 3 — Configuration (password + PIN)
-// ---------------------------------------------------------------------------
 
 const FORBIDDEN_PINS = new Set([
-  "000000",
-  "111111",
-  "222222",
-  "333333",
-  "444444",
-  "555555",
-  "666666",
-  "777777",
-  "888888",
-  "999999",
-  "123456",
-  "654321",
-  "012345",
-  "543210",
+  "000000", "111111", "222222", "333333", "444444", "555555", "666666", "777777", "888888", "999999",
+  "123456", "654321", "012345", "543210",
 ])
 
 function SetupStep({ result }: { result: ClaimResult }) {
-  const t = claim.setup
-  const router = useRouter()
-
   const [password, setPassword] = React.useState("")
   const [confirmPw, setConfirmPw] = React.useState("")
   const [pin, setPin] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
+  const [done, setDone] = React.useState(false)
 
-  const canSubmit =
-    password.length >= 12 &&
-    confirmPw.length >= 12 &&
-    /^\d{6}$/.test(pin)
+  const canSubmit = password.length >= 12 && confirmPw.length >= 12 && /^\d{6}$/.test(pin)
 
-  const submit = async () => {
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!canSubmit || busy) return
     setError(null)
     if (password !== confirmPw) {
-      setError(t.errorMismatch)
+      setError("Les deux mots de passe sont différents.")
       return
     }
     if (FORBIDDEN_PINS.has(pin)) {
-      setError(t.errorWeakPin)
+      setError("Ce code PIN est trop simple. Choisis-en un autre.")
       return
     }
-
     setBusy(true)
     try {
       const res = await fetch(`${CONVEX_SITE}/api/claim/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          delegatedIdentityId: result.delegatedIdentityId,
-          claimCode: result.claimCode,
-          password,
-          pin,
-        }),
+        body: JSON.stringify({ delegatedIdentityId: result.delegatedIdentityId, claimCode: result.claimCode, password, pin }),
       })
-
       const data = (await res.json()) as { success?: boolean; error?: string }
       if (!data.success) {
-        setError(data.error ?? t.errorGeneric)
+        setError(data.error ?? "Impossible d’activer le compte. Réessaie.")
         return
       }
-
-      toast.success(t.successToast)
-      router.push("/sign-in")
+      setDone(true)
     } catch {
-      setError(t.errorGeneric)
+      setError("Impossible d’activer le compte. Réessaie.")
     } finally {
       setBusy(false)
     }
   }
 
+  if (done) {
+    return (
+      <AuthScreen
+        header={<AuthAppBar title="Récupérer mon compte" />}
+        footer={
+          <IdnButton full href="/sign-in">
+            Me connecter
+          </IdnButton>
+        }
+      >
+        <div className="mt-10 flex justify-center md:mt-2">
+          <IdnLottie name="success" size={128} label="Identité activée" />
+        </div>
+        <ScreenTitle center title="Ton identité numérique est activée" lead="Connecte-toi avec ton adresse IDN et ton code PIN pour continuer." />
+      </AuthScreen>
+    )
+  }
+
   return (
-    <WizardShell
-      step={claim.setup.step}
-      total={CLAIM_STEP_TOTAL}
-      title={t.title}
-      sub={t.sub}
-      backHref="/claim?step=confirm"
-      backLabel={t.backLabel}
+    <AuthScreen
+      header={<AuthAppBar title="Récupérer mon compte" back="/claim?step=confirm" />}
+      subHeader={<Stepper steps={CLAIM_STEPS} current={2} />}
       footer={
-        <Button
-          type="button"
-          size="lg"
-          disabled={!canSubmit || busy}
-          onClick={submit}
-          className="h-14 w-full text-base"
-        >
-          {busy ? t.primarySubmitting : t.primary}
-        </Button>
+        <IdnButton type="submit" form="claim-setup" full disabled={!canSubmit} loading={busy}>
+          Activer mon compte
+        </IdnButton>
       }
     >
-      <div className="flex flex-col gap-5">
-        <div>
-          <Label htmlFor="password">{t.passwordLabel}</Label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1.5"
-            autoFocus
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t.passwordHint}
-          </p>
-        </div>
-        <div>
-          <Label htmlFor="confirmPw">{t.confirmPasswordLabel}</Label>
-          <Input
-            id="confirmPw"
-            type="password"
-            value={confirmPw}
-            onChange={(e) => setConfirmPw(e.target.value)}
-            className="mt-1.5"
-          />
-        </div>
-        <div>
-          <Label htmlFor="pin">{t.pinLabel}</Label>
-          <Input
-            id="pin"
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-            className="mt-1.5 font-mono tracking-[0.3em]"
-          />
-          <p className="mt-1 text-xs text-muted-foreground">{t.pinHint}</p>
-        </div>
-
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-      </div>
-    </WizardShell>
+      <ScreenTitle title="Configurer mon compte" lead="Choisis un mot de passe et un code PIN pour sécuriser ton compte." />
+      <form id="claim-setup" onSubmit={submit} className="mt-2">
+        <IdnInput label="Mot de passe" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} hint="12 caractères au moins." />
+        <IdnInput label="Confirmer le mot de passe" type="password" autoComplete="new-password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+        <IdnInput
+          label="Code PIN à 6 chiffres"
+          type="password"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={6}
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+          hint="Il sert à te connecter et à valider les actions sensibles."
+          mono
+          inputClassName="tracking-[0.3em]"
+        />
+      </form>
+      <ErrorNote>{error}</ErrorNote>
+    </AuthScreen>
   )
 }

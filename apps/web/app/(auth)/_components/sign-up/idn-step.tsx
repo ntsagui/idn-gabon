@@ -3,134 +3,75 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useConvex } from "convex/react"
-import { ShieldIcon } from "lucide-react"
+import { useQuery } from "convex/react"
 
 import { api } from "@repo/backend/convex/_generated/api"
-import { Button } from "@repo/ui/components/button"
-import { Label } from "@repo/ui/components/label"
 import { cn } from "@repo/ui/lib/utils"
 
-import { idnSignup, onboardingHeader, STEP_TOTAL } from "../../_content/fr"
-import { WizardShell } from "../wizard-shell"
+import { Badge } from "@/app/_components/idn/badge"
+import { IdnButton } from "@/app/_components/idn/button"
+import { ErrorNote, IconTile, ScreenTitle } from "@/app/_components/idn/list"
+import { HANDLE_REGEX } from "@/lib/citizen/idn-identifier"
+
+import { SignupScreen } from "../auth-screen"
+import { Spinner } from "../pin-login"
 import {
   getOnboardingHandle,
   getOnboardingPivot,
   getOnboardingProfile,
   setOnboardingHandle,
   type OnboardingPivot,
-  type OnboardingProfile,
 } from "../../_hooks/use-onboarding-state"
-
-const HANDLE_REGEX = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
-const HANDLE_MIN = 3
-const HANDLE_MAX = 32
-
-function isHandleValid(handle: string): boolean {
-  return (
-    handle.length >= HANDLE_MIN &&
-    handle.length <= HANDLE_MAX &&
-    HANDLE_REGEX.test(handle)
-  )
-}
 
 type Suggestion = { handle: string; format: string; available: boolean }
 
+/** Choix de l'adresse souveraine (apps/mobile/src/app/(auth)/signup/idn.tsx). */
 export function IdnStep() {
   const router = useRouter()
-  const convex = useConvex()
-
-  const [profile, setProfile] = React.useState<OnboardingProfile | null>(null)
   const [pivot, setPivot] = React.useState<OnboardingPivot | null>(null)
   const [handle, setHandle] = React.useState("")
-  const [suggestions, setSuggestions] = React.useState<Suggestion[]>([])
-  const [availability, setAvailability] = React.useState<{
-    handle: string
-    available: boolean
-  } | null>(null)
   const [acceptTerms, setAcceptTerms] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     const p = getOnboardingProfile()
     const pv = getOnboardingPivot()
-    const savedHandle = getOnboardingHandle()
     if (!p || !pv) {
       router.replace("/sign-up?step=profile")
       return
     }
-    setProfile(p)
     setPivot(pv)
-    if (savedHandle) setHandle(savedHandle)
+    const saved = getOnboardingHandle()
+    if (saved) setHandle(saved)
   }, [router])
 
+  const suggestions: Suggestion[] | undefined = useQuery(
+    api.onboarding.suggestIdnHandles,
+    pivot ? { firstName: pivot.firstName, lastName: pivot.lastName, dateOfBirth: pivot.dateOfBirth } : "skip"
+  )
+
   React.useEffect(() => {
-    if (!pivot) return
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = (await convex.query(api.onboarding.suggestIdnHandles, {
-          firstName: pivot.firstName,
-          lastName: pivot.lastName,
-          dateOfBirth: pivot.dateOfBirth,
-        })) as Suggestion[]
-        if (cancelled) return
-        setSuggestions(res)
-        const first = res.find((s) => s.available) ?? res[0]
-        if (first && !handle) setHandle(first.handle)
-      } catch {
-        /* silencieux */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pivot, convex])
+    if (!suggestions || suggestions.length === 0 || handle) return
+    const first = suggestions.find((s) => s.available) ?? suggestions[0]
+    if (first) setHandle(first.handle)
+  }, [suggestions, handle])
 
   const handleNormalized = handle.trim().toLowerCase()
-  const valid = isHandleValid(handleNormalized)
+  const handleValid = handleNormalized.length >= 3 && handleNormalized.length <= 32 && HANDLE_REGEX.test(handleNormalized)
+  const availability = useQuery(api.onboarding.checkIdnHandleAvailability, handleValid ? { handle: handleNormalized } : "skip")
 
-  React.useEffect(() => {
-    if (!valid) {
-      setAvailability(null)
-      return
-    }
-    let cancelled = false
-    const timer = setTimeout(async () => {
-      try {
-        const res = (await convex.query(
-          api.onboarding.checkIdnHandleAvailability,
-          { handle: handleNormalized },
-        )) as { handle: string; available: boolean }
-        if (!cancelled) setAvailability(res)
-      } catch {
-        if (!cancelled) setAvailability(null)
-      }
-    }, 250)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [handleNormalized, valid, convex])
+  const status = React.useMemo(() => {
+    if (!handle) return { ok: false, neutral: true, label: "Choisis une adresse" }
+    if (!handleValid) return { ok: false, neutral: false, label: "Caractères autorisés : lettres minuscules, chiffres, points, tirets." }
+    if (!availability) return { ok: false, neutral: true, label: "Vérification…" }
+    if (availability.available) return { ok: true, neutral: false, label: "Disponible" }
+    return { ok: false, neutral: false, label: "Déjà attribuée à un autre compte" }
+  }, [handle, handleValid, availability])
 
-  const isTaken = valid && availability && !availability.available
-  const isAvailable = valid && availability && availability.available
-
-  const status = !handle
-    ? { tone: "neutral" as const, label: idnSignup.statusChecking }
-    : !valid
-      ? { tone: "error" as const, label: idnSignup.statusInvalid }
-      : !availability
-        ? { tone: "neutral" as const, label: idnSignup.statusChecking }
-        : availability.available
-          ? { tone: "ok" as const, label: idnSignup.statusAvailable }
-          : { tone: "error" as const, label: idnSignup.statusTaken }
-
-  const reserve = () => {
-    if (!profile || !pivot || !isAvailable) return
+  function reserve() {
+    if (!pivot || !status.ok) return
     if (!acceptTerms) {
-      setError(idnSignup.validation.termsRequired)
+      setError("Accepte les conditions d’utilisation pour continuer.")
       return
     }
     setError(null)
@@ -138,166 +79,144 @@ export function IdnStep() {
     router.push("/sign-up?step=pin")
   }
 
-  const visibleSuggestions = suggestions.slice(0, 4)
+  if (!pivot) return null
+
+  const visibleSuggestions = suggestions ? suggestions.slice(0, 4) : []
+  const customIsSuggestion = visibleSuggestions.some((s) => s.handle === handleNormalized)
+  const customId = "signup-handle-custom"
 
   return (
-    <WizardShell
-      step={idnSignup.step}
-      total={STEP_TOTAL}
-      title={idnSignup.title}
-      sub={idnSignup.sub}
-      backHref="/sign-up?step=identity"
-      backLabel={onboardingHeader.backToIdentity}
+    <SignupScreen
+      step={1}
+      back="/sign-up?step=identity"
       footer={
-        <Button
-          type="button"
-          size="lg"
-          disabled={!isAvailable || !acceptTerms}
-          onClick={reserve}
-          className="h-14 w-full text-base"
-        >
-          {idnSignup.primary}
-        </Button>
+        <IdnButton full onClick={reserve} disabled={!status.ok}>
+          {status.ok ? `Valider ${handleNormalized}@idn.ga` : "Valider cette adresse"}
+        </IdnButton>
       }
     >
-      <div className="space-y-5">
-        <div className="space-y-1.5">
-          <Label htmlFor="idn-handle">{idnSignup.inputLabel}</Label>
-          <div
-            className={cn(
-              "flex h-14 items-center rounded-md border bg-card pl-4 pr-3 transition-colors",
-              status.tone === "ok"
-                ? "border-idn-green ring-2 ring-idn-green/20"
-                : status.tone === "error"
-                  ? "border-destructive ring-2 ring-destructive/15"
-                  : "border-border",
-            )}
-          >
-            <input
-              id="idn-handle"
-              value={handle}
-              onChange={(e) => setHandle(e.target.value.toLowerCase())}
-              placeholder={idnSignup.inputPlaceholder}
-              autoComplete="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              className="flex-1 bg-transparent font-mono text-base text-foreground outline-none placeholder:text-muted-foreground"
-            />
-            <span className="font-mono text-base text-muted-foreground">
-              @idn.ga
-            </span>
-          </div>
-          <div
-            className={cn(
-              "flex items-center gap-2 pt-1 text-xs font-medium",
-              status.tone === "ok"
-                ? "text-idn-green"
-                : status.tone === "error"
-                  ? "text-destructive"
-                  : "text-muted-foreground",
-            )}
-            aria-live="polite"
-          >
-            <span
-              className={cn(
-                "size-2 shrink-0 rounded-full",
-                status.tone === "ok"
-                  ? "bg-idn-green"
-                  : status.tone === "error"
-                    ? "bg-destructive"
-                    : "bg-muted-foreground",
-              )}
-              aria-hidden="true"
-            />
-            <span>{status.label}</span>
-          </div>
-        </div>
-
-        {visibleSuggestions.length > 0 && (
-          <div className="space-y-2.5">
-            <p className="font-mono text-[11px] font-semibold tracking-[0.1em] text-muted-foreground">
-              {isTaken
-                ? idnSignup.suggestionsTakenLabel
-                : idnSignup.suggestionsLabel}
-            </p>
-            <ul className="flex flex-col gap-2">
-              {visibleSuggestions.map((s, i) => {
-                const sel = s.handle === handleNormalized
-                return (
-                  <li key={s.handle}>
-                    <button
-                      type="button"
-                      onClick={() => s.available && setHandle(s.handle)}
-                      disabled={!s.available}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-md border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                        sel
-                          ? "border-idn-green bg-idn-green-soft dark:bg-[#0F2A18]"
-                          : "border-border bg-card hover:border-idn-green/40",
-                        !s.available && "cursor-not-allowed opacity-50",
-                      )}
-                      aria-pressed={sel}
-                    >
-                      <span
-                        className={cn(
-                          "size-2 shrink-0 rounded-full",
-                          s.available ? "bg-idn-green" : "bg-destructive",
-                        )}
-                        aria-hidden="true"
-                      />
-                      <span className="flex-1 truncate font-mono text-sm text-foreground">
-                        {s.handle}
-                        <span className="text-muted-foreground">@idn.ga</span>
-                      </span>
-                      {i === 0 && s.available && !isTaken && (
-                        <span className="rounded-full bg-idn-green-soft px-2.5 py-0.5 text-[11px] font-semibold tracking-[0.02em] text-idn-green dark:bg-[#0F2A18]">
-                          {idnSignup.badgeRecommended}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+      <ScreenTitle
+        title="Choisis ton adresse souveraine"
+        lead="Ton adresse @idn.ga est ton identifiant officiel et l’adresse de ton iBoîte. Elle ne pourra plus être modifiée."
+      />
+      <fieldset className="mt-6">
+        <legend className="mb-2 text-sm font-semibold text-idn-ink">Propositions</legend>
+        {suggestions === undefined ? (
+          <Spinner label="Chargement des propositions" className="my-4 flex justify-center" />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {visibleSuggestions.map((s) => {
+              const sel = s.handle === handleNormalized
+              return (
+                <label
+                  key={s.handle}
+                  className={cn(
+                    "flex items-center gap-3 rounded-[14px] border p-3 focus-within:ring-2 focus-within:ring-ring",
+                    sel ? "border-idn-green bg-c-green-badge" : s.available ? "border-idn-border bg-idn-surface" : "border-idn-border bg-idn-surface-2",
+                    s.available ? "cursor-pointer" : "cursor-not-allowed"
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="handle"
+                    value={s.handle}
+                    checked={sel}
+                    disabled={!s.available}
+                    onChange={() => setHandle(s.handle)}
+                    aria-label={`${s.handle}@idn.ga, ${s.available ? "disponible" : "déjà attribuée"}`}
+                    className="sr-only"
+                  />
+                  <IconTile icon="mail" tone={s.available ? "green" : "neutral"} />
+                  <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                    <span className="max-w-full truncate font-mono text-sm text-idn-ink">{s.handle}@idn.ga</span>
+                    <Badge tone={s.available ? "green" : "neutral"} icon={s.available ? "check" : "close"} className="px-2 py-px">
+                      {s.available ? "Disponible" : "Déjà attribuée"}
+                    </Badge>
+                  </span>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "inline-flex size-5 shrink-0 items-center justify-center rounded-full border-[1.5px]",
+                      s.available ? "border-solid" : "border-dashed",
+                      sel ? "border-idn-green" : "border-idn-muted"
+                    )}
+                  >
+                    {sel ? <span className="size-2.5 rounded-full bg-idn-green" /> : null}
+                  </span>
+                </label>
+              )
+            })}
           </div>
         )}
+      </fieldset>
 
-        <div className="flex items-start gap-3 rounded-md bg-idn-blue-soft px-3.5 py-3 text-xs leading-relaxed text-foreground/80 dark:bg-[#10243A]">
-          <ShieldIcon
-            className="mt-0.5 size-4 shrink-0 text-idn-blue"
-            aria-hidden="true"
-          />
-          <p>{idnSignup.info}</p>
-        </div>
-
-        <label className="flex cursor-pointer items-start gap-3 text-xs leading-relaxed text-foreground/80">
-          <input
-            type="checkbox"
-            className="mt-0.5 size-4 accent-idn-green"
-            checked={acceptTerms}
-            onChange={(e) => setAcceptTerms(e.target.checked)}
-            aria-required="true"
-          />
-          <span>
-            {idnSignup.termsPrefix}
-            <Link
-              href="/legal"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-idn-green underline-offset-2 hover:underline"
-            >
-              {idnSignup.termsLink}
-            </Link>
-            .
-          </span>
-        </label>
-
-        {error && (
-          <p role="alert" className="text-xs text-destructive">
-            {error}
-          </p>
+      <label htmlFor={customId} className="mb-1.5 mt-6 block text-sm font-semibold text-idn-ink">
+        Ou choisis la tienne
+      </label>
+      <div
+        className={cn(
+          "flex h-[50px] items-center rounded-[10px] border-2 bg-idn-surface px-[13px] focus-within:ring-2 focus-within:ring-ring",
+          handle && !customIsSuggestion
+            ? status.ok
+              ? "border-idn-green"
+              : status.neutral
+                ? "border-idn-muted"
+                : "border-c-red-text"
+            : "border-idn-border"
         )}
+      >
+        <input
+          id={customId}
+          value={customIsSuggestion ? "" : handle}
+          onChange={(e) => {
+            setError(null)
+            setHandle(e.target.value.toLowerCase().trim())
+          }}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="prenom.nom"
+          aria-describedby={`${customId}-status`}
+          className="h-full min-w-0 flex-1 bg-transparent font-mono text-base text-idn-ink outline-none placeholder:text-idn-muted"
+        />
+        <span aria-hidden className="font-mono text-base text-idn-muted">
+          @idn.ga
+        </span>
       </div>
-    </WizardShell>
+      {handle && !customIsSuggestion ? (
+        <p
+          id={`${customId}-status`}
+          aria-live="polite"
+          className={cn("mt-1.5 text-[13px]", status.neutral ? "text-idn-muted" : status.ok ? "text-c-green-text" : "text-c-red-text")}
+        >
+          {status.label}
+        </p>
+      ) : (
+        <p id={`${customId}-status`} className="mt-1.5 text-[13px] text-idn-muted">
+          Lettres minuscules, chiffres, points et tirets.
+        </p>
+      )}
+
+      <label className="mt-6 flex cursor-pointer items-start gap-3 text-[13px] leading-[19px] text-idn-ink-2">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 shrink-0 accent-idn-green"
+          checked={acceptTerms}
+          onChange={(e) => {
+            setError(null)
+            setAcceptTerms(e.target.checked)
+          }}
+          aria-required="true"
+        />
+        <span>
+          J’accepte les{" "}
+          <Link href="/legal" target="_blank" rel="noopener noreferrer" className="font-semibold text-c-green-text underline-offset-2 hover:underline">
+            conditions d’utilisation et la politique de confidentialité
+          </Link>
+          .
+        </span>
+      </label>
+      <ErrorNote>{error}</ErrorNote>
+    </SignupScreen>
   )
 }

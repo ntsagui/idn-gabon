@@ -37,7 +37,7 @@ export function EmailHtmlFrame({ html }: { html: string }) {
         if (documentHeight)
           setHeight(Math.min(Math.max(documentHeight, 240), 4000))
       }}
-      className="w-full border-0 bg-background"
+      className="block w-full border-0 bg-idn-surface"
       style={{ height }}
     />
   )

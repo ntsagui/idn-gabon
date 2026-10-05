@@ -65,11 +65,11 @@ function TplModern({ cv }: { cv: PreviewCv }) {
           <div className="mx-auto mb-4 flex h-28 w-28 items-center justify-center rounded-full border-4 border-slate-600 bg-slate-700 text-2xl font-bold">
             {initials(cv)}
           </div>
-          <h1 className="text-2xl font-bold uppercase leading-tight tracking-wider">
+          <h2 className="text-2xl font-bold uppercase leading-tight tracking-wider">
             {cv.firstName}
             <br />
             {cv.lastName}
-          </h1>
+          </h2>
           {role(cv) ? (
             <p className="mt-2 text-sm font-medium text-slate-400">
               {role(cv)}
@@ -106,9 +106,9 @@ function TplModern({ cv }: { cv: PreviewCv }) {
 
         {cv.skills.length > 0 ? (
           <div>
-            <h3 className="mb-3 border-b border-slate-700 pb-2 text-sm font-bold uppercase">
+            <h4 className="mb-3 border-b border-slate-700 pb-2 text-sm font-bold uppercase">
               Compétences
-            </h3>
+            </h4>
             <div className="flex flex-wrap gap-1.5">
               {cv.skills.map((s) => (
                 <span
@@ -124,9 +124,9 @@ function TplModern({ cv }: { cv: PreviewCv }) {
 
         {cv.languages.length > 0 ? (
           <div>
-            <h3 className="mb-3 border-b border-slate-700 pb-2 text-sm font-bold uppercase">
+            <h4 className="mb-3 border-b border-slate-700 pb-2 text-sm font-bold uppercase">
               Langues
-            </h3>
+            </h4>
             <div className="space-y-1.5">
               {cv.languages.map((l) => (
                 <div key={l.id} className="flex justify-between text-sm">
@@ -140,9 +140,9 @@ function TplModern({ cv }: { cv: PreviewCv }) {
 
         {cv.hobbies.length > 0 ? (
           <div>
-            <h3 className="mb-3 border-b border-slate-700 pb-2 text-sm font-bold uppercase">
-              Centres d'intérêt
-            </h3>
+            <h4 className="mb-3 border-b border-slate-700 pb-2 text-sm font-bold uppercase">
+              Centres d’intérêt
+            </h4>
             <div className="flex flex-wrap gap-1.5">
               {cv.hobbies.map((h) => (
                 <span key={h} className="text-xs text-slate-300">{h}</span>
@@ -156,9 +156,9 @@ function TplModern({ cv }: { cv: PreviewCv }) {
       <div className="w-2/3 bg-white p-8">
         {cv.summary ? (
           <div className="mb-7">
-            <h2 className="mb-3 border-b-2 border-slate-900 pb-2 text-lg font-bold uppercase tracking-widest text-slate-900">
+            <h3 className="mb-3 border-b-2 border-slate-900 pb-2 text-lg font-bold uppercase tracking-widest text-slate-900">
               Profil
-            </h2>
+            </h3>
             <p className="text-justify text-sm leading-relaxed text-slate-600">
               {cv.summary}
             </p>
@@ -167,9 +167,9 @@ function TplModern({ cv }: { cv: PreviewCv }) {
 
         {cv.experiences.length > 0 ? (
           <div className="mb-7">
-            <h2 className="mb-4 border-b-2 border-slate-900 pb-2 text-lg font-bold uppercase tracking-widest text-slate-900">
+            <h3 className="mb-4 border-b-2 border-slate-900 pb-2 text-lg font-bold uppercase tracking-widest text-slate-900">
               Expérience
-            </h2>
+            </h3>
             <div className="space-y-5">
               {cv.experiences.map((e) => (
                 <div
@@ -177,9 +177,9 @@ function TplModern({ cv }: { cv: PreviewCv }) {
                   className="relative border-l-2 border-slate-200 pl-5"
                 >
                   <div className="absolute -left-[7px] top-1 h-3 w-3 rounded-full border-2 border-white bg-slate-900" />
-                  <h3 className="text-sm font-bold text-slate-800">
+                  <h4 className="text-sm font-bold text-slate-800">
                     {e.title}
-                  </h3>
+                  </h4>
                   <p className="text-xs font-semibold text-slate-500">
                     {e.company}
                   </p>
@@ -199,15 +199,15 @@ function TplModern({ cv }: { cv: PreviewCv }) {
 
         {cv.education.length > 0 ? (
           <div>
-            <h2 className="mb-4 border-b-2 border-slate-900 pb-2 text-lg font-bold uppercase tracking-widest text-slate-900">
+            <h3 className="mb-4 border-b-2 border-slate-900 pb-2 text-lg font-bold uppercase tracking-widest text-slate-900">
               Formation
-            </h2>
+            </h3>
             <div className="space-y-3">
               {cv.education.map((e) => (
                 <div key={e.id}>
-                  <h3 className="text-sm font-bold text-slate-800">
+                  <h4 className="text-sm font-bold text-slate-800">
                     {e.degree}
-                  </h3>
+                  </h4>
                   <p className="text-xs text-slate-600">{e.school}</p>
                   <p className="font-mono text-[11px] text-slate-400">
                     {e.year}
@@ -233,9 +233,9 @@ function TplClassic({ cv }: { cv: PreviewCv }) {
       style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
     >
       <div className="mb-6 border-b-2 border-gray-800 pb-4 text-center">
-        <h1 className="text-3xl font-bold uppercase tracking-wide">
+        <h2 className="text-3xl font-bold uppercase tracking-wide">
           {cv.firstName} {cv.lastName}
-        </h1>
+        </h2>
         {role(cv) ? (
           <p className="mt-1 text-lg italic text-gray-600">{role(cv)}</p>
         ) : null}
@@ -248,9 +248,9 @@ function TplClassic({ cv }: { cv: PreviewCv }) {
 
       {cv.summary ? (
         <div className="mb-5">
-          <h2 className="mb-2 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
+          <h3 className="mb-2 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
             Profil Professionnel
-          </h2>
+          </h3>
           <p className="text-justify text-sm leading-relaxed text-gray-600">
             {cv.summary}
           </p>
@@ -259,14 +259,14 @@ function TplClassic({ cv }: { cv: PreviewCv }) {
 
       {cv.experiences.length > 0 ? (
         <div className="mb-5">
-          <h2 className="mb-3 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
+          <h3 className="mb-3 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
             Expérience Professionnelle
-          </h2>
+          </h3>
           <div className="space-y-4">
             {cv.experiences.map((e) => (
               <div key={e.id}>
                 <div className="flex items-baseline justify-between">
-                  <h3 className="text-sm font-bold">{e.title}</h3>
+                  <h4 className="text-sm font-bold">{e.title}</h4>
                   <span className="text-xs text-gray-500">
                     {formatRange(e.startDate, e.endDate, e.current)}
                   </span>
@@ -285,14 +285,14 @@ function TplClassic({ cv }: { cv: PreviewCv }) {
 
       {cv.education.length > 0 ? (
         <div className="mb-5">
-          <h2 className="mb-3 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
+          <h3 className="mb-3 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
             Formation
-          </h2>
+          </h3>
           <div className="space-y-3">
             {cv.education.map((e) => (
               <div key={e.id}>
                 <div className="flex items-baseline justify-between">
-                  <h3 className="text-sm font-bold">{e.degree}</h3>
+                  <h4 className="text-sm font-bold">{e.degree}</h4>
                   <span className="text-xs text-gray-500">{e.year}</span>
                 </div>
                 <p className="text-sm italic text-gray-600">{e.school}</p>
@@ -305,9 +305,9 @@ function TplClassic({ cv }: { cv: PreviewCv }) {
       <div className="grid grid-cols-2 gap-6">
         {cv.skills.length > 0 ? (
           <div>
-            <h2 className="mb-2 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
+            <h3 className="mb-2 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
               Compétences
-            </h2>
+            </h3>
             <ul className="space-y-1">
               {cv.skills.map((s) => (
                 <li key={s.id} className="flex justify-between text-xs">
@@ -320,9 +320,9 @@ function TplClassic({ cv }: { cv: PreviewCv }) {
         ) : null}
         {cv.languages.length > 0 ? (
           <div>
-            <h2 className="mb-2 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
+            <h3 className="mb-2 border-b border-gray-300 pb-1 text-sm font-bold uppercase tracking-widest text-gray-700">
               Langues
-            </h2>
+            </h3>
             <ul className="space-y-1">
               {cv.languages.map((l) => (
                 <li key={l.id} className="flex justify-between text-xs">
@@ -349,10 +349,10 @@ function TplMinimalist({ cv }: { cv: PreviewCv }) {
       style={{ fontFamily: '"Helvetica Neue", Arial, sans-serif' }}
     >
       <div className="mb-8">
-        <h1 className="text-3xl font-light uppercase tracking-[0.2em]">
+        <h2 className="text-3xl font-light uppercase tracking-[0.2em]">
           {cv.firstName}{" "}
           <span className="font-semibold">{cv.lastName}</span>
-        </h1>
+        </h2>
         {role(cv) ? (
           <p className="mt-1 text-sm uppercase tracking-wider text-gray-400">
             {role(cv)}
@@ -386,14 +386,14 @@ function TplMinimalist({ cv }: { cv: PreviewCv }) {
 
       {cv.experiences.length > 0 ? (
         <div className="mb-8">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
             Expérience
-          </h2>
+          </h3>
           <div className="space-y-5">
             {cv.experiences.map((e) => (
               <div key={e.id}>
                 <div className="flex items-baseline justify-between">
-                  <h3 className="text-sm font-semibold">{e.title}</h3>
+                  <h4 className="text-sm font-semibold">{e.title}</h4>
                   <span className="text-[11px] text-gray-400">
                     {formatRange(e.startDate, e.endDate, e.current)}
                   </span>
@@ -412,14 +412,14 @@ function TplMinimalist({ cv }: { cv: PreviewCv }) {
 
       {cv.education.length > 0 ? (
         <div className="mb-8">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
             Formation
-          </h2>
+          </h3>
           <div className="space-y-3">
             {cv.education.map((e) => (
               <div key={e.id} className="flex items-baseline justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold">{e.degree}</h3>
+                  <h4 className="text-sm font-semibold">{e.degree}</h4>
                   <p className="text-xs text-gray-500">{e.school}</p>
                 </div>
                 <span className="text-[11px] text-gray-400">{e.year}</span>
@@ -431,9 +431,9 @@ function TplMinimalist({ cv }: { cv: PreviewCv }) {
 
       {cv.skills.length > 0 ? (
         <div className="mb-6">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
             Compétences
-          </h2>
+          </h3>
           <p className="text-xs text-gray-600">
             {cv.skills.map((s) => s.name).join(" · ")}
           </p>
@@ -442,9 +442,9 @@ function TplMinimalist({ cv }: { cv: PreviewCv }) {
 
       {cv.languages.length > 0 ? (
         <div>
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
             Langues
-          </h2>
+          </h3>
           <p className="text-xs text-gray-600">
             {cv.languages.map((l) => `${l.name} (${l.level})`).join(" · ")}
           </p>
@@ -465,9 +465,9 @@ function TplProfessional({ cv }: { cv: PreviewCv }) {
       style={{ fontFamily: '"Roboto", sans-serif' }}
     >
       <div className="bg-teal-700 px-10 py-6 text-white">
-        <h1 className="text-2xl font-bold">
+        <h2 className="text-2xl font-bold">
           {cv.firstName} {cv.lastName}
-        </h1>
+        </h2>
         {role(cv) ? (
           <p className="mt-1 text-sm text-teal-100">{role(cv)}</p>
         ) : null}
@@ -482,10 +482,10 @@ function TplProfessional({ cv }: { cv: PreviewCv }) {
       <div className="space-y-5 px-10 py-6">
         {cv.summary ? (
           <div>
-            <h2 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
+            <h3 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
               <span className="h-0.5 w-6 bg-teal-700" />
               Profil Professionnel
-            </h2>
+            </h3>
             <p className="text-sm leading-relaxed text-gray-600">
               {cv.summary}
             </p>
@@ -494,14 +494,14 @@ function TplProfessional({ cv }: { cv: PreviewCv }) {
 
         {cv.experiences.length > 0 ? (
           <div>
-            <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
+            <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
               <span className="h-0.5 w-6 bg-teal-700" />
               Expérience
-            </h2>
+            </h3>
             <div className="space-y-4">
               {cv.experiences.map((e) => (
                 <div key={e.id} className="border-l-2 border-teal-200 pl-4">
-                  <h3 className="text-sm font-bold">{e.title}</h3>
+                  <h4 className="text-sm font-bold">{e.title}</h4>
                   <p className="text-xs font-medium text-teal-700">
                     {e.company}
                   </p>
@@ -521,14 +521,14 @@ function TplProfessional({ cv }: { cv: PreviewCv }) {
 
         {cv.education.length > 0 ? (
           <div>
-            <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
+            <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
               <span className="h-0.5 w-6 bg-teal-700" />
               Formation
-            </h2>
+            </h3>
             <div className="space-y-2">
               {cv.education.map((e) => (
                 <div key={e.id} className="border-l-2 border-teal-200 pl-4">
-                  <h3 className="text-sm font-bold">{e.degree}</h3>
+                  <h4 className="text-sm font-bold">{e.degree}</h4>
                   <p className="text-xs text-gray-500">{e.school}</p>
                   <p className="text-[11px] text-gray-400">{e.year}</p>
                 </div>
@@ -539,10 +539,10 @@ function TplProfessional({ cv }: { cv: PreviewCv }) {
 
         {cv.skills.length > 0 ? (
           <div>
-            <h2 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
+            <h3 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
               <span className="h-0.5 w-6 bg-teal-700" />
               Compétences
-            </h2>
+            </h3>
             <div className="flex flex-wrap gap-1.5">
               {cv.skills.map((s) => (
                 <span
@@ -558,10 +558,10 @@ function TplProfessional({ cv }: { cv: PreviewCv }) {
 
         {cv.languages.length > 0 ? (
           <div>
-            <h2 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
+            <h3 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700">
               <span className="h-0.5 w-6 bg-teal-700" />
               Langues
-            </h2>
+            </h3>
             <div className="flex gap-4">
               {cv.languages.map((l) => (
                 <div key={l.id} className="text-xs">
@@ -593,9 +593,9 @@ function TplCreative({ cv }: { cv: PreviewCv }) {
             {initials(cv)}
           </div>
           <div>
-            <h1 className="bg-gradient-to-r from-rose-600 to-violet-600 bg-clip-text text-2xl font-bold text-transparent">
+            <h2 className="bg-gradient-to-r from-rose-600 to-violet-600 bg-clip-text text-2xl font-bold text-transparent">
               {cv.firstName} {cv.lastName}
-            </h1>
+            </h2>
             {role(cv) ? (
               <p className="text-sm font-medium text-violet-500">{role(cv)}</p>
             ) : null}
@@ -623,9 +623,9 @@ function TplCreative({ cv }: { cv: PreviewCv }) {
 
         {cv.experiences.length > 0 ? (
           <div>
-            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-violet-500">
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-violet-500">
               ✦ Expérience
-            </h2>
+            </h3>
             <div className="space-y-3">
               {cv.experiences.map((e) => (
                 <div
@@ -634,9 +634,9 @@ function TplCreative({ cv }: { cv: PreviewCv }) {
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="text-sm font-bold text-gray-800">
+                      <h4 className="text-sm font-bold text-gray-800">
                         {e.title}
-                      </h3>
+                      </h4>
                       <p className="text-xs font-medium text-violet-500">
                         {e.company}
                       </p>
@@ -658,9 +658,9 @@ function TplCreative({ cv }: { cv: PreviewCv }) {
 
         {cv.education.length > 0 ? (
           <div>
-            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-violet-500">
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-violet-500">
               ✦ Formation
-            </h2>
+            </h3>
             <div className="space-y-2">
               {cv.education.map((e) => (
                 <div
@@ -668,7 +668,7 @@ function TplCreative({ cv }: { cv: PreviewCv }) {
                   className="flex items-center justify-between rounded-xl border border-white/50 bg-white/70 p-3 backdrop-blur"
                 >
                   <div>
-                    <h3 className="text-sm font-bold">{e.degree}</h3>
+                    <h4 className="text-sm font-bold">{e.degree}</h4>
                     <p className="text-xs text-gray-500">{e.school}</p>
                   </div>
                   <span className="text-[10px] text-gray-400">{e.year}</span>
@@ -680,9 +680,9 @@ function TplCreative({ cv }: { cv: PreviewCv }) {
 
         {cv.skills.length > 0 ? (
           <div>
-            <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-violet-500">
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-violet-500">
               ✦ Compétences
-            </h2>
+            </h3>
             <div className="flex flex-wrap gap-1.5">
               {cv.skills.map((s) => (
                 <span
@@ -698,9 +698,9 @@ function TplCreative({ cv }: { cv: PreviewCv }) {
 
         {cv.languages.length > 0 ? (
           <div>
-            <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-violet-500">
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-violet-500">
               ✦ Langues
-            </h2>
+            </h3>
             <div className="flex flex-wrap gap-2">
               {cv.languages.map((l) => (
                 <span
@@ -729,9 +729,9 @@ function TplElegant({ cv }: { cv: PreviewCv }) {
       style={{ fontFamily: '"Playfair Display", Georgia, serif' }}
     >
       <div className="border-b-2 border-amber-600 px-10 pb-6 pt-10">
-        <h1 className="text-3xl font-bold tracking-wide">
+        <h2 className="text-3xl font-bold tracking-wide">
           {cv.firstName} <span className="text-amber-700">{cv.lastName}</span>
-        </h1>
+        </h2>
         {role(cv) ? (
           <p className="mt-1 text-sm font-medium italic text-amber-600">
             {role(cv)}
@@ -751,9 +751,9 @@ function TplElegant({ cv }: { cv: PreviewCv }) {
         <div className="flex-1 space-y-5">
           {cv.summary ? (
             <div>
-              <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-700">
+              <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-700">
                 Profil
-              </h2>
+              </h3>
               <p
                 className="text-sm leading-relaxed text-gray-600"
                 style={{ fontFamily: '"Inter", sans-serif' }}
@@ -765,13 +765,13 @@ function TplElegant({ cv }: { cv: PreviewCv }) {
 
           {cv.experiences.length > 0 ? (
             <div>
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-700">
+              <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-700">
                 Expérience
-              </h2>
+              </h3>
               <div className="space-y-4">
                 {cv.experiences.map((e) => (
                   <div key={e.id}>
-                    <h3 className="text-sm font-bold">{e.title}</h3>
+                    <h4 className="text-sm font-bold">{e.title}</h4>
                     <p
                       className="text-xs font-medium text-amber-600"
                       style={{ fontFamily: '"Inter", sans-serif' }}
@@ -800,13 +800,13 @@ function TplElegant({ cv }: { cv: PreviewCv }) {
 
           {cv.education.length > 0 ? (
             <div>
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-700">
+              <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-700">
                 Formation
-              </h2>
+              </h3>
               <div className="space-y-3">
                 {cv.education.map((e) => (
                   <div key={e.id}>
-                    <h3 className="text-sm font-bold">{e.degree}</h3>
+                    <h4 className="text-sm font-bold">{e.degree}</h4>
                     <p
                       className="text-xs text-gray-500"
                       style={{ fontFamily: '"Inter", sans-serif' }}
@@ -829,9 +829,9 @@ function TplElegant({ cv }: { cv: PreviewCv }) {
         <div className="w-44 space-y-5 border-l border-amber-200 pl-6">
           {cv.skills.length > 0 ? (
             <div>
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-amber-700">
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-amber-700">
                 Compétences
-              </h2>
+              </h3>
               <div
                 className="space-y-1.5"
                 style={{ fontFamily: '"Inter", sans-serif' }}
@@ -853,9 +853,9 @@ function TplElegant({ cv }: { cv: PreviewCv }) {
 
           {cv.languages.length > 0 ? (
             <div>
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-amber-700">
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-amber-700">
                 Langues
-              </h2>
+              </h3>
               <div
                 className="space-y-1"
                 style={{ fontFamily: '"Inter", sans-serif' }}
@@ -872,9 +872,9 @@ function TplElegant({ cv }: { cv: PreviewCv }) {
 
           {cv.hobbies.length > 0 ? (
             <div>
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-amber-700">
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-amber-700">
                 Intérêts
-              </h2>
+              </h3>
               <div
                 className="space-y-1"
                 style={{ fontFamily: '"Inter", sans-serif' }}

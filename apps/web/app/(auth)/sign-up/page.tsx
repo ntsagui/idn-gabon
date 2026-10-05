@@ -3,12 +3,14 @@
 import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
+import { BioStep } from "../_components/sign-up/bio-step"
+import { DoneStep } from "../_components/sign-up/done-step"
 import { IdentityStep } from "../_components/sign-up/identity-step"
 import { IdnStep } from "../_components/sign-up/idn-step"
 import { PinStep } from "../_components/sign-up/pin-step"
 import { ProfileStep } from "../_components/sign-up/profile-step"
 
-const STEPS = ["profile", "identity", "idn", "pin"] as const
+const STEPS = ["profile", "identity", "idn", "pin", "bio", "done"] as const
 type Step = (typeof STEPS)[number]
 
 function isStep(v: string | null): v is Step {
@@ -16,12 +18,10 @@ function isStep(v: string | null): v is Step {
 }
 
 /**
- * Tunnel d'inscription en une seule route. L'étape est portée par le
- * search param `?step=profile|identity|idn|pin` plutôt que par des
- * sous-segments d'URL — c'est un wizard linéaire, pas une arborescence.
- *
- * Si `step` est absent ou invalide, on normalise vers `?step=profile`
- * pour que l'URL reste partageable et le bouton retour navigateur cohérent.
+ * Inscription (apps/mobile/src/app/(auth)/hub.tsx puis signup/*) en une seule
+ * route : l'étape est portée par `?step=` (bienvenue et profil → identité →
+ * adresse → PIN → biométrie → bienvenue). Une étape absente ou inconnue
+ * ramène à la bienvenue.
  */
 export default function SignUpPage() {
   return (
@@ -37,9 +37,7 @@ function SignUpDispatcher() {
   const raw = params.get("step")
 
   React.useEffect(() => {
-    if (!isStep(raw)) {
-      router.replace("/sign-up?step=profile")
-    }
+    if (!isStep(raw)) router.replace("/sign-up?step=profile")
   }, [raw, router])
 
   if (!isStep(raw)) return null
@@ -53,5 +51,9 @@ function SignUpDispatcher() {
       return <IdnStep />
     case "pin":
       return <PinStep />
+    case "bio":
+      return <BioStep />
+    case "done":
+      return <DoneStep />
   }
 }
