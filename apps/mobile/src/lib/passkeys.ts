@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { BIOMETRIC } from './biometric-label';
 
@@ -8,11 +9,18 @@ import { BIOMETRIC } from './biometric-label';
  * Better Auth avec la mauvaise méthode HTTP. On appelle donc les routes du
  * plugin serveur explicitement.
  *
- * Constat du 05/10/2026 : le composant Convex Better Auth déployé n'a pas de
- * table `passkey` (installation par défaut du composant) ; le serveur répond
- * 500 à toute route passkey. On le signale par `PasskeyUnavailableError` pour
- * afficher « indisponible » plutôt qu'un bouton qui échoue.
+ * Sans table `passkey` dans le composant Convex Better Auth (portée depuis le
+ * 05/10/2026 par son installation locale), le serveur répond 500 à toute
+ * route passkey. On le signale par `PasskeyUnavailableError` pour afficher
+ * « indisponible » plutôt qu'un bouton qui échoue.
  */
+/**
+ * Android désactivé tant que `assetlinks.json` et `PASSKEY_RP_ORIGINS` ne
+ * portent pas les empreintes SHA-256 de signature (clé EAS + Play App
+ * Signing) : sans elles, Credential Manager refuse l'enrôlement.
+ */
+export const PASSKEYS_ON_DEVICE = Platform.OS !== 'android';
+
 export type Passkey = { id: string; name?: string | null; createdAt: string | number | Date; deviceType?: string };
 
 export class PasskeyUnavailableError extends Error {
@@ -28,6 +36,7 @@ export function isServerFailure(error: { status?: number } | null | undefined): 
 }
 
 export async function listPasskeys(): Promise<Passkey[]> {
+  if (!PASSKEYS_ON_DEVICE) throw new PasskeyUnavailableError();
   const res = (await authClient.$fetch('/passkey/list-user-passkeys', { method: 'GET' })) as FetchResult<Passkey[]>;
   if (isServerFailure(res?.error)) throw new PasskeyUnavailableError();
   if (res?.error) throw new Error(res.error.message || 'Chargement des clés impossible.');

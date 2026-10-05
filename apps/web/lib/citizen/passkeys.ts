@@ -4,12 +4,12 @@
  * de l'appareil passe par une clé d'accès WebAuthn : on garde le terme
  * générique du mobile hors iPhone (« la biométrie »).
  *
- * Constat du 05/10/2026 (dev) : le composant Convex Better Auth déployé n'a
- * pas de table `passkey` ; le serveur répond 500 aux routes qui la lisent
- * (`/passkey/list-user-passkeys`, `/passkey/verify-authentication`…). La
- * requête `authCapabilities.get` le dit sans appel en erreur ; on le signale
- * par `PasskeyUnavailableError` pour afficher « indisponible » plutôt qu'un
- * bouton qui échoue.
+ * Sans table `passkey` dans le composant Convex Better Auth (portée depuis le
+ * 05/10/2026 par son installation locale), le serveur répond 500 aux routes
+ * qui la lisent (`/passkey/list-user-passkeys`, `/passkey/verify-authentication`…).
+ * La requête `authCapabilities.get` le dit sans appel en erreur ; on le
+ * signale par `PasskeyUnavailableError` pour afficher « indisponible » plutôt
+ * qu'un bouton qui échoue.
  */
 import { ConvexHttpClient } from "convex/browser"
 

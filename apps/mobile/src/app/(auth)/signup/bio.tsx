@@ -13,7 +13,7 @@ import { IdnLottie } from '@/design/components/lottie';
 import { Icon } from '@/design/icons';
 import { SignupScreen } from '@/components/auth/signup-screen';
 import { authClient } from '@/lib/auth-client';
-import { passkeyErrorMessage } from '@/lib/passkeys';
+import { passkeyErrorMessage, PASSKEYS_ON_DEVICE } from '@/lib/passkeys';
 import { BIOMETRIC, BIOMETRIC_TITLE } from '@/lib/biometric-label';
 
 // Conservé pour compat des composants existants qui lisent ce flag
@@ -38,6 +38,7 @@ export default function SignupBio() {
         setAvailable(typeof window !== 'undefined' && 'PublicKeyCredential' in window);
         return;
       }
+      if (!PASSKEYS_ON_DEVICE) return;
       try {
         const hasHw = await LocalAuth.hasHardwareAsync();
         const enrolled = await LocalAuth.isEnrolledAsync();

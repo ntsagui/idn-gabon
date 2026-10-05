@@ -1,17 +1,19 @@
 /// <reference types="vite/client" />
-import { register as registerBetterAuth } from "@convex-dev/better-auth/test"
 import { convexTest } from "convex-test"
 import { describe, expect, test } from "vitest"
 
 import { api } from "./_generated/api"
 import { componentHasModel } from "./authCapabilities"
+import authSchema from "./betterAuth/schema"
 import schema from "./schema"
 
 const modules = import.meta.glob("/convex/**/*.ts")
 
+// Composant local réel (et non celui de `@convex-dev/better-auth/test`, qui
+// n'a pas de table passkey) : c'est lui qui part en production.
 function makeTestClient() {
   const t = convexTest(schema, modules)
-  registerBetterAuth(t, "betterAuth")
+  t.registerComponent("betterAuth", authSchema, import.meta.glob("/convex/betterAuth/**/*.ts"))
   return t
 }
 
@@ -23,11 +25,11 @@ describe("authCapabilities", () => {
     expect(await t.run((ctx) => componentHasModel(ctx, "user"))).toBe(true)
   })
 
-  test("annonce les clés d'accès indisponibles tant que le composant n'a pas de table passkey", async () => {
-    // Les clients se fient à cette réponse pour ne pas appeler les routes
-    // /passkey/* qui répondraient 500 : un `true` à tort produirait une erreur
-    // réseau à chaque ouverture du Profil.
+  test("annonce les clés d'accès disponibles dès que le composant porte la table passkey", async () => {
+    // Les clients masquent Face ID / Touch ID tant que cette réponse est
+    // `false` : si le composant local perdait sa table passkey, l'enrôlement
+    // disparaîtrait silencieusement des apps.
     const t = makeTestClient()
-    expect(await t.query(api.authCapabilities.get, {})).toEqual({ passkeys: false })
+    expect(await t.query(api.authCapabilities.get, {})).toEqual({ passkeys: true })
   })
 })

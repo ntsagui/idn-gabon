@@ -11,7 +11,7 @@ import { ErrorNote, ScreenTitle } from '@/design/components/list';
 import { Icon } from '@/design/icons';
 import { PinLogin } from '@/components/auth/pin-login';
 import { authClient } from '@/lib/auth-client';
-import { listPasskeys, passkeyErrorMessage } from '@/lib/passkeys';
+import { listPasskeys, passkeyErrorMessage, PASSKEYS_ON_DEVICE } from '@/lib/passkeys';
 import { BIOMETRIC } from '@/lib/biometric-label';
 import { getLastAccount, initialsOf, type LastAccount } from '@/lib/last-account';
 import { setOnboardingDone } from '@/hooks/use-app-state';
@@ -177,7 +177,7 @@ export default function Login() {
           busy={submitting}
           error={error}
           onClearError={() => setError(null)}
-          onFaceId={signInWithPasskey}
+          onFaceId={PASSKEYS_ON_DEVICE ? signInWithPasskey : undefined}
           links={[
             { label: pinSetupRequired ? 'Configurer mon PIN' : 'Code PIN oublié ?', onPress: forgotPin },
             { label: 'Autre compte', onPress: backToHandle },
@@ -194,9 +194,11 @@ export default function Login() {
       footer={
         <>
           <IdnButton t={t} full onPress={goToPin} disabled={!normalized}>Continuer</IdnButton>
-          <IdnButton t={t} variant="ghost" full onPress={signInWithPasskey} loading={submitting} leadIcon={<Icon name="scanFace" size={18} color={t.ink} />}>
-            {`Se connecter avec ${BIOMETRIC}`}
-          </IdnButton>
+          {PASSKEYS_ON_DEVICE ? (
+            <IdnButton t={t} variant="ghost" full onPress={signInWithPasskey} loading={submitting} leadIcon={<Icon name="scanFace" size={18} color={t.ink} />}>
+              {`Se connecter avec ${BIOMETRIC}`}
+            </IdnButton>
+          ) : null}
         </>
       }
     >

@@ -6,11 +6,13 @@ import { query, type QueryCtx } from "./_generated/server"
 /** Vrai si le composant Better Auth sait lire le modèle `model`. */
 export async function componentHasModel(ctx: QueryCtx, model: string): Promise<boolean> {
   try {
-    await ctx.runQuery(components.betterAuth.adapter.findOne, {
+    await ctx.runQuery(components.betterAuth.adapter.findMany, {
       // Un modèle absent du composant est refusé par son validateur : c'est
-      // précisément ce que l'on teste.
+      // précisément ce que l'on teste. Pas de filtre sur `_id` : un faux
+      // identifiant fait échouer `db.get` en production, quel que soit le
+      // modèle, et la sonde répondrait toujours `false`.
       model: model as never,
-      where: [{ field: "_id", value: "__capability_probe__", operator: "eq" }],
+      paginationOpts: { numItems: 1, cursor: null },
     })
     return true
   } catch {
@@ -21,12 +23,11 @@ export async function componentHasModel(ctx: QueryCtx, model: string): Promise<b
 /**
  * Capacités d'authentification réellement disponibles sur ce déploiement.
  *
- * Clés d'accès (passkeys) : le plugin est déclaré dans `auth.ts`, mais le
- * composant Better Auth installé par défaut n'a pas de table `passkey` ; les
- * routes `/passkey/*` répondent alors 500. Les clients interrogent cette
- * requête avant d'appeler ces routes, pour afficher « indisponible » au lieu
- * de provoquer une erreur. Elle passe d'elle-même à `true` le jour où le
- * composant porte la table.
+ * Clés d'accès (passkeys) : le plugin est déclaré dans `auth.ts` et la table
+ * `passkey` est portée par le composant local (`betterAuth/schema.ts`). Sans
+ * elle, les routes `/passkey/*` répondraient 500 : les clients interrogent
+ * cette requête avant de les appeler, pour afficher « indisponible » plutôt
+ * que de provoquer une erreur.
  */
 export const get = query({
   args: {},

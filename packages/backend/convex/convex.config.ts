@@ -1,5 +1,5 @@
 import { defineApp } from "convex/server"
-import betterAuth from "@convex-dev/better-auth/convex.config"
+import betterAuth from "./betterAuth/convex.config"
 import rateLimiter from "@convex-dev/rate-limiter/convex.config"
 import aggregate from "@convex-dev/aggregate/convex.config"
 import workflow from "@convex-dev/workflow/convex.config"
@@ -7,8 +7,9 @@ import workpool from "@convex-dev/workpool/convex.config"
 
 const app = defineApp()
 
-// Auth (Better Auth) — owns user/account/session/oauth/jwks tables in its
-// component namespace.
+// Auth (Better Auth) — owns user/account/session/oauth/jwks/passkey tables in
+// its component namespace. Installé localement (cf. betterAuth/schema.ts) pour
+// porter la table `passkey` que le composant npm n'a pas.
 app.use(betterAuth)
 
 // Rate limiting — transactional, per IP / user / client.

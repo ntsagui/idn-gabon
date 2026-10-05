@@ -41,6 +41,7 @@ import { components, internal } from "./_generated/api"
 import type { DataModel } from "./_generated/dataModel"
 import { query } from "./_generated/server"
 import authConfig from "./auth.config"
+import authSchema from "./betterAuth/schema"
 import { pinSignIn } from "./lib/pinSignInPlugin"
 import { partnerHandoffOneTimeToken } from "./lib/partnerHandoffToken"
 import { partnerTokenExchange } from "./lib/partnerTokenExchange"
@@ -87,11 +88,14 @@ function resolveSiteUrl(origin?: string | null): string {
 
 /**
  * Client Better Auth + Convex.
- * Le composant @convex-dev/better-auth gère ses propres tables (user,
- * account, session, oauthApplication, oauthConsent, jwks, etc.) dans
- * son namespace isolé.
+ * Le composant Better Auth (installé localement, cf. betterAuth/) gère ses
+ * propres tables (user, account, session, oauthApplication, oauthConsent,
+ * jwks, passkey, etc.) dans son namespace isolé.
  */
-export const authComponent = createClient<DataModel>(components.betterAuth)
+export const authComponent = createClient<DataModel, typeof authSchema>(
+  components.betterAuth,
+  { local: { schema: authSchema } },
+)
 
 /**
  * Configuration Better Auth — appelée à chaque requête HTTP via http.ts.
