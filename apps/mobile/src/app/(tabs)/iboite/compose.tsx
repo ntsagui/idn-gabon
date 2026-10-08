@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from "react"
-import { Alert, Platform, Pressable, View } from "react-native";
+import { Alert, Modal, Platform, Pressable, View } from "react-native";
 import { Text, TextInput } from "@/design/text";
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import * as DocumentPicker from "expo-document-picker"
+import * as ImagePicker from "expo-image-picker"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useIdnTheme } from "@/design/theme"
 import { idnTokens } from "@/design/tokens"
-import { NSheetHeader } from "@/components/chrome/sheet-header"
 import RichEmailEditor from "@/components/mailbox/rich-email-editor"
-import { IdnButton } from "@/design/components/idn-button"
-import { Icon } from "@/design/icons"
+import { IconButton } from "@/design/components/app-bar"
+import { Icon, type IconName } from "@/design/icons"
 import { api } from "@/lib/api"
 import { uploadAttachment, type PickedAttachment } from "@/lib/attachment-upload"
 import { iboiteFr } from "@/data/iboite-fr"
@@ -70,6 +70,41 @@ async function pickAttachment(): Promise<PickedAttachment | null> {
   const asset = res.assets[0]
   return { name: asset.name, size: asset.size ?? 0, mime: asset.mimeType ?? "application/octet-stream", uri: asset.uri }
 }
+
+/** Photo de la galerie ou de l'appareil photo, au format attendu par l'envoi. */
+async function pickImage(source: "library" | "camera"): Promise<PickedAttachment | null> {
+  if (source === "camera") {
+    const perm = await ImagePicker.requestCameraPermissionsAsync()
+    if (!perm.granted) {
+      Alert.alert("Appareil photo", "Autorise l’accès à l’appareil photo dans les réglages.")
+      return null
+    }
+  }
+  const options: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], quality: 0.85 }
+  const res =
+    source === "camera"
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options)
+  const asset = res.canceled ? null : res.assets[0]
+  if (!asset) return null
+  return {
+    name: asset.fileName ?? `photo-${Date.now()}.jpg`,
+    size: asset.fileSize ?? 0,
+    mime: asset.mimeType ?? "image/jpeg",
+    uri: asset.uri,
+  }
+}
+
+// Le web n'a ni galerie ni appareil photo branchés : seul le choix de fichier y est proposé.
+const ATTACH_SOURCES: { label: string; icon: IconName; pick: () => Promise<PickedAttachment | null> }[] = [
+  ...(Platform.OS === "web"
+    ? []
+    : [
+        { label: "Photos", icon: "image" as const, pick: () => pickImage("library") },
+        { label: "Appareil photo", icon: "camera" as const, pick: () => pickImage("camera") },
+      ]),
+  { label: "Fichiers", icon: "file", pick: pickAttachment },
+]
 
 export default function IBoiteCompose() {
   const t = useIdnTheme()
@@ -151,7 +186,23 @@ export default function IBoiteCompose() {
     bodyHtmlRef.current = html
   }, [])
 
-  async function onAttach() {
+  const [attachMenu, setAttachMenu] = useState(false)
+  const pendingPick = React.useRef<(() => Promise<PickedAttachment | null>) | null>(null)
+
+  function runPendingPick() {
+    const pick = pendingPick.current
+    pendingPick.current = null
+    if (pick) void onAttach(pick)
+  }
+
+  function chooseSource(pick: () => Promise<PickedAttachment | null>) {
+    pendingPick.current = pick
+    setAttachMenu(false)
+    // iOS refuse d'ouvrir un sélecteur pendant la fermeture du menu : il attend `onDismiss`.
+    if (Platform.OS !== "ios") runPendingPick()
+  }
+
+  async function onAttach(pick: () => Promise<PickedAttachment | null>) {
     try {
       if (attachments.length >= MAX_ATTACHMENTS) {
         Alert.alert(
@@ -160,7 +211,7 @@ export default function IBoiteCompose() {
         )
         return
       }
-      const f = await pickAttachment()
+      const f = await pick()
       if (!f) return
       if (f.size > MAX_ATTACHMENT_BYTES) {
         Alert.alert(
@@ -254,121 +305,136 @@ export default function IBoiteCompose() {
     }
   }
 
+  const field = {
+    minHeight: 50,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border,
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 10,
+  }
+  const label = { width: 44, fontSize: 15, color: t.muted }
+
   return (
     <View
       style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}
     >
-      <NSheetHeader
-        t={t}
-        title={!replyToId ? "Nouveau message" : mode === "forward" ? "Transférer" : "Répondre"}
-        onBack={() => router.back()}
-        right={
-          <Pressable
-            onPress={submit}
-            disabled={submitting}
-            style={{ padding: 4 }}
-          >
-            <Icon
-              name="send"
-              size={18}
-              color={submitting ? t.muted : idnTokens.green}
-            />
-          </Pressable>
-        }
-      />
-      <View style={{ flex: 1, paddingHorizontal: 22 }}>
-        <View
-          style={{
-            borderBottomWidth: 1,
-            borderBottomColor: t.borderSoft,
-            paddingVertical: 12,
+      <View
+        style={{
+          height: 60,
+          flexShrink: 0,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          paddingLeft: 10,
+          paddingRight: 16,
+        }}
+      >
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Fermer"
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            borderRadius: 9999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: pressed ? t.border : t.surface2,
+          })}
+        >
+          <Icon name="close" size={20} color={t.ink2} />
+        </Pressable>
+        <Text accessibilityRole="header" numberOfLines={1} style={{ flex: 1, marginLeft: 8, fontSize: 15, fontWeight: "500", color: t.ink2 }}>
+          {!replyToId ? "Nouveau message" : mode === "forward" ? "Transférer" : "Répondre"}
+        </Text>
+        <IconButton
+          icon="paper"
+          label="Joindre un fichier"
+          plain
+          size={44}
+          color={submitting ? t.muted : t.greenText}
+          onPress={() => !submitting && setAttachMenu(true)}
+        />
+        <Pressable
+          onPress={submit}
+          disabled={submitting}
+          accessibilityRole="button"
+          accessibilityLabel="Envoyer"
+          accessibilityState={{ disabled: submitting, busy: submitting }}
+          style={({ pressed }) => ({
+            height: 40,
+            borderRadius: 20,
+            paddingHorizontal: 14,
             flexDirection: "row",
             alignItems: "center",
-            gap: 8,
-          }}
+            gap: 6,
+            backgroundColor: submitting ? t.mutedSoft : t.green,
+            opacity: pressed ? 0.85 : 1,
+          })}
+          hitSlop={4}
         >
-          <Text
-            style={{
-              fontSize: 12,
-              color: t.muted,
-              width: 36,
-              fontWeight: "500",
-            }}
-          >
-            De
+          <Icon name="send" size={17} color="#fff" />
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#fff" }}>
+            {submitting ? "Envoi…" : "Envoyer"}
           </Text>
-          <Text style={{ fontSize: 13, color: t.ink }}>{senderEmail}</Text>
-        </View>
-        <View
-          style={{
-            borderBottomWidth: 1,
-            borderBottomColor: t.borderSoft,
-            paddingVertical: 12,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
+        </Pressable>
+      </View>
+      <View style={field}>
+        <Text style={label}>À</Text>
+        <TextInput
+          value={toEmail}
+          onChangeText={setToEmail}
+          placeholder="destinataire@…"
+          placeholderTextColor={t.muted}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          accessibilityLabel="Destinataire"
+          style={{ flex: 1, fontSize: 15, color: t.ink, paddingVertical: 12 }}
+        />
+      </View>
+      <View style={field}>
+        <Text style={label}>De</Text>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: t.mono, fontSize: 14, color: t.ink }}>
+          {senderEmail}
+        </Text>
+      </View>
+      <View style={field}>
+        <TextInput
+          value={subject}
+          onChangeText={setSubject}
+          placeholder="Objet"
+          placeholderTextColor={t.muted}
+          accessibilityLabel="Objet"
+          style={{ flex: 1, fontSize: 15, color: t.ink, paddingVertical: 12 }}
+        />
+      </View>
+      <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 2 }}>
+        <RichEmailEditor
+          initialHtml={body}
+          onChange={onBodyChange}
+          theme={{
+            dark: t.dark,
+            background: t.bg,
+            surface: t.surface,
+            foreground: t.ink,
+            muted: t.muted,
+            border: t.borderSoft,
+            active: t.surface2,
+            link: t.dark ? "#58C985" : idnTokens.green,
           }}
-        >
-          <Text
-            style={{
-              fontSize: 12,
-              color: t.muted,
-              width: 36,
-              fontWeight: "500",
-            }}
-          >
-            À
-          </Text>
-          <TextInput
-            value={toEmail}
-            onChangeText={setToEmail}
-            placeholder="destinataire@…"
-            placeholderTextColor={t.muted}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            style={{ flex: 1, fontSize: 13, color: t.ink }}
-          />
-        </View>
-        <View
-          style={{
-            borderBottomWidth: 1,
-            borderBottomColor: t.borderSoft,
-            paddingVertical: 12,
-          }}
-        >
-          <TextInput
-            value={subject}
-            onChangeText={setSubject}
-            placeholder="Objet"
-            placeholderTextColor={t.muted}
-            style={{ fontSize: 14, color: t.ink, fontWeight: "600" }}
-          />
-        </View>
-        <View style={{ flex: 1, paddingVertical: 2 }}>
-          <RichEmailEditor
-            initialHtml={body}
-            onChange={onBodyChange}
-            theme={{
-              dark: t.dark,
-              background: t.bg,
-              surface: t.surface,
-              foreground: t.ink,
-              muted: t.muted,
-              border: t.borderSoft,
-              active: t.surface2,
-              link: t.dark ? "#58C985" : idnTokens.green,
-            }}
-            dom={{ style: { flex: 1, backgroundColor: t.bg } }}
-          />
-        </View>
+          dom={{ style: { flex: 1, backgroundColor: t.bg } }}
+        />
       </View>
       {attachments.length > 0 ? (
         <View
           style={{
             borderTopWidth: 1,
             borderTopColor: t.borderSoft,
-            paddingHorizontal: 22,
-            paddingVertical: 8,
+            paddingHorizontal: 16,
+            paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom, 8),
             gap: 6,
           }}
         >
@@ -382,29 +448,29 @@ export default function IBoiteCompose() {
                 backgroundColor: t.surface,
                 borderWidth: 1,
                 borderColor: t.border,
-                borderRadius: 10,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
+                borderRadius: 12,
+                paddingLeft: 12,
+                paddingVertical: 4,
               }}
             >
               <Icon name="paper" size={14} color={t.ink2} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text
                   numberOfLines={1}
-                  style={{ fontSize: 12, color: t.ink, fontWeight: "500" }}
+                  style={{ fontSize: 13, color: t.ink, fontWeight: "500" }}
                 >
                   {a.name}
                 </Text>
-                <Text style={{ fontSize: 10, color: t.muted }}>
+                <Text style={{ fontSize: 12, color: t.muted }}>
                   {formatBytes(a.size)}
                 </Text>
               </View>
               <Pressable
                 onPress={() => removeAttachment(i)}
                 disabled={submitting}
+                accessibilityRole="button"
                 accessibilityLabel={`Retirer ${a.name}`}
-                hitSlop={8}
-                style={{ padding: 2 }}
+                style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
               >
                 <Icon name="close" size={16} color={t.muted} />
               </Pressable>
@@ -412,50 +478,75 @@ export default function IBoiteCompose() {
           ))}
         </View>
       ) : null}
-      <View
-        style={{
-          borderTopWidth: 1,
-          borderTopColor: t.borderSoft,
-          backgroundColor: t.surface,
-          paddingHorizontal: 14,
-          paddingTop: 10,
-          paddingBottom: Math.max(insets.bottom, 10),
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-        }}
+
+      {/* Menu du trombone : le sélecteur ne s'ouvre qu'une fois le menu refermé (iOS). */}
+      <Modal
+        visible={attachMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAttachMenu(false)}
+        onDismiss={runPendingPick}
       >
         <Pressable
-          onPress={onAttach}
-          disabled={submitting}
+          style={{ flex: 1 }}
+          onPress={() => setAttachMenu(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Fermer le menu"
+        />
+        <View
+          accessibilityViewIsModal
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            paddingHorizontal: 12,
+            position: "absolute",
+            top: insets.top + 56,
+            right: 56,
+            width: 240,
             paddingVertical: 8,
+            borderRadius: 18,
+            backgroundColor: t.surface,
+            borderWidth: t.dark ? 1 : 0,
+            borderColor: t.border,
+            shadowColor: "#000",
+            shadowOpacity: 0.2,
+            shadowRadius: 20,
+            shadowOffset: { width: 0, height: 12 },
+            elevation: 8,
           }}
         >
-          <Icon name="paper" size={14} color={t.ink2} />
-          <Text style={{ color: t.ink2, fontSize: 12, fontWeight: "500" }}>
-            Joindre
+          {ATTACH_SOURCES.map((s) => (
+            <Pressable
+              key={s.label}
+              onPress={() => chooseSource(s.pick)}
+              accessibilityRole="button"
+              accessibilityLabel={s.label}
+              style={({ pressed }) => ({
+                minHeight: 48,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 16,
+                paddingHorizontal: 20,
+                backgroundColor: pressed ? t.surface2 : "transparent",
+              })}
+            >
+              <Icon name={s.icon} size={20} color={t.ink2} />
+              <Text style={{ fontSize: 16, color: t.ink }}>{s.label}</Text>
+            </Pressable>
+          ))}
+          <Text
+            style={{
+              marginTop: 4,
+              paddingTop: 8,
+              paddingBottom: 6,
+              paddingHorizontal: 20,
+              borderTopWidth: 1,
+              borderTopColor: t.border,
+              fontSize: 12,
+              color: t.muted,
+            }}
+          >
+            {MAX_ATTACHMENT_LABEL} maximum par fichier
           </Text>
-          <Text style={{ color: t.muted, fontSize: 11 }}>
-            Max {MAX_ATTACHMENT_LABEL}
-          </Text>
-        </Pressable>
-        <View style={{ flex: 1 }} />
-        <IdnButton
-          t={t}
-          variant="primary"
-          size="sm"
-          leadIcon={<Icon name="send" size={14} color="#fff" />}
-          onPress={submit}
-          disabled={submitting}
-        >
-          {submitting ? "…" : "Envoyer"}
-        </IdnButton>
-      </View>
+        </View>
+      </Modal>
     </View>
   )
 }

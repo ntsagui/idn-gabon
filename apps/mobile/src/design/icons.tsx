@@ -1,10 +1,10 @@
 import React from 'react';
 import {
-  Activity, Archive, ArrowRight, Baby, Bell, Briefcase, Building2, Bus, CalendarCheck, CalendarDays, CalendarPlus,
+  Activity, Archive, ArrowRight, Baby, BadgeCheck, Bell, Briefcase, Building2, Bus, CalendarCheck, CalendarDays, CalendarPlus,
   Camera, Car, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Clock, Copy, CreditCard,
   Delete, Download, Ellipsis, Eye, EyeOff, FileText, FileUser, Fingerprint, Flag, Flashlight, Folder, FolderOpen,
-  Forward, Gift, Globe, GraduationCap, Grid2x2, GripVertical, Hash, HeartPulse, House, IdCard, Inbox, KeyRound,
-  Landmark, Laptop, LayoutGrid, Link, Lock, LogIn, LogOut, Mail, Mailbox, MapPin, MessageCircle, Mic, MicOff, Minus,
+  Forward, Gift, Globe, GraduationCap, Grid2x2, GripVertical, Hash, HeartPulse, House, IdCard, Image, Inbox, KeyRound,
+  Landmark, Laptop, LayoutGrid, Link, Lock, LogIn, LogOut, Mail, Mailbox, MapPin, Menu, MessageCircle, Mic, MicOff, Minus,
   Package, Palette, Paperclip, PenLine, PhoneOff, Plane, Plus, Printer, QrCode, RefreshCw, Reply, RotateCcw,
   RotateCw, Scale, ScanFace, ScanLine, ScrollText, Search, Send, Settings, Share2, Shield, ShieldCheck, Smartphone,
   Sparkles, Star, SwitchCamera, Tablet, Trash2, Truck, Upload, User, UserPlus, UserRound, Users, Video, VideoOff,
@@ -38,6 +38,8 @@ const ICONS = {
   scrollText: ScrollText, wifi: Wifi, delete: Delete, calendarCheck: CalendarCheck, calendarPlus: CalendarPlus,
   userRound: UserRound, folder: Folder, folderOpen: FolderOpen, arrowRight: ArrowRight, shieldPlain: Shield,
   settings: Settings, fingerprint: Fingerprint,
+  // iBoîte (maquette Gmail)
+  menu: Menu, image: Image, badgeCheck: BadgeCheck,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

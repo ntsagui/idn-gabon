@@ -1,4 +1,4 @@
-import React, { useEffect } from "react"
+import React, { useEffect, useState } from "react"
 import { ActionSheetIOS, Alert, Linking, Platform, Pressable, ScrollView, View } from "react-native";
 import { Text } from "@/design/text";
 import { useLocalSearchParams, useRouter } from "expo-router"
@@ -7,18 +7,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useIdnTheme } from "@/design/theme"
 import { idnTokens } from "@/design/tokens"
 import { NSheetHeader } from "@/components/chrome/sheet-header"
-import { Icon, type IconName } from "@/design/icons"
+import { Icon } from "@/design/icons"
+import { IconButton } from "@/design/components/app-bar"
+import { SenderAvatar, VerifiedBadge } from "@/components/mailbox/sender-avatar"
+import { formatListTime } from "@/lib/iboite-adapter"
 import { api } from "@/lib/api"
 import { EmailHtmlView } from "@/components/mailbox/email-html-view"
 import { EmailTextBody } from "@/components/mailbox/email-text-body"
 
-type Action = {
-  icon: IconName
-  l: string
-  primary?: boolean
-  danger?: boolean
-  onPress: () => void
-  onLongPress?: () => void
+const FOLDER_LABEL: Record<string, string> = {
+  inbox: "Réception",
+  archive: "Archives",
+  sent: "Envoyés",
+  trash: "Corbeille",
 }
 
 export default function EmailDetail() {
@@ -35,6 +36,7 @@ export default function EmailDetail() {
   const markRead = useMutation(api.iboite.messages.markRead)
   const toggleStar = useMutation(api.iboite.messages.toggleStar)
   const move = useMutation(api.iboite.messages.move)
+  const [showDetails, setShowDetails] = useState(false)
 
   useEffect(() => {
     if (email && !email.isRead) {
@@ -168,32 +170,89 @@ export default function EmailDetail() {
     }
   }
 
-  const actions: Action[] = [
-    {
-      icon: "reply",
-      l: "Répondre",
-      primary: true,
-      onPress: () => router.push(replyHref as never),
-      onLongPress: openReplyMenu,
-    },
-    {
-      icon: "forward",
-      l: "Transférer",
-      onPress: () => router.push(fwdHref as never),
-    },
-    { icon: "archive", l: "Archiver", onPress: onArchive },
-    { icon: "trash", l: "Suppr.", danger: true, onPress: onDelete },
-  ]
+  function openMore() {
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ["Annuler", "Répondre", "Répondre à tous", "Transférer"],
+          cancelButtonIndex: 0,
+        },
+        (idx) => {
+          if (idx === 1) router.push(replyHref as never)
+          else if (idx === 2) router.push(replyAllHref as never)
+          else if (idx === 3) router.push(fwdHref as never)
+        },
+      )
+    } else {
+      Alert.alert("Actions", undefined, [
+        { text: "Répondre", onPress: () => router.push(replyHref as never) },
+        {
+          text: "Répondre à tous",
+          onPress: () => router.push(replyAllHref as never),
+        },
+        { text: "Transférer", onPress: () => router.push(fwdHref as never) },
+        { text: "Annuler", style: "cancel" },
+      ])
+    }
+  }
 
   const isAdmin = email.senderKind === "admin"
+  const isSent = email.folder === "sent"
+  const pillButton = {
+    flex: 1,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: t.border,
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: 10,
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NSheetHeader
-        t={t}
-        title="Message"
-        onBack={() => router.back()}
-        right={
+      <View
+        style={{
+          height: 52,
+          flexShrink: 0,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 6,
+        }}
+      >
+        <IconButton icon="arrowL" label="Retour" plain size={44} color={t.ink2} onPress={() => router.back()} />
+        <View style={{ flex: 1 }} />
+        <IconButton icon="archive" label="Archiver" plain size={44} color={t.ink2} onPress={onArchive} />
+        <IconButton icon="trash" label="Supprimer" plain size={44} color={t.ink2} onPress={onDelete} />
+        <IconButton icon="more" label="Plus d’actions" plain size={44} color={t.ink2} onPress={openMore} />
+      </View>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 18 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: 10,
+            paddingLeft: 20,
+            paddingRight: 8,
+            paddingTop: 6,
+          }}
+        >
+          <Text
+            accessibilityRole="header"
+            style={{
+              flex: 1,
+              fontSize: 22,
+              fontWeight: "500",
+              color: t.ink,
+              lineHeight: 29,
+            }}
+          >
+            {email.subject}
+          </Text>
           <Pressable
             onPress={async () => {
               try {
@@ -202,79 +261,120 @@ export default function EmailDetail() {
                 /* ignore */
               }
             }}
-            style={{ padding: 4 }}
+            accessibilityRole="togglebutton"
+            accessibilityLabel="Favori"
+            accessibilityState={{ checked: email.isStarred }}
+            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center", marginTop: -6 }}
           >
             <Icon
               name={email.isStarred ? "star" : "starO"}
-              size={18}
+              size={22}
               color={email.isStarred ? idnTokens.yellow : t.muted}
             />
           </Pressable>
-        }
-      />
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 22,
-          paddingTop: 14,
-          paddingBottom: 14,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text
-          style={{
-            fontSize: 18,
-            fontWeight: "700",
-            color: t.ink,
-            letterSpacing: -0.3,
-            lineHeight: 24,
-          }}
-        >
-          {email.subject}
-        </Text>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            gap: 12,
-            marginTop: 16,
-            paddingBottom: 14,
-            borderBottomWidth: 1,
-            borderBottomColor: t.borderSoft,
-          }}
-        >
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 9999,
-              backgroundColor: isAdmin ? "#3b82f6" : "#10b981",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Icon name={isAdmin ? "building" : "user"} size={20} color="#fff" />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 13, fontWeight: "600", color: t.ink }}>
-              {email.senderName}
-            </Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: t.muted,
-                fontFamily: idnTokens.mono,
-              }}
-            >
-              {email.senderEmail}
-            </Text>
-            <Text style={{ fontSize: 11, color: t.muted, marginTop: 4 }}>
-              À : {email.recipientEmail} · {date}
-            </Text>
-          </View>
         </View>
         <View
           style={{
+            alignSelf: "flex-start",
+            marginTop: 8,
+            marginLeft: 20,
+            paddingVertical: 3,
+            paddingHorizontal: 7,
+            borderRadius: 5,
+            backgroundColor: t.surface2,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: t.ink2 }}>{FOLDER_LABEL[email.folder]}</Text>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            paddingTop: 18,
+            paddingBottom: 12,
+            paddingHorizontal: 20,
+          }}
+        >
+          {isAdmin ? (
+            <SenderAvatar name={email.senderName} icon="landmark" tone="green" />
+          ) : (
+            <SenderAvatar name={email.senderName} />
+          )}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 15, fontWeight: "600", color: t.ink }}>
+                {email.senderName}
+              </Text>
+              {isAdmin ? <VerifiedBadge /> : null}
+              <Text style={{ fontSize: 12, color: t.muted }}>{formatListTime(email.createdAt)}</Text>
+            </View>
+            {/* « à moi ▾ » déplie les adresses et la date complète, comme Gmail. */}
+            <Pressable
+              onPress={() => setShowDetails((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={showDetails ? "Masquer les détails du message" : "Afficher les détails du message"}
+              accessibilityState={{ expanded: showDetails }}
+              hitSlop={{ top: 10, bottom: 10, left: 6, right: 30 }}
+              style={{ alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 2, marginTop: 2 }}
+            >
+              <Text style={{ fontSize: 13, color: t.muted }}>
+                {isSent ? `à ${email.recipientName || email.recipientEmail}` : "à moi"}
+              </Text>
+              <Icon name="chevDn" size={15} color={t.muted} />
+            </Pressable>
+          </View>
+        </View>
+        {showDetails ? (
+          <View
+            style={{
+              marginHorizontal: 16,
+              marginBottom: 12,
+              padding: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: t.border,
+              gap: 4,
+            }}
+          >
+            {[
+              ["De", email.senderEmail],
+              ["À", email.recipientEmail],
+              ["Date", date],
+            ].map(([label, value]) => (
+              <View key={label} style={{ flexDirection: "row", gap: 8 }}>
+                <Text style={{ width: 40, fontSize: 12, color: t.muted }}>{label}</Text>
+                <Text selectable style={{ flex: 1, fontSize: 12, color: t.ink, fontFamily: label === "Date" ? undefined : idnTokens.mono }}>
+                  {value}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        {isAdmin ? (
+          <View
+            style={{
+              marginHorizontal: 16,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              backgroundColor: t.greenBadge,
+            }}
+          >
+            <Icon name="landmark" size={18} color={t.dark ? t.greenText : t.greenDk} />
+            <Text style={{ flex: 1, fontSize: 13, color: t.dark ? t.greenText : t.greenDk }}>
+              Message officiel d’une administration vérifiée.
+            </Text>
+          </View>
+        ) : null}
+        <View
+          style={{
             marginTop: 14,
+            marginHorizontal: 16,
             overflow: "hidden",
             borderRadius: 12,
             backgroundColor: t.surface,
@@ -287,103 +387,77 @@ export default function EmailDetail() {
           )}
         </View>
         {email.attachments.length > 0 ? (
-          <View style={{ marginTop: 18 }}>
-            <Text
-              style={{
-                fontSize: 10,
-                color: t.muted,
-                letterSpacing: 1.2,
-                fontWeight: "600",
-                marginBottom: 8,
-              }}
-            >
-              PIÈCES JOINTES
-            </Text>
-            <View style={{ gap: 6 }}>
-              {email.attachments.map((a) => (
-                <Pressable
-                  key={a._id}
-                  onPress={() => openAttachment(a._id)}
-                  accessibilityLabel={`Ouvrir ${a.name}`}
-                  style={{
-                    padding: 12,
-                    backgroundColor: t.surface,
-                    borderWidth: 1,
-                    borderColor: t.border,
-                    borderRadius: 10,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
+          <View style={{ marginTop: 14, marginHorizontal: 16, gap: 8 }}>
+            {email.attachments.map((a) => (
+              <Pressable
+                key={a._id}
+                onPress={() => openAttachment(a._id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Ouvrir ${a.name}`}
+                style={{
+                  minHeight: 56,
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  backgroundColor: t.surface,
+                  borderWidth: 1,
+                  borderColor: t.border,
+                  borderRadius: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View style={{ width: 36, height: 42, borderRadius: 6, backgroundColor: t.surface2, alignItems: "center", justifyContent: "center" }}>
                   <Icon name="paper" size={18} color={t.ink2} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontSize: 12, color: t.ink, fontWeight: "500" }}
-                    >
-                      {a.name}
-                    </Text>
-                    <Text
-                      style={{ fontSize: 10, color: t.muted, marginTop: 1 }}
-                    >
-                      {Math.max(1, Math.round(a.size / 1024))} KB
-                    </Text>
-                  </View>
-                  <Icon name="download" size={16} color={t.muted} />
-                </Pressable>
-              ))}
-            </View>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={{ fontSize: 13, color: t.ink, fontWeight: "500" }}
+                  >
+                    {a.name}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: t.muted, marginTop: 1 }}>
+                    {Math.max(1, Math.round(a.size / 1024))} Ko
+                  </Text>
+                </View>
+                <Icon name="download" size={18} color={t.muted} />
+              </Pressable>
+            ))}
           </View>
         ) : null}
       </ScrollView>
       <View
         style={{
-          borderTopWidth: 1,
-          borderTopColor: t.borderSoft,
-          backgroundColor: t.surface,
           paddingHorizontal: 14,
           paddingTop: 10,
-          paddingBottom: Math.max(insets.bottom, 10),
+          paddingBottom: Math.max(insets.bottom, 12),
           flexDirection: "row",
-          gap: 4,
+          gap: 10,
+          backgroundColor: t.bg,
         }}
       >
-        {actions.map((a, i) => (
-          <Pressable
-            key={i}
-            onPress={a.onPress}
-            onLongPress={a.onLongPress}
-            delayLongPress={300}
-            style={{
-              flex: 1,
-              paddingVertical: 8,
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <Icon
-              name={a.icon}
-              size={18}
-              color={
-                a.primary ? idnTokens.green : a.danger ? "#B83A3A" : t.ink2
-              }
-            />
-            <Text
-              style={{
-                fontSize: 10,
-                fontWeight: "500",
-                color: a.primary
-                  ? idnTokens.green
-                  : a.danger
-                    ? "#B83A3A"
-                    : t.ink2,
-              }}
-            >
-              {a.l}
-            </Text>
-          </Pressable>
-        ))}
+        <Pressable
+          onPress={() => router.push(replyHref as never)}
+          onLongPress={openReplyMenu}
+          delayLongPress={300}
+          accessibilityRole="button"
+          accessibilityLabel="Répondre"
+          accessibilityHint="Appui long pour répondre à tous"
+          style={({ pressed }) => [pillButton, { backgroundColor: pressed ? t.surface2 : "transparent" }]}
+        >
+          <Icon name="reply" size={20} color={t.ink} />
+          <Text style={{ fontSize: 15, fontWeight: "500", color: t.ink }}>Répondre</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push(fwdHref as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Transférer"
+          style={({ pressed }) => [pillButton, { backgroundColor: pressed ? t.surface2 : "transparent" }]}
+        >
+          <Icon name="forward" size={20} color={t.ink} />
+          <Text style={{ fontSize: 15, fontWeight: "500", color: t.ink }}>Transférer</Text>
+        </Pressable>
       </View>
     </View>
   )

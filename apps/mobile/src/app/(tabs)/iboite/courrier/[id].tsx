@@ -11,6 +11,7 @@ import { idnTokens } from "@/design/tokens"
 import { NSheetHeader } from "@/components/chrome/sheet-header"
 import RichLetterEditor from "@/components/rich-letter-editor"
 import { Icon, type IconName } from "@/design/icons"
+import { IconButton } from "@/design/components/app-bar"
 import { api } from "@/lib/api"
 import { isHtmlLetterBody, letterBodyToText } from "@/lib/letter-content"
 
@@ -31,6 +32,13 @@ function safeFilename(s: string): string {
       .replace(/\s+/g, "_")
       .slice(0, 60) || "Courrier"
   )
+}
+
+const FOLDER_LABEL: Record<string, string> = {
+  inbox: "Réception",
+  pending: "À traiter",
+  sent: "Expédiés",
+  trash: "Corbeille",
 }
 
 type Action = {
@@ -243,21 +251,45 @@ export default function CourrierDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      <NSheetHeader
-        t={t}
-        title="Courrier"
-        onBack={() => router.back()}
-        right={
-          <Pressable onPress={openMore} style={{ padding: 4 }}>
-            <Icon name="more" size={18} color={t.muted} />
-          </Pressable>
-        }
-      />
+      {/* En-tête aligné sur la lecture d'un e-mail : actions en icônes, grand objet, dossier. */}
+      <View
+        style={{
+          height: 52,
+          flexShrink: 0,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 6,
+        }}
+      >
+        <IconButton icon="arrowL" label="Retour" plain size={44} color={t.ink2} onPress={() => router.back()} />
+        <View style={{ flex: 1 }} />
+        <IconButton icon="more" label="Plus d’actions" plain size={44} color={t.ink2} onPress={openMore} />
+      </View>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 14 }}
+        contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 14 }}
         showsVerticalScrollIndicator={false}
         style={{ flex: 1, backgroundColor: t.bg }}
       >
+        <Text
+          accessibilityRole="header"
+          style={{ fontSize: 22, fontWeight: "500", color: t.ink, lineHeight: 29, paddingHorizontal: 2, paddingTop: 6 }}
+        >
+          {letter.subject}
+        </Text>
+        <View
+          style={{
+            alignSelf: "flex-start",
+            marginTop: 8,
+            marginBottom: 14,
+            marginHorizontal: 2,
+            paddingVertical: 3,
+            paddingHorizontal: 7,
+            borderRadius: 5,
+            backgroundColor: t.surface2,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: t.ink2 }}>{FOLDER_LABEL[letter.folder]}</Text>
+        </View>
         <View
           style={{
             backgroundColor: "#fffdf7",
