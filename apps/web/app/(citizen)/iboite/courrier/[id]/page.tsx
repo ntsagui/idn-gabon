@@ -7,7 +7,7 @@ import { useConvex, useMutation, useQuery } from "convex/react"
 import { api } from "@repo/backend/convex/_generated/api"
 import type { Id } from "@repo/backend/convex/_generated/dataModel"
 
-import { AppBar, IconButton } from "@/app/_components/idn/app-bar"
+import { AppBar } from "@/app/_components/idn/app-bar"
 import { IdnButton } from "@/app/_components/idn/button"
 import { IdnDialog } from "@/app/_components/idn/dialog"
 import { Icon } from "@/app/_components/idn/icons"
@@ -15,12 +15,15 @@ import { Callout, ErrorNote, Overline } from "@/app/_components/idn/list"
 import { CenterState, Screen } from "@/app/_components/idn/screen"
 import { isHtmlLetterBody, letterBodyToText } from "@/lib/citizen/letter-content"
 
-import { ActionBar, type BarAction } from "../../_components/action-bar"
+import { ActionBar, PillLink, type BarAction } from "../../_components/action-bar"
 import { useIBoite } from "../../_components/iboite-context"
 import { LetterBody } from "../../_components/letter-editor"
-import { formatBytes, formatLongDate } from "../../_lib/format"
+import { LetterAvatar } from "../../_components/sender-avatar"
+import { formatBytes, formatListTime, formatLongDate } from "../../_lib/format"
 import { errorMessage } from "../../_lib/nav"
 import "../../_lib/letter-content.css"
+
+const FOLDER_LABEL: Record<string, string> = { inbox: "Réception", pending: "À traiter", sent: "Expédiés", trash: "Corbeille" }
 
 /** Lecture d’un courrier : transposition de apps/mobile/src/app/(tabs)/iboite/courrier/[id].tsx. */
 export default function CourrierPage() {
@@ -138,19 +141,37 @@ export default function CourrierPage() {
     }
   }
 
-  const actions: BarAction[] = [{ icon: "reply", label: "Répondre", primary: true, href: replyHref }]
+  const actions: BarAction[] = []
   // « À traiter » n’existe que pour un courrier reçu (règle du backend).
   if (current.folder === "inbox") actions.push({ icon: "clock", label: "À traiter", onClick: () => void move("pending") })
-  actions.push({ icon: "printer", label: "Imprimer", onClick: onPrint })
-  actions.push({ icon: "share", label: "Partager", onClick: () => void onShare() })
   if (current.folder !== "trash") actions.push({ icon: "trash", label: "Supprimer", danger: true, onClick: () => void move("trash") })
+  actions.push({ icon: "more", label: "Autres actions", onClick: () => setMoreOpen(true) })
 
   return (
     <Screen
       width="wide"
-      header={<AppBar title="Courrier" back="/iboite" right={<IconButton icon="more" label="Autres actions" plain onClick={() => setMoreOpen(true)} />} />}
-      footer={<ActionBar label="Actions sur le courrier" actions={actions} />}
+      header={<ActionBar back="/iboite" label="Actions sur le courrier" actions={actions} />}
+      footer={
+        <div className="flex gap-2.5">
+          <PillLink href={replyHref} icon="reply">
+            Répondre
+          </PillLink>
+        </div>
+      }
     >
+      <h1 className="mt-1.5 break-words text-[22px] font-medium leading-[1.3] text-idn-ink">{current.subject}</h1>
+      <span className="mt-2 inline-block rounded-[5px] bg-idn-surface-2 px-[7px] py-[3px] text-xs text-idn-ink-2">{FOLDER_LABEL[current.folder]}</span>
+      <div className="mt-[18px] flex items-center gap-3">
+        <LetterAvatar actionRequired={current.type === "action_required"} />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 text-[15px] font-semibold text-idn-ink">
+            <span className="truncate">{current.senderName}</span>
+            <span className="shrink-0 text-xs font-normal text-idn-muted">{formatListTime(current.createdAt)}</span>
+          </p>
+          <p className="mt-0.5 truncate text-[13px] text-idn-muted">{current.folder === "sent" ? `à ${current.recipientName}` : "à moi"}</p>
+        </div>
+      </div>
+
       <div className="-mx-2 mt-3.5 rounded-lg bg-idn-surface-2 p-2 md:mx-0 md:p-6">
         <article data-letter-paper={letterId} className="letter-paper" aria-label={`Courrier : ${current.subject}`}>
           <header className="flex justify-between gap-4 text-[11px] text-[#3a3a3a]">

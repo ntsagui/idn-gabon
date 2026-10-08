@@ -7,14 +7,11 @@ import { useConvex, useMutation } from "convex/react"
 import { api } from "@repo/backend/convex/_generated/api"
 import type { Id } from "@repo/backend/convex/_generated/dataModel"
 
-import { AppBar, IconButton } from "@/app/_components/idn/app-bar"
-import { IdnButton } from "@/app/_components/idn/button"
-import { Icon } from "@/app/_components/idn/icons"
 import { ErrorNote } from "@/app/_components/idn/list"
 import { Screen } from "@/app/_components/idn/screen"
 import { hasLetterContent, isHtmlLetterBody, plainTextToLetterHtml } from "@/lib/citizen/letter-content"
 
-import { AttachmentList, ComposeField, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_LABEL, uploadFile } from "../../_components/compose-parts"
+import { AttachmentList, ComposeField, ComposeHeader, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_LABEL, uploadFile } from "../../_components/compose-parts"
 import { useIBoite } from "../../_components/iboite-context"
 import { LetterEditor, type LetterEditorHandle } from "../../_components/letter-editor"
 import { errorMessage, useGoBack } from "../../_lib/nav"
@@ -45,7 +42,6 @@ function LetterCompose() {
   const [error, setError] = React.useState<string | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
   const editorRef = React.useRef<LetterEditorHandle>(null)
-  const fileRef = React.useRef<HTMLInputElement>(null)
 
   /** Image insérée dans le courrier : envoyée au stockage, puis URL durable. */
   async function uploadInlineImage(file: File): Promise<string> {
@@ -120,41 +116,10 @@ function LetterCompose() {
   return (
     <Screen
       width="wide"
-      header={
-        <AppBar
-          title="Nouveau courrier"
-          back="/iboite"
-          backIcon="close"
-          right={<IconButton icon="send" label="Envoyer" plain onClick={() => void submit()} className="text-c-green-text" />}
-        />
-      }
-      footer={
-        <>
-          <ErrorNote className="mt-0">{error}</ErrorNote>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={submitting}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] px-2 text-[13px] font-medium text-idn-ink-2 outline-none hover:bg-idn-surface-2 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-            >
-              <Icon name="paperclip" size={16} />
-              Joindre
-              <span className="text-xs font-normal text-idn-muted">Max {MAX_ATTACHMENT_LABEL}</span>
-            </button>
-            <input ref={fileRef} type="file" multiple hidden onChange={pickFiles} />
-            <span className="flex-1" />
-            <IdnButton size="sm" type="submit" form="iboite-letter" loading={submitting} leadIcon={<Icon name="send" size={16} />}>
-              Envoyer
-            </IdnButton>
-          </div>
-        </>
-      }
+      header={<ComposeHeader title="Nouveau courrier" closeHref="/iboite" formId="iboite-letter" submitting={submitting} onFiles={pickFiles} />}
     >
+      <ErrorNote className="mb-3 mt-1">{error}</ErrorNote>
       <form id="iboite-letter" onSubmit={submit} noValidate>
-        <ComposeField label="De">
-          <span className="min-w-0 flex-1 truncate text-sm text-idn-ink">{account?.emailAlias ?? (accounts === undefined ? "…" : "—")}</span>
-        </ComposeField>
         <ComposeField label="À" htmlFor="letter-to">
           <input
             id="letter-to"
@@ -165,8 +130,11 @@ function LetterCompose() {
             value={to}
             onChange={(e) => setTo(e.target.value)}
             placeholder="login ou destinataire@idn.ga"
-            className="h-full min-w-0 flex-1 bg-transparent text-sm text-idn-ink outline-none placeholder:text-idn-muted"
+            className="h-full min-w-0 flex-1 bg-transparent text-[15px] text-idn-ink outline-none placeholder:text-idn-muted"
           />
+        </ComposeField>
+        <ComposeField label="De">
+          <span className="min-w-0 flex-1 truncate font-mono text-[13.5px] text-idn-ink">{account?.emailAlias ?? (accounts === undefined ? "…" : "—")}</span>
         </ComposeField>
         <ComposeField label="Objet" htmlFor="letter-subject" srOnlyLabel>
           <input

@@ -10,15 +10,24 @@ import { cn } from "@repo/ui/lib/utils"
 
 import { AppBar } from "@/app/_components/idn/app-bar"
 import { Icon } from "@/app/_components/idn/icons"
-import { ErrorNote, Overline } from "@/app/_components/idn/list"
+import { ErrorNote } from "@/app/_components/idn/list"
 import { CenterState, Screen } from "@/app/_components/idn/screen"
 
-import { ActionBar, type BarAction } from "../../_components/action-bar"
+import { ActionBar, PillLink, type BarAction } from "../../_components/action-bar"
 import { EmailHtmlFrame } from "../../_components/email-html-frame"
 import { EmailTextBody } from "../../_components/email-text-body"
 import { useIBoite } from "../../_components/iboite-context"
-import { formatBytes, formatDateTime } from "../../_lib/format"
+import { SenderAvatar, VerifiedBadge } from "../../_components/sender-avatar"
+import { formatBytes, formatDateTime, formatListTime } from "../../_lib/format"
 import { errorMessage } from "../../_lib/nav"
+
+const FOLDER_LABEL: Record<string, string> = { inbox: "Réception", starred: "Favoris", sent: "Envoyés", archive: "Archives", trash: "Corbeille" }
+
+/** Extension courte d’un nom de fichier (« PDF »), affichée dans la vignette. */
+function fileExtension(name: string) {
+  const ext = name.split(".").pop()
+  return ext && ext !== name && ext.length <= 4 ? ext : null
+}
 
 /** Lecture d’un e-mail : transposition de apps/mobile/src/app/(tabs)/iboite/email/[id].tsx. */
 export default function EmailPage() {
@@ -32,6 +41,7 @@ export default function EmailPage() {
   const toggleStar = useMutation(api.iboite.messages.toggleStar)
   const move = useMutation(api.iboite.messages.move)
   const [error, setError] = React.useState<string | null>(null)
+  const [details, setDetails] = React.useState(false)
 
   React.useEffect(() => {
     if (email && !email.isRead) void markRead({ messageId: email._id }).catch(() => {})
@@ -86,71 +96,102 @@ export default function EmailPage() {
     }
   }
 
-  const actions: BarAction[] = [
-    { icon: "reply", label: "Répondre", primary: true, href: `/iboite/compose?replyToId=${id}` },
-    { icon: "forward", label: "Transférer", href: `/iboite/compose?replyToId=${id}&mode=forward` },
-  ]
+  const actions: BarAction[] = []
   if (email.folder !== "archive" && email.folder !== "trash") actions.push({ icon: "archive", label: "Archiver", onClick: () => void moveTo("archive") })
   if (email.folder !== "trash") actions.push({ icon: "trash", label: "Supprimer", danger: true, onClick: () => void moveTo("trash") })
+  const sent = email.folder === "sent"
 
   return (
     <Screen
-      header={
-        <AppBar
-          title="Message"
-          back="/iboite"
-          right={
-            <button
-              type="button"
-              onClick={() => void toggleStar({ messageId }).catch(() => {})}
-              aria-label={email.isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
-              aria-pressed={email.isStarred}
-              className={cn(
-                "inline-flex size-10 items-center justify-center rounded-full outline-none hover:bg-idn-surface-2 focus-visible:ring-2 focus-visible:ring-ring",
-                email.isStarred ? "text-c-yellow-text" : "text-idn-muted"
-              )}
-            >
-              <Icon name="star" size={20} filled={email.isStarred} />
-            </button>
-          }
-        />
+      header={<ActionBar back="/iboite" label="Actions sur le message" actions={actions} />}
+      footer={
+        <div className="flex gap-2.5">
+          <PillLink href={`/iboite/compose?replyToId=${id}`} icon="reply">
+            Répondre
+          </PillLink>
+          <PillLink href={`/iboite/compose?replyToId=${id}&mode=forward`} icon="forward">
+            Transférer
+          </PillLink>
+        </div>
       }
-      footer={<ActionBar label="Actions sur le message" actions={actions} />}
     >
-      <h2 className="mt-3.5 break-words text-lg font-bold leading-6 tracking-[-0.01em] text-idn-ink">{email.subject || "(sans objet)"}</h2>
-      <div className="mt-4 flex items-start gap-3 border-b border-idn-border pb-3.5">
-        <span aria-hidden className={cn("flex size-10 shrink-0 items-center justify-center rounded-full text-white", isAdmin ? "bg-idn-blue" : "bg-idn-green")}>
-          <Icon name={isAdmin ? "building" : "user"} size={20} />
-        </span>
+      <div className="mt-1.5 flex items-start gap-2.5">
+        <h1 className="min-w-0 flex-1 break-words text-[22px] font-medium leading-[1.3] text-idn-ink">{email.subject || "(sans objet)"}</h1>
+        <button
+          type="button"
+          onClick={() => void toggleStar({ messageId }).catch(() => {})}
+          aria-label={email.isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
+          aria-pressed={email.isStarred}
+          className={cn(
+            "-mr-2 -mt-1 inline-flex size-10 shrink-0 items-center justify-center rounded-full outline-none hover:bg-idn-surface-2 focus-visible:ring-2 focus-visible:ring-ring",
+            email.isStarred ? "text-c-yellow-text" : "text-idn-muted"
+          )}
+        >
+          <Icon name="star" size={22} filled={email.isStarred} />
+        </button>
+      </div>
+      <span className="mt-2 inline-block rounded-[5px] bg-idn-surface-2 px-[7px] py-[3px] text-xs text-idn-ink-2">{FOLDER_LABEL[email.folder]}</span>
+
+      <div className="mt-[18px] flex items-start gap-3">
+        <SenderAvatar name={email.senderName} admin={isAdmin} />
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold text-idn-ink">{email.senderName}</p>
-          <p className="break-all font-mono text-xs text-idn-muted">{email.senderEmail}</p>
-          <p className="mt-1 break-words text-xs text-idn-muted">
-            À : {email.recipientEmail} · {formatDateTime(email.createdAt)}
+          <p className="flex items-center gap-1.5 text-[15px] font-semibold text-idn-ink">
+            <span className="truncate">{email.senderName}</span>
+            {isAdmin ? <VerifiedBadge /> : null}
+            <span className="shrink-0 text-xs font-normal text-idn-muted">{formatListTime(email.createdAt)}</span>
           </p>
+          <button
+            type="button"
+            onClick={() => setDetails((d) => !d)}
+            aria-expanded={details}
+            aria-controls="email-details"
+            className="-ml-1 mt-0.5 inline-flex min-h-6 max-w-full items-center gap-0.5 rounded-md px-1 text-[13px] text-idn-muted outline-none hover:text-idn-ink focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="truncate">{sent ? `à ${email.recipientEmail}` : "à moi"}</span>
+            <Icon name="chevDn" size={15} className={cn("shrink-0 transition-transform", details && "rotate-180")} />
+            <span className="sr-only">{details ? "(masquer les détails)" : "(afficher les détails)"}</span>
+          </button>
         </div>
       </div>
-      <div className="mt-3.5 overflow-hidden rounded-xl border border-idn-border bg-idn-surface">
-        {email.bodyHtml ? <EmailHtmlFrame html={email.bodyHtml} /> : <EmailTextBody text={email.body} />}
-      </div>
+      {details ? (
+        <dl id="email-details" className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-xl border border-idn-border p-3 text-[13px]">
+          <dt className="text-idn-muted">De</dt>
+          <dd className="min-w-0 break-all text-idn-ink">
+            {email.senderName} <span className="font-mono text-xs text-idn-muted">&lt;{email.senderEmail}&gt;</span>
+          </dd>
+          <dt className="text-idn-muted">À</dt>
+          <dd className="min-w-0 break-all font-mono text-xs text-idn-ink">{email.recipientEmail}</dd>
+          <dt className="text-idn-muted">Date</dt>
+          <dd className="text-idn-ink">{formatDateTime(email.createdAt)}</dd>
+        </dl>
+      ) : null}
+      {isAdmin ? (
+        <p className="mt-3 flex items-center gap-2.5 rounded-xl bg-c-green-badge px-3 py-2.5 text-[13px] text-c-green-text">
+          <Icon name="landmark" size={18} className="shrink-0" />
+          Message officiel d’une administration vérifiée.
+        </p>
+      ) : null}
+
+      <div className="-mx-4 mt-3 md:mx-0 md:overflow-hidden md:rounded-xl md:border md:border-idn-border">{email.bodyHtml ? <EmailHtmlFrame html={email.bodyHtml} /> : <EmailTextBody text={email.body} />}</div>
       {email.attachments.length > 0 ? (
-        <section className="mt-5" aria-label="Pièces jointes">
-          <Overline className="mb-2">Pièces jointes</Overline>
-          <ul className="flex flex-col gap-1.5">
+        <section className="mt-3" aria-label="Pièces jointes">
+          <ul className="flex flex-col gap-2">
             {email.attachments.map((a) => (
               <li key={a._id}>
                 <button
                   type="button"
                   onClick={() => void openAttachment(a._id)}
                   aria-label={`Ouvrir ${a.name}`}
-                  className="flex w-full items-center gap-2.5 rounded-[10px] border border-idn-border bg-idn-surface p-3 text-left outline-none hover:bg-idn-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex w-full items-center gap-3 rounded-xl border border-idn-border bg-idn-surface px-3 py-2.5 text-left outline-none hover:bg-idn-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <Icon name="paperclip" size={18} className="shrink-0 text-idn-ink-2" />
+                  <span aria-hidden className="inline-flex h-[42px] w-9 shrink-0 items-center justify-center rounded-md bg-c-red-badge text-[10px] font-bold uppercase text-c-red-text">
+                    {fileExtension(a.name) ?? <Icon name="paperclip" size={16} />}
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-medium text-idn-ink">{a.name}</span>
                     <span className="block text-xs text-idn-muted">{formatBytes(a.size)}</span>
                   </span>
-                  <Icon name="download" size={16} className="shrink-0 text-idn-muted" />
+                  <Icon name="download" size={18} className="shrink-0 text-idn-muted" />
                 </button>
               </li>
             ))}
