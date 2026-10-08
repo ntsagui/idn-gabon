@@ -374,9 +374,6 @@ export default function EmailDetail() {
         <View
           style={{
             marginTop: 14,
-            marginHorizontal: 16,
-            overflow: "hidden",
-            borderRadius: 12,
             backgroundColor: t.surface,
           }}
         >
