@@ -1,10 +1,9 @@
 import React, { useState } from "react"
-import { Alert, Modal, Platform, Pressable, View } from "react-native";
+import { Alert, Modal, Pressable, View } from "react-native";
 import { Text } from "@/design/text";
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import * as LocalAuth from "expo-local-authentication"
 import { useIdnTheme } from "@/design/theme"
 import { IdnButton } from "@/design/components/idn-button"
 import { IdnInput } from "@/design/components/idn-input"
@@ -17,7 +16,8 @@ import { BIOMETRIC, BIOMETRIC_TITLE } from "@/lib/biometric-label"
 import { api } from "@/lib/api"
 import { authClient } from "@/lib/auth-client"
 
-import { biometricEnabledFor, deletePasskey, listPasskeys, passkeyErrorMessage, PasskeyUnavailableError, setBiometricForSession, type Passkey } from "@/lib/passkeys"
+import { deletePasskey, listPasskeys, passkeyErrorMessage, PasskeyUnavailableError, setPasskeyForSession, type Passkey } from "@/lib/passkeys"
+import { biometricAvailable, confirmWithBiometrics, faceUnlockEnabledFor, setFaceUnlockForSession } from "@/lib/face-unlock"
 
 function fmtDate(value: string | number | Date): string {
   return new Date(value).toLocaleDateString("fr-FR", {
@@ -231,7 +231,10 @@ export default function SettingsSecurity() {
 
   const loadPasskeys = React.useCallback(async () => {
     try {
-      setPasskeys(await listPasskeys())
+      const list = await listPasskeys()
+      // Plus aucune clé sur le compte : la connexion ne doit plus en proposer.
+      if (list.length === 0) await setPasskeyForSession(false)
+      setPasskeys(list)
       setPkError(null)
     } catch (caught) {
       setPasskeys([])
@@ -243,7 +246,7 @@ export default function SettingsSecurity() {
   }, [])
 
   React.useEffect(() => {
-    void biometricEnabledFor(user?.email).then(setFaceUnlock)
+    void faceUnlockEnabledFor(user?.email).then(setFaceUnlock)
   }, [user?.email])
 
   React.useEffect(() => {
@@ -252,58 +255,36 @@ export default function SettingsSecurity() {
 
   async function toggleBiometrics(enabled: boolean) {
     if (!enabled) {
-      await setBiometricForSession(false)
+      await setFaceUnlockForSession(false)
       setFaceUnlock(false)
       return
     }
-    try {
-      if (Platform.OS !== "web") {
-        const [hardware, enrolled] = await Promise.all([
-          LocalAuth.hasHardwareAsync(),
-          LocalAuth.isEnrolledAsync(),
-        ])
-        if (!hardware || !enrolled) {
-          Alert.alert(
-            "Biométrie indisponible",
-            "Configure Face ID, Touch ID ou la biométrie Android dans les réglages du téléphone.",
-          )
-          return
-        }
-      }
-      const existing = passkeys?.some(
-        (passkey) => passkey.name === "Biométrie de cet appareil",
-      )
-      if (!existing) {
-        const result = await authClient.passkey.addPasskey({
-          name: "Biométrie de cet appareil",
-        })
-        if (result?.error)
-          throw new Error(passkeyErrorMessage(result.error, "Activation impossible."))
-      }
-      await setBiometricForSession(true)
-      setFaceUnlock(true)
-      await loadPasskeys()
-    } catch (caught) {
-      await setBiometricForSession(false)
-      setFaceUnlock(false)
+    if (!(await biometricAvailable())) {
       Alert.alert(
-        "Activation impossible",
-        caught instanceof Error ? caught.message : "Réessaie plus tard.",
+        "Biométrie indisponible",
+        "Configure Face ID, Touch ID ou la biométrie Android dans les réglages du téléphone.",
       )
+      return
     }
+    if (!(await confirmWithBiometrics(`Activer ${BIOMETRIC}`))) return
+    await setFaceUnlockForSession(true)
+    setFaceUnlock(true)
   }
 
-  async function addSecurityKey() {
+  async function addPasskey(kind: "device" | "security-key") {
     if (adding) return
     setAdding(true)
     setPkError(null)
     try {
-      const result = await authClient.passkey.addPasskey({
-        name: `Clé de sécurité · ${fmtDate(Date.now())}`,
-        authenticatorAttachment: "cross-platform",
-      })
+      const result = await authClient.passkey.addPasskey(
+        kind === "device"
+          ? { name: `Clé d’accès de cet appareil · ${fmtDate(Date.now())}`, authenticatorAttachment: "platform" }
+          : { name: `Clé de sécurité · ${fmtDate(Date.now())}`, authenticatorAttachment: "cross-platform" },
+      )
       if (result?.error)
         throw new Error(passkeyErrorMessage(result.error, "Ajout impossible."))
+      // Créée depuis cet appareil : la connexion la proposera d'office.
+      await setPasskeyForSession(true)
       await loadPasskeys()
     } catch (caught) {
       setPkError(caught instanceof Error ? caught.message : "Ajout impossible.")
@@ -359,9 +340,6 @@ export default function SettingsSecurity() {
       </Card>
 
       <SectionTitle>Biométrie</SectionTitle>
-      {pkUnavailable ? (
-        <Note style={{ marginTop: 0, marginBottom: 10 }}>{`${BIOMETRIC_TITLE} et les clés d’accès ne sont pas encore activés sur le service IDN. Connecte-toi avec ton code PIN en attendant.`}</Note>
-      ) : null}
       <Card>
         <Row
           icon="scanFace"
@@ -370,11 +348,10 @@ export default function SettingsSecurity() {
           right={
             <Pressable
               onPress={() => void toggleBiometrics(!faceUnlock)}
-              disabled={pkUnavailable}
               accessibilityRole="switch"
-              accessibilityState={{ checked: faceUnlock, disabled: pkUnavailable }}
+              accessibilityState={{ checked: faceUnlock }}
               accessibilityLabel={BIOMETRIC_TITLE}
-              style={{ width: 52, height: 32, borderRadius: 9999, padding: 3, backgroundColor: faceUnlock ? t.green : t.border, justifyContent: "center", opacity: pkUnavailable ? 0.45 : 1 }}
+              style={{ width: 52, height: 32, borderRadius: 9999, padding: 3, backgroundColor: faceUnlock ? t.green : t.border, justifyContent: "center" }}
             >
               <View style={{ width: 26, height: 26, borderRadius: 9999, backgroundColor: "#fff", alignSelf: faceUnlock ? "flex-end" : "flex-start" }} />
             </Pressable>
@@ -383,6 +360,9 @@ export default function SettingsSecurity() {
       </Card>
 
       <SectionTitle>Clés d’accès</SectionTitle>
+      {pkUnavailable ? (
+        <Note style={{ marginTop: 0, marginBottom: 10 }}>Les clés d’accès ne sont pas encore activées sur le service IDN. Connecte-toi avec ton code PIN en attendant.</Note>
+      ) : null}
       {pkUnavailable ? null : <Text style={{ fontSize: 13, lineHeight: 19, color: pkError ? t.redText : t.muted, marginBottom: 8 }}>{keySummary}</Text>}
       <Card>
         {(passkeys ?? []).map((pk) => (
@@ -399,9 +379,10 @@ export default function SettingsSecurity() {
             }
           />
         ))}
-        <Row icon="plus" title="Ajouter une clé de sécurité" sub={pkUnavailable ? "Pas encore disponible" : "Clé physique ou autre appareil"} chevron={!pkUnavailable} onPress={pkUnavailable ? undefined : addSecurityKey} disabled={adding} />
+        <Row icon="plus" title="Créer une clé d’accès sur cet appareil" sub={pkUnavailable ? "Pas encore disponible" : "Connexion sans PIN quand tu es déconnecté"} chevron={!pkUnavailable} onPress={pkUnavailable ? undefined : () => void addPasskey("device")} disabled={adding} />
+        <Row icon="plus" title="Ajouter une clé de sécurité" sub={pkUnavailable ? "Pas encore disponible" : "Clé physique ou autre appareil"} chevron={!pkUnavailable} onPress={pkUnavailable ? undefined : () => void addPasskey("security-key")} disabled={adding} />
       </Card>
-      <Note>Les clés d’accès (passkeys) remplacent le mot de passe : elles restent sur ton appareil et ne sont jamais envoyées à IDN.</Note>
+      <Note>{`${BIOMETRIC_TITLE} déverrouille l’app quand tu es déjà connecté. Une clé d’accès (passkey) te connecte sans PIN quand tu es déconnecté : elle reste sur ton appareil et n’est jamais envoyée à IDN.`}</Note>
 
       <PinChangeModal visible={pinOpen} configured={pinConfigured} onClose={() => setPinOpen(false)} />
       <NipChangeModal visible={nipOpen} currentNip={currentNip} onClose={() => setNipOpen(false)} />

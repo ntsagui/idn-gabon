@@ -1,7 +1,6 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authClient } from '@/lib/auth-client';
-import { BIOMETRIC } from './biometric-label';
 
 /**
  * Gestion des clés d'accès (passkeys). Sur iOS/Android, le client
@@ -23,23 +22,25 @@ import { BIOMETRIC } from './biometric-label';
 export const PASSKEYS_ON_DEVICE = Platform.OS !== 'android';
 
 /**
- * Adresse du compte dont Face ID est activé sur cet appareil. La connexion
- * et le verrou ne lancent Face ID que pour ce compte ; les autres passent
- * directement au PIN, sans bouton biométrique voué à l'échec.
+ * Adresse du compte pour lequel une clé d'accès a été créée depuis cet
+ * appareil. La connexion la propose d'office pour ce compte seulement ; les
+ * autres passent directement au PIN. Le nom de la clé de stockage date de
+ * l'époque où Face ID et clé d'accès étaient confondus : on le garde pour ne
+ * pas oublier les clés déjà créées.
  */
-const BIOMETRIC_ACCOUNT_KEY = 'idn.biometricAccount';
+const PASSKEY_ACCOUNT_KEY = 'idn.biometricAccount';
 
-export async function biometricEnabledFor(email: string | null | undefined): Promise<boolean> {
+export async function passkeyEnabledFor(email: string | null | undefined): Promise<boolean> {
   if (!PASSKEYS_ON_DEVICE || !email) return false;
-  return (await AsyncStorage.getItem(BIOMETRIC_ACCOUNT_KEY)) === email.toLowerCase();
+  return (await AsyncStorage.getItem(PASSKEY_ACCOUNT_KEY)) === email.toLowerCase();
 }
 
-/** Mémorise (ou oublie) Face ID pour le compte de la session ouverte. */
-export async function setBiometricForSession(enabled: boolean): Promise<void> {
-  if (!enabled) return AsyncStorage.removeItem(BIOMETRIC_ACCOUNT_KEY);
+/** Mémorise (ou oublie) la clé d'accès de cet appareil pour le compte de la session ouverte. */
+export async function setPasskeyForSession(enabled: boolean): Promise<void> {
+  if (!enabled) return AsyncStorage.removeItem(PASSKEY_ACCOUNT_KEY);
   const session = await authClient.getSession();
   const email = session?.data?.user?.email as string | undefined;
-  if (email) await AsyncStorage.setItem(BIOMETRIC_ACCOUNT_KEY, email.toLowerCase());
+  if (email) await AsyncStorage.setItem(PASSKEY_ACCOUNT_KEY, email.toLowerCase());
 }
 
 export type Passkey = { id: string; name?: string | null; createdAt: string | number | Date; deviceType?: string };
@@ -72,6 +73,6 @@ export async function deletePasskey(id: string): Promise<void> {
 
 /** Message à montrer quand une opération de clé d'accès (enrôlement, connexion) échoue. */
 export function passkeyErrorMessage(error: { message?: string; status?: number } | null | undefined, fallback: string): string {
-  if (isServerFailure(error)) return `La connexion par ${BIOMETRIC} n’est pas encore disponible sur le service IDN. Utilise ton code PIN.`;
+  if (isServerFailure(error)) return 'La connexion par clé d’accès n’est pas encore disponible sur le service IDN. Utilise ton code PIN.';
   return error?.message || fallback;
 }

@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 import { Text } from '@/design/text';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import * as LocalAuth from 'expo-local-authentication';
 import { useIdnTheme } from '@/design/theme';
 import { IdnButton } from '@/design/components/idn-button';
 import { AppBar } from '@/design/components/app-bar';
@@ -11,8 +10,7 @@ import { ErrorNote } from '@/design/components/list';
 import { IdnLottie } from '@/design/components/lottie';
 import { Icon } from '@/design/icons';
 import { SignupScreen } from '@/components/auth/signup-screen';
-import { authClient } from '@/lib/auth-client';
-import { passkeyErrorMessage, PASSKEYS_ON_DEVICE, setBiometricForSession } from '@/lib/passkeys';
+import { biometricAvailable, confirmWithBiometrics, setFaceUnlockForSession } from '@/lib/face-unlock';
 import { BIOMETRIC, BIOMETRIC_TITLE } from '@/lib/biometric-label';
 
 export default function SignupBio() {
@@ -25,47 +23,25 @@ export default function SignupBio() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      // Sur web (Expo web), on suppose WebAuthn dispo dans le navigateur.
-      // Sur natif, on vérifie le hardware biométrique pour ajuster le copy.
-      if (Platform.OS === 'web') {
-        setAvailable(typeof window !== 'undefined' && 'PublicKeyCredential' in window);
-        return;
-      }
-      if (!PASSKEYS_ON_DEVICE) return;
-      try {
-        const hasHw = await LocalAuth.hasHardwareAsync();
-        const enrolled = await LocalAuth.isEnrolledAsync();
-        setAvailable(hasHw && enrolled);
-      } catch {
-        setAvailable(false);
-      }
-    })();
+    void biometricAvailable().then(setAvailable);
   }, []);
 
   async function activate() {
     setActivating(true);
     setError(null);
-    try {
-      const res = await authClient.passkey.addPasskey({ name: BIOMETRIC_TITLE });
-      if (res?.error) {
-        await setBiometricForSession(false);
-        setError(passkeyErrorMessage(res.error, 'Impossible de créer la clé d’accès. Réessaie ou continue avec ton PIN.'));
-        setActivating(false);
-        return;
-      }
-      await setBiometricForSession(true);
-    } catch (err) {
-      await setBiometricForSession(false);
-      setError(err instanceof Error ? err.message : 'Erreur lors de l\'activation.');
+    // On fait reconnaître le visage une fois avant d'activer, pour que le
+    // premier déverrouillage ne soit pas un essai à l'aveugle.
+    if (!(await confirmWithBiometrics(`Activer ${BIOMETRIC}`))) {
+      setError(`${BIOMETRIC_TITLE} n’a pas abouti. Réessaie ou continue avec ton PIN.`);
       setActivating(false);
       return;
     }
+    await setFaceUnlockForSession(true);
     router.replace(nextHref);
   }
 
   async function skip() {
-    await setBiometricForSession(false);
+    await setFaceUnlockForSession(false);
     router.replace(nextHref);
   }
 
@@ -78,7 +54,7 @@ export default function SignupBio() {
       </Text>
       <Text style={{ marginTop: 6, fontSize: 14, lineHeight: 20, color: t.muted, textAlign: 'center', maxWidth: 320 }}>
         {available
-          ? 'Déverrouille l’app et connecte-toi sans saisir ton PIN. Une clé d’accès (passkey) est créée et reste sur cet appareil.'
+          ? 'Déverrouille l’app sans saisir ton PIN. La reconnaissance se fait sur ton téléphone : rien n’est envoyé à IDN.'
           : `Aucun capteur biométrique n’est configuré sur cet appareil. Tu pourras activer ${BIOMETRIC} plus tard dans Profil.`}
       </Text>
       <View style={{ alignSelf: 'stretch' }}>

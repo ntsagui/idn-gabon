@@ -10,8 +10,8 @@ import { Screen } from '@/design/components/screen';
 import { ErrorNote, ScreenTitle } from '@/design/components/list';
 import { PinLogin } from '@/components/auth/pin-login';
 import { authClient } from '@/lib/auth-client';
-import { biometricEnabledFor, listPasskeys, passkeyErrorMessage } from '@/lib/passkeys';
-import { BIOMETRIC, BIOMETRIC_TITLE } from '@/lib/biometric-label';
+import { passkeyEnabledFor, passkeyErrorMessage } from '@/lib/passkeys';
+import { biometricAvailable, faceUnlockEnabledFor } from '@/lib/face-unlock';
 import { getLastAccount, initialsOf, type LastAccount } from '@/lib/last-account';
 import { setOnboardingDone } from '@/hooks/use-app-state';
 
@@ -34,8 +34,8 @@ function normalizeIdnIdentifier(input: string): { handle: string; email: string 
 }
 
 /**
- * Connexion : adresse @idn.ga (mémorisée), puis Face ID lancé d'office si
- * ce compte l'a activé sur cet appareil, sinon PIN 6 chiffres seul.
+ * Connexion : adresse @idn.ga (mémorisée), puis clé d'accès lancée d'office
+ * si ce compte en a créé une sur cet appareil, sinon PIN 6 chiffres seul.
  */
 export default function Login() {
   const t = useIdnTheme();
@@ -48,7 +48,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinSetupRequired, setPinSetupRequired] = useState(false);
-  const [faceId, setFaceId] = useState(false);
+  const [passkey, setPasskey] = useState(false);
 
   const normalized = normalizeIdnIdentifier(identifier);
 
@@ -66,15 +66,15 @@ export default function Login() {
         setPhase('handle');
       }
     });
-    // Une seule fois par adresse reçue : relancer Face ID à chaque rendu
+    // Une seule fois par adresse reçue : relancer la clé d'accès à chaque rendu
     // rouvrirait la fenêtre système.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramIdentifier]);
 
   async function enterPin(email: string) {
     setPhase('pin');
-    const enabled = await biometricEnabledFor(email);
-    setFaceId(enabled);
+    const enabled = await passkeyEnabledFor(email);
+    setPasskey(enabled);
     if (enabled) void signInWithPasskey(email);
   }
 
@@ -94,17 +94,11 @@ export default function Login() {
     setPinSetupRequired(false);
   }
 
-  async function routeAfterAuth() {
-    // Sans passkey enrôlé, on propose Face ID avant d'entrer dans l'app.
-    // En cas d'erreur réseau (ou plugin indispo), on va à l'accueil sans bloquer.
-    try {
-      const data = await listPasskeys();
-      if (data.length === 0) {
-        router.replace('/(auth)/signup/bio?next=/(tabs)/home');
-        return;
-      }
-    } catch {
-      // ignore — fallback home
+  async function routeAfterAuth(email: string) {
+    // Déverrouillage Face ID pas encore activé : on le propose avant d'entrer.
+    if (!(await faceUnlockEnabledFor(email)) && (await biometricAvailable())) {
+      router.replace('/(auth)/signup/bio?next=/(tabs)/home');
+      return;
     }
     router.replace('/(tabs)/home');
   }
@@ -138,7 +132,7 @@ export default function Login() {
         return;
       }
       await setOnboardingDone(true);
-      await routeAfterAuth();
+      await routeAfterAuth(normalized.email);
     } catch {
       setPinSetupRequired(false);
       setError('Connexion impossible pour le moment. Réessaie.');
@@ -153,7 +147,7 @@ export default function Login() {
     try {
       const res = await authClient.signIn.passkey();
       if (res?.error) {
-        setError(passkeyErrorMessage(res.error, `${BIOMETRIC_TITLE} n’a pas abouti. Saisis ton code PIN.`));
+        setError(passkeyErrorMessage(res.error, 'La clé d’accès n’a pas abouti. Saisis ton code PIN.'));
         setSubmitting(false);
         return;
       }
@@ -170,9 +164,9 @@ export default function Login() {
         return;
       }
       await setOnboardingDone(true);
-      router.replace('/(tabs)/home');
+      await routeAfterAuth(email);
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Connexion par ${BIOMETRIC} impossible.`);
+      setError(err instanceof Error ? err.message : 'Connexion par clé d’accès impossible.');
       setSubmitting(false);
     }
   }
@@ -199,7 +193,7 @@ export default function Login() {
           busy={submitting}
           error={error}
           onClearError={() => setError(null)}
-          onFaceId={faceId ? () => void signInWithPasskey(normalized.email) : undefined}
+          onPasskey={passkey ? () => void signInWithPasskey(normalized.email) : undefined}
           links={[
             { label: pinSetupRequired ? 'Configurer mon PIN' : 'Code PIN oublié ?', onPress: forgotPin },
             { label: 'Autre compte', onPress: backToHandle },

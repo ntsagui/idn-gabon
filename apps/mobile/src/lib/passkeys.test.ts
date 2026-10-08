@@ -29,22 +29,22 @@ describe('clés d’accès', () => {
     expect(authClient.$fetch).toHaveBeenLastCalledWith('/passkey/list-user-passkeys', { method: 'GET' });
   });
 
-  it('oriente vers le code PIN quand Face ID échoue côté serveur', async () => {
+  it('oriente vers le code PIN quand la clé d’accès échoue côté serveur', async () => {
     const { passkeyErrorMessage } = await import('./passkeys');
     expect(passkeyErrorMessage({ status: 500 }, 'x')).toMatch(/code PIN/);
     expect(passkeyErrorMessage({ status: 400, message: 'auth cancelled' }, 'x')).toBe('auth cancelled');
   });
 
-  it('ne lance Face ID que pour le compte qui l’a activé sur cet appareil', async () => {
+  it('ne lance la clé d’accès que pour le compte qui l’a créée sur cet appareil', async () => {
     // Sinon la connexion d'un autre compte déclencherait une clé d'accès
     // qui ne lui appartient pas, au lieu de passer directement au PIN.
     const { authClient } = await import('@/lib/auth-client');
-    const { biometricEnabledFor, setBiometricForSession } = await import('./passkeys');
+    const { passkeyEnabledFor, setPasskeyForSession } = await import('./passkeys');
     vi.mocked(authClient.getSession).mockResolvedValueOnce({ data: { user: { email: 'Awa.Ndong@idn.ga' } } });
-    await setBiometricForSession(true);
-    expect(await biometricEnabledFor('awa.ndong@idn.ga')).toBe(true);
-    expect(await biometricEnabledFor('autre@idn.ga')).toBe(false);
-    await setBiometricForSession(false);
-    expect(await biometricEnabledFor('awa.ndong@idn.ga')).toBe(false);
+    await setPasskeyForSession(true);
+    expect(await passkeyEnabledFor('awa.ndong@idn.ga')).toBe(true);
+    expect(await passkeyEnabledFor('autre@idn.ga')).toBe(false);
+    await setPasskeyForSession(false);
+    expect(await passkeyEnabledFor('awa.ndong@idn.ga')).toBe(false);
   });
 });

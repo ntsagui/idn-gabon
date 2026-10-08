@@ -5,8 +5,8 @@ import { Screen } from '@/design/components/screen';
 import { PinLogin } from '@/components/auth/pin-login';
 import { api } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
-import { biometricEnabledFor, passkeyErrorMessage } from '@/lib/passkeys';
-import { BIOMETRIC_TITLE } from '@/lib/biometric-label';
+import { confirmWithBiometrics, faceUnlockEnabledFor } from '@/lib/face-unlock';
+import { BIOMETRIC } from '@/lib/biometric-label';
 import { clearLastAccount, getLastAccount, initialsOf, type LastAccount } from '@/lib/last-account';
 
 /**
@@ -18,7 +18,8 @@ import { clearLastAccount, getLastAccount, initialsOf, type LastAccount } from '
  *     session courante reste intacte).
  *   - Face ID : s'il est activé sur cet appareil pour ce compte, il est
  *     lancé d'emblée et reste accessible par la touche du clavier ; sinon
- *     seul le PIN est proposé.
+ *     seul le PIN est proposé. Vérification locale (expo-local-authentication),
+ *     pas une clé d'accès : la session est déjà ouverte.
  *
  * « Changer de compte » ferme la session et revient à la bienvenue.
  */
@@ -34,32 +35,26 @@ export default function Launcher() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const tryPasskey = React.useCallback(async () => {
+  const tryFaceUnlock = React.useCallback(async () => {
     setError(null);
     setBusy(true);
-    try {
-      const res = await authClient.signIn.passkey();
-      if (res?.error) {
-        setError(passkeyErrorMessage(res.error, `${BIOMETRIC_TITLE} n’a pas abouti. Saisis ton code PIN.`));
-        setBusy(false);
-        return;
-      }
+    if (await confirmWithBiometrics(`Déverrouiller avec ${BIOMETRIC}`)) {
       router.replace('/(tabs)/home');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur d’authentification.');
-      setBusy(false);
+      return;
     }
+    // Annulé ou non reconnu : le PIN reste à l'écran, sans message d'erreur.
+    setBusy(false);
   }, [router]);
 
   useEffect(() => {
     void (async () => {
       const last = await getLastAccount();
       setAccount(last);
-      const enabled = await biometricEnabledFor(last?.email);
+      const enabled = await faceUnlockEnabledFor(last?.email);
       setBioEnabled(enabled);
-      if (enabled) void tryPasskey();
+      if (enabled) void tryFaceUnlock();
     })();
-  }, [tryPasskey]);
+  }, [tryFaceUnlock]);
 
   async function submitPin(entered: string) {
     setBusy(true);
@@ -95,7 +90,7 @@ export default function Launcher() {
         busy={busy}
         error={error}
         onClearError={() => setError(null)}
-        onFaceId={bioEnabled ? () => void tryPasskey() : undefined}
+        onFaceId={bioEnabled ? () => void tryFaceUnlock() : undefined}
         links={[
           { label: 'Code PIN oublié ?', onPress: () => router.push(account ? `/(auth)/forgot-pin?identifier=${encodeURIComponent(account.email)}` : '/(auth)/forgot-pin') },
           { label: 'Changer de compte', onPress: () => void switchAccount() },

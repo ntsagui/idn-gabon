@@ -15,14 +15,17 @@ type Props = {
   busy?: boolean;
   error?: string | null;
   onClearError?: () => void;
+  /** Déverrouillage Face ID local (session déjà ouverte). */
   onFaceId?: () => void;
+  /** Connexion par clé d'accès (déconnecté), à la place de Face ID sur la touche du clavier. */
+  onPasskey?: () => void;
   /** Lien(s) sous le clavier : « Code PIN oublié ? », « Changer de compte »… */
   links?: { label: string; onPress: () => void }[];
   children?: React.ReactNode;
 };
 
 /** Connexion par PIN (prototype « login ») : avatar, PIN 6 chiffres, Face ID. */
-export function PinLogin({ initials, title, subtitle, onComplete, busy, error, onClearError, onFaceId, links, children }: Props) {
+export function PinLogin({ initials, title, subtitle, onComplete, busy, error, onClearError, onFaceId, onPasskey, links, children }: Props) {
   const t = useIdnTheme();
   const [pin, setPin] = React.useState('');
 
@@ -58,7 +61,13 @@ export function PinLogin({ initials, title, subtitle, onComplete, busy, error, o
         onDigit={digit}
         onDelete={() => setPin((v) => v.slice(0, -1))}
         disabled={busy}
-        leftAction={onFaceId ? { icon: 'scanFace', label: `Se connecter avec ${BIOMETRIC}`, onPress: onFaceId } : undefined}
+        leftAction={
+          onFaceId
+            ? { icon: 'scanFace', label: `Déverrouiller avec ${BIOMETRIC}`, onPress: onFaceId }
+            : onPasskey
+              ? { icon: 'keyRound', label: 'Se connecter avec une clé d’accès', onPress: onPasskey }
+              : undefined
+        }
       />
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 24, paddingTop: 14, paddingBottom: 8 }}>
         {links?.map((l) => (
