@@ -61,4 +61,25 @@ describe('déverrouillage Face ID', () => {
     vi.mocked(LocalAuth.authenticateAsync).mockRejectedValueOnce(new Error('boom'));
     expect(await confirmWithBiometrics('Déverrouiller')).toBe(false);
   });
+
+  it('n’est proposé qu’à la première connexion du compte sur l’appareil', async () => {
+    // Répondre « Plus tard » ne doit pas faire réapparaître la proposition
+    // à chaque connexion ; un autre compte, lui, y a droit.
+    const LocalAuth = await import('expo-local-authentication');
+    const { markFaceUnlockOffered, shouldOfferFaceUnlock } = await import('./face-unlock');
+    vi.mocked(LocalAuth.hasHardwareAsync).mockResolvedValue(true);
+    vi.mocked(LocalAuth.isEnrolledAsync).mockResolvedValue(true);
+    expect(await shouldOfferFaceUnlock('Paul.Mba@idn.ga')).toBe(true);
+    await markFaceUnlockOffered('Paul.Mba@idn.ga');
+    expect(await shouldOfferFaceUnlock('paul.mba@idn.ga')).toBe(false);
+    expect(await shouldOfferFaceUnlock('autre.compte@idn.ga')).toBe(true);
+  });
+
+  it('n’est pas proposé sans biométrie configurée sur le téléphone', async () => {
+    const LocalAuth = await import('expo-local-authentication');
+    const { shouldOfferFaceUnlock } = await import('./face-unlock');
+    vi.mocked(LocalAuth.hasHardwareAsync).mockResolvedValue(true);
+    vi.mocked(LocalAuth.isEnrolledAsync).mockResolvedValue(false);
+    expect(await shouldOfferFaceUnlock('sans.capteur@idn.ga')).toBe(false);
+  });
 });

@@ -11,7 +11,7 @@ import { ErrorNote, ScreenTitle } from '@/design/components/list';
 import { PinLogin } from '@/components/auth/pin-login';
 import { authClient } from '@/lib/auth-client';
 import { passkeyEnabledFor, passkeyErrorMessage } from '@/lib/passkeys';
-import { biometricAvailable, faceUnlockEnabledFor } from '@/lib/face-unlock';
+import { markFaceUnlockOffered, shouldOfferFaceUnlock } from '@/lib/face-unlock';
 import { getLastAccount, initialsOf, type LastAccount } from '@/lib/last-account';
 import { setOnboardingDone } from '@/hooks/use-app-state';
 
@@ -95,8 +95,10 @@ export default function Login() {
   }
 
   async function routeAfterAuth(email: string) {
-    // Déverrouillage Face ID pas encore activé : on le propose avant d'entrer.
-    if (!(await faceUnlockEnabledFor(email)) && (await biometricAvailable())) {
+    // Première connexion de ce compte sur l'appareil : on propose Face ID /
+    // la biométrie avant d'entrer, une seule fois.
+    if (await shouldOfferFaceUnlock(email)) {
+      await markFaceUnlockOffered(email);
       router.replace('/(auth)/signup/bio?next=/(tabs)/home');
       return;
     }
