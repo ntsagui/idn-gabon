@@ -16,7 +16,7 @@ import { normalizeIdnIdentifier } from "@/lib/citizen/idn-identifier"
 import { getLastAccount, initialsOf, type LastAccount } from "@/lib/citizen/last-account"
 import { BIOMETRIC, biometricEnabledFor, isServerFailure, passkeyErrorMessage, passkeysSupported } from "@/lib/citizen/passkeys"
 import {
-  authorizeFederatedSignIn,
+  authorizeAfterSignIn,
   getProviderRedirect,
   hasAuthorizationRequest,
   resumeFederatedSignIn,
@@ -172,7 +172,9 @@ function SignIn() {
       return
     }
     if (isAuthorizationRequest) {
-      const url = await authorizeFederatedSignIn(new URLSearchParams(authorizationParams), authClient)
+      // La saisie qui vient de réussir satisfait prompt=login : sans cela, le
+      // fournisseur redemanderait le PIN (double identification).
+      const url = await authorizeAfterSignIn(new URLSearchParams(authorizationParams), authClient)
       window.location.assign(url)
       return
     }

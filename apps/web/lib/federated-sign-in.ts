@@ -53,6 +53,33 @@ export async function authorizeFederatedSignIn(
   return redirect
 }
 
+/**
+ * Une saisie réussie sur cette page EST la réauthentification que demandait
+ * `prompt=login`. Rejouer la demande avec `login` ferait exiger une seconde
+ * saisie par le fournisseur, qui voit alors une session : c'est la double
+ * identification. Comme le hook du fournisseur après connexion, on retire
+ * `login` et on garde le reste de `prompt` (consent, none…) et `max_age`.
+ */
+export function withSatisfiedLoginPrompt(
+  params: URLSearchParams,
+): URLSearchParams {
+  const query = new URLSearchParams(params)
+  const prompt = (query.get("prompt") ?? "")
+    .split(/\s+/)
+    .filter((value) => value.length > 0 && value !== "login")
+  if (prompt.length > 0) query.set("prompt", prompt.join(" "))
+  else query.delete("prompt")
+  return query
+}
+
+/** Reprise juste après une saisie (PIN, mot de passe, TOTP) sur cette page. */
+export async function authorizeAfterSignIn(
+  params: URLSearchParams,
+  client: Pick<FederatedAuthClient, "$fetch">,
+): Promise<string> {
+  return authorizeFederatedSignIn(withSatisfiedLoginPrompt(params), client)
+}
+
 export async function resumeFederatedSignIn(
   params: URLSearchParams,
   client: FederatedAuthClient,

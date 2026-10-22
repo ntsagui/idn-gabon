@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  authorizeAfterSignIn,
   authorizeFederatedSignIn,
   getProviderRedirect,
   resumeFederatedSignIn,
+  withSatisfiedLoginPrompt,
 } from "../apps/web/lib/federated-sign-in"
 
 const params = () =>
@@ -153,5 +155,52 @@ describe("reprise OIDC depuis le portail Identité.ga", () => {
         error: { status: 400 },
       }),
     ).toBeNull()
+  })
+
+  test("après une saisie sur la page, prompt=login est satisfait : la reprise ne redemande pas le PIN", async () => {
+    const request = params()
+    request.set("prompt", "login consent")
+    request.set("max_age", "3600")
+    const calls: string[] = []
+    const url = await authorizeAfterSignIn(request, {
+      $fetch: async (path) => {
+        calls.push(path)
+        return providerResponse(callback)
+      },
+    })
+    expect(url).toBe(callback)
+    expect(calls).toHaveLength(1)
+    const query = new URL(calls[0]!, "https://identite.ga").searchParams
+    // Seul `login` tombe : consentement et max_age restent au fournisseur.
+    expect(query.get("prompt")).toBe("consent")
+    expect(query.get("max_age")).toBe("3600")
+    // Le reste de la demande voyage intact : client, PKCE, état, nonce, portée, niveau exigé.
+    for (const [key, value] of params()) expect(query.get(key)).toBe(value)
+  })
+
+  test("prompt=login seul disparaît ; la requête d'origine n'est pas modifiée", () => {
+    const request = params()
+    request.set("prompt", "login")
+    const satisfied = withSatisfiedLoginPrompt(request)
+    expect(satisfied.has("prompt")).toBe(false)
+    expect(request.get("prompt")).toBe("login")
+    // Sans prompt, rien ne change.
+    expect(withSatisfiedLoginPrompt(params()).toString()).toBe(params().toString())
+  })
+
+  test("une session déjà ouverte au chargement ne satisfait pas prompt=login : le challenge reste au fournisseur", async () => {
+    const request = params()
+    request.set("prompt", "login")
+    const calls: string[] = []
+    await resumeFederatedSignIn(request, {
+      getSession: async () => ({ data: { session: { id: "existing" } } }),
+      $fetch: async (path) => {
+        calls.push(path)
+        return providerResponse(
+          "https://identite.ga/sign-in?client_id=administration-ga&code=reauth-code&state=original",
+        )
+      },
+    })
+    expect(new URL(calls[0]!, "https://identite.ga").searchParams.get("prompt")).toBe("login")
   })
 })

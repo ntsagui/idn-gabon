@@ -15,6 +15,7 @@ import {
   submitConsentDecision,
 } from "../apps/web/lib/consent-flow"
 import {
+  authorizeAfterSignIn,
   authorizeFederatedSignIn,
   getProviderRedirect,
   resumeFederatedSignIn,
@@ -178,6 +179,21 @@ describe("contrat HTTP du fournisseur OIDC et du proxy web", () => {
     const url = await authorizeFederatedSignIn(params, client)
     expect(new URL(url).searchParams.get("code")).toBeTruthy()
     expect(new URL(url).searchParams.get("state")).toBe("fonction-publique")
+  })
+
+  test("sans session + prompt=login : une seule saisie du PIN, puis retour à l'application", async () => {
+    const { client, params, signIn } = await setup()
+    params.set("prompt", "login")
+    expect(await resumeFederatedSignIn(params, client)).toBeNull()
+    expect((await signIn()).error).toBeNull()
+    // Rejouée telle quelle, la demande exigerait une seconde saisie (la double identification).
+    const challenge = new URL(await authorizeFederatedSignIn(params, client))
+    expect(challenge.pathname).toBe("/sign-in")
+    // La reprise après saisie rend le code à l'application, sans redemander le PIN.
+    const url = new URL(await authorizeAfterSignIn(params, client))
+    expect(url.origin).toBe(new URL(callback).origin)
+    expect(url.searchParams.get("code")).toBeTruthy()
+    expect(url.searchParams.get("state")).toBe("fonction-publique")
   })
 
   test("prompt=login : le fournisseur exige le PIN puis reprend le callback", async () => {
